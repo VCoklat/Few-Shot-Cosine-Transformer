@@ -30,6 +30,51 @@ from methods.transformer import FewShotTransformer
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+def train(base_loader, val_loader, model, optimization, num_epoch, params):
+    if optimization == 'Adam':
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+    elif optimization == 'AdamW':
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+    elif optimization == 'SGD':
+        optimizer = torch.optim.SGD(
+            model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
+    else:
+        raise ValueError('Unknown optimization, please define by yourself')
+
+    max_acc = 0
+
+    for epoch in range(num_epoch):
+        model.train()
+
+        model.train_loop(epoch, num_epoch, base_loader,
+                         params.wandb,  optimizer)
+        with torch.no_grad():
+            model.eval()
+
+            if not os.path.isdir(params.checkpoint_dir):
+                os.makedirs(params.checkpoint_dir)
+
+            acc = model.val_loop(val_loader, epoch, params.wandb)
+            if acc > max_acc:  
+                print("best model! save...")
+                max_acc = acc
+                outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
+                torch.save(
+                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
+                # if params.wandb:
+                #     wandb.save(outfile)
+
+            if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
+                outfile = os.path.join(
+                    params.checkpoint_dir, '{:d}.tar'.format(epoch))
+                torch.save(
+                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        print()
+
+    return model
+
 def direct_test(test_loader, model, params):
 
     correct = 0
@@ -79,8 +124,34 @@ if __name__ == '__main__':
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(vars(params))
     print()
+        
+    project_name = "Few-Shot_TransFormer"            
     
-    if params.dataset == 'Omniglot': params.n_query = min(params.n_query, 15)   #Omniglot only support maximum 15 samples/category as query
+    if params.dataset == 'Omniglot': params.n_query = 15
+    if params.wandb:
+
+        wandb_name = params.method + "_" + params.backbone + "_" + params.dataset + \
+            "_" + str(params.n_way) + "w" + str(params.k_shot) + "s"
+        
+        if params.train_aug:
+            wandb_name += "_aug"
+        if params.FETI and 'ResNet' in params.backbone:
+            wandb_name += "_FETI"
+        wandb_name += "_" + params.datetime
+        
+        wandb.init(project=project_name, name=wandb_name,
+                   config=params, id=params.datetime)
+        print()
+
+    if params.dataset == 'cross':
+        base_file = configs.data_dir['miniImagenet'] + 'all.json'
+        val_file = configs.data_dir['CUB'] + 'val.json'
+    elif params.dataset == 'cross_char':
+        base_file = configs.data_dir['Omniglot'] + 'noLatin.json'
+        val_file = configs.data_dir['emnist'] + 'val.json'
+    else:
+        base_file = configs.data_dir[params.dataset] + 'base.json'
+        val_file = configs.data_dir[params.dataset] + 'val.json'
 
     if params.dataset == "CIFAR":
         image_size = 112 if 'ResNet' in params.backbone else 64
@@ -91,29 +162,23 @@ if __name__ == '__main__':
         if params.backbone == 'Conv4': params.backbone = 'Conv4S'
         if params.backbone == 'Conv6': params.backbone = 'Conv6S'
 
-    iter_num = params.test_iter
-
-    split = params.split
-    if params.dataset == 'cross':
-        if split == 'base':
-            testfile = configs.data_dir['miniImagenet'] + 'all.json'
-        else:
-            testfile = configs.data_dir['CUB'] + split + '.json'
-    elif params.dataset == 'cross_char':
-        if split == 'base':
-            testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
-        else:
-            testfile = configs.data_dir['emnist'] + split + '.json'
-    else:
-        testfile = configs.data_dir[params.dataset] + split + '.json'
-
+    optimization = params.optimization
 
     if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+
+        few_shot_params = dict(
+            n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
+        base_datamgr = SetDataManager(
+            image_size, n_episode=params.n_episode, **few_shot_params)
+        base_loader = base_datamgr.get_data_loader(
+            base_file, aug=params.train_aug)
+
+        val_datamgr = SetDataManager(
+            image_size, n_episode=params.n_episode, **few_shot_params)
+        val_loader = val_datamgr.get_data_loader(
+            val_file, aug=False)
        
         seed_func()
-        
-        few_shot_params = dict(
-            n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
 
         if params.method in ['FSCT_softmax', 'FSCT_cosine']:
             variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
@@ -151,62 +216,17 @@ if __name__ == '__main__':
         params.n_way, params.k_shot)
     
     if not os.path.isdir(params.checkpoint_dir):
-        raise ValueError('Can\'t find save model dir')
+        os.makedirs(params.checkpoint_dir)
+    
+    print("===================================")
+    print("Train phase: ")
+    
+    model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
+
+
+######################################################################
 
     print("===================================")
     print("Test phase: ")
-    
-        
-    if params.save_iter != -1:
-        modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
-    else:
-        modelfile = get_best_file(params.checkpoint_dir)
-        
-    test_datamgr = SetDataManager(
-        image_size, n_episode=iter_num,  **few_shot_params)
-    test_loader = test_datamgr.get_data_loader(testfile, aug=False)
- 
-    acc_all = []
-   
-    model = model.to(device)
 
-    root = os.getcwd()
-
-    if params.save_iter != -1:
-        modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
-    else:
-        modelfile = get_best_file(params.checkpoint_dir)
-    if modelfile is not None:
-        tmp = torch.load(modelfile)
-        model.load_state_dict(tmp['state'])
-
-    split = params.split
-    if params.save_iter != -1:
-        split_str = split + "_" + str(params.save_iter)
-    else:
-        split_str = split
-    
-    acc_mean, acc_std = direct_test(test_loader, model, params)
-        
-    print('%d Test Acc = %4.2f%% +- %4.2f%%' %
-            (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
-    
-            
-    with open('./record/results.txt', 'a') as f:
-
-        timestamp = params.datetime
-
-        aug_str = '-aug' if params.train_aug else ''
-        aug_str += '-FETI' if params.FETI and 'ResNet' in params.backbone else ''
-
-        if params.backbone == "Conv4SNP": 
-            params.backbone = "Conv4"
-        elif params.backbone == "Conv6SNP":
-            params.backbone = "Conv6"
-        exp_setting = '%s-%s-%s%s-%sw%ss' % (params.dataset, params.backbone, 
-                params.method, aug_str, params.n_way, params.k_shot)
-        
-        acc_str = 'Test Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std/np.sqrt(iter_num))
-        
-        f.write('Time: %s   Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
     

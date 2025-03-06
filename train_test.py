@@ -205,7 +205,7 @@ if __name__ == '__main__':
     model = model.to(device)
     
     
-    params.checkpoint_dir = '%scheckpoints/%s/%s_%s' % (
+    params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
     if params.train_aug:
         params.checkpoint_dir += '_aug'
