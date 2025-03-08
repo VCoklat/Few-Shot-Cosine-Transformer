@@ -63,7 +63,7 @@ class FewShotTransformer(MetaTemplate):
         
         # Check cache first to avoid recomputation
         cache_key = f"query_{batch_size}"
-        if cache_key in self.feature_cache:
+        if (cache_key in self.feature_cache):
             q_proj = self.feature_cache[cache_key]
         else:
             # Project query features - do once for efficiency
@@ -92,33 +92,40 @@ class FewShotTransformer(MetaTemplate):
         return attention_weights
         
     def set_forward(self, x, is_feature=False):
-        # Clear cache at the start of each episode
-        self.feature_cache = {}
+        # Clear cache if it's getting large
+        if len(self.feature_cache) > 5:
+            self.feature_cache = {}
         
-        z_support, z_query = self.parse_feature(x, is_feature)
+        # Explicitly manage memory during forward pass
+        with torch.cuda.amp.autocast(enabled=False):  # Don't use autocast here, we handle it elsewhere
+            z_support, z_query = self.parse_feature(x, is_feature)
+            z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
+            z_query_flat = z_query.contiguous().view(self.n_way * self.n_query, -1)
         
-        z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
-        z_query_flat = z_query.contiguous().view(self.n_way * self.n_query, -1)
-        
-        # Compute dynamic weights based on the query
-        with torch.set_grad_enabled(self.training):  # Save memory during inference
+        # Compute dynamic weights with minimal memory footprint
+        with torch.set_grad_enabled(self.training):
             dynamic_weights = self.compute_dynamic_weights(z_support, z_query_flat)
-            
             # Generate prototypes with dynamic weights
             z_proto = (z_support * dynamic_weights).sum(1).unsqueeze(0)  # [1, n_way, dim]
         
-        # Reshape query for transformer
+        # Free memory explicitly
+        del z_support
+        
+        # Process query features
         z_query = z_query_flat.unsqueeze(1)  # [n_way*n_query, 1, dim]
+        del z_query_flat  # Free memory
         
         x, query = z_proto, z_query
         
+        # Process through transformer layers with memory efficient operations
         for _ in range(self.depth):
-            # Apply transformer layers
-            x = self.ATTN(q=x, k=query, v=query) + x
-            x = self.FFN(x) + x
+            # Use more efficient attention implementation
+            attn_out = self.ATTN(q=x, k=query, v=query)
+            x = x + attn_out
+            x = x + self.FFN(x)
         
-        # Output is the probabilistic prediction for each class
-        return self.linear(x).squeeze()  # [n_way*n_query, n_way]
+        # Final classification
+        return self.linear(x).squeeze()
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))

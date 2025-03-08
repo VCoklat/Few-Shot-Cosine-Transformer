@@ -28,6 +28,9 @@ from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 import argparse
 
+import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -46,11 +49,30 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
     max_acc = 0
 
+    # Add accumulation steps parameter based on available memory
+    accumulation_steps = 4  # Adjust based on your GPU memory
+
     for epoch in range(num_epoch):
         model.train()
+        # Clear cache before each epoch
+        torch.cuda.empty_cache()
 
-        model.train_loop(epoch, num_epoch, base_loader,
-                         params.wandb,  optimizer, use_amp=params.use_amp)
+        try:
+            model.train_loop(epoch, num_epoch, base_loader,
+                            params.wandb, optimizer, use_amp=params.use_amp,
+                            accumulation_steps=accumulation_steps)
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e):
+                print(f"CUDA OOM detected, increasing accumulation steps from {accumulation_steps} to {accumulation_steps*2}")
+                torch.cuda.empty_cache()
+                accumulation_steps *= 2
+                # Try again with increased accumulation
+                model.train_loop(epoch, num_epoch, base_loader,
+                                params.wandb, optimizer, use_amp=params.use_amp,
+                                accumulation_steps=accumulation_steps)
+            else:
+                raise e
+
         with torch.no_grad():
             model.eval()
             model.clear_cache()
@@ -206,6 +228,7 @@ if __name__ == '__main__':
 
     model = model.to(device)
     
+    torch.cuda.empty_cache()
     
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)

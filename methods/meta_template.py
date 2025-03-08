@@ -70,40 +70,62 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, use_amp=False):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, use_amp=False, accumulation_steps=4):
         avg_loss = 0
         avg_acc = []
         
         # Initialize gradient scaler for mixed precision
         scaler = amp.GradScaler() if use_amp else None
         
+        # Clear cache at beginning of epoch
+        torch.cuda.empty_cache()
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
-            for i, (x, _) in enumerate(train_loader):        
+            for i, (x, _) in enumerate(train_loader):
                 if self.change_way:
-                    self.n_way  = x.size(0)
+                    self.n_way = x.size(0)
                 
-                optimizer.zero_grad()
+                # Only zero gradients when accumulation is complete
+                if i % accumulation_steps == 0:
+                    optimizer.zero_grad()
                 
                 # Use mixed precision if enabled
                 if use_amp:
                     with amp.autocast():
                         acc, loss = self.set_forward_loss(x = x.to(device))
+                        # Normalize loss for gradient accumulation
+                        loss = loss / accumulation_steps
+                    
+                    # Scale and accumulate gradients
                     scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
+                    
+                    # Only step optimizer and scaler after accumulation
+                    if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+                        scaler.step(optimizer)
+                        scaler.update()
                 else:
                     acc, loss = self.set_forward_loss(x = x.to(device))
+                    # Normalize loss for gradient accumulation
+                    loss = loss / accumulation_steps
                     loss.backward()
-                    optimizer.step()
                     
-                avg_loss += loss.item()
+                    # Only step optimizer after accumulation
+                    if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+                        optimizer.step()
+                        optimizer.zero_grad()
+                    
+                avg_loss += loss.item() * accumulation_steps  # Adjust for proper reporting
                 avg_acc.append(acc)
-                train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
+                train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f} | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
+                
+                # Explicitly clear memory periodically
+                if i % 50 == 0:
+                    torch.cuda.empty_cache()
         
         if wandb_flag:
-            wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
+            wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100}, step=epoch + 1)
 
     def val_loop(self, val_loader, epoch, wandb_flag, record = None):
         correct =0
