@@ -35,7 +35,10 @@ def parse_args():
     parser.add_argument('--optimization'    , type=str, default='AdamW', help='Optimization algorithms. Support Adam, AdamW, SGD')
     parser.add_argument('--wandb'           , type=int, default=0, help='[1:0] - [True:False]; Wandb Log, only for train.py and train_save_test.py')
     parser.add_argument('--datetime'        , default = str("{:%Y%m%d@%H%M%S}".format(datetime.datetime.now())), help='Execute time log')
-
+    parser.add_argument('--cov_weight', type=float, default=0.5, 
+                   help='Initial covariance weight (between 0-1)')
+    parser.add_argument('--dynamic_weight', type=lambda x: (str(x).lower() == 'true'), 
+                   default=True, help='Use dynamic weight balancing (true/false)')
     parser.add_argument('--save_freq'       , default=50, type=int, help='Save frequency')
     parser.add_argument('--num_epoch'       , default=50, type=int, help ='Stopping epoch')
     parser.add_argument('--split'           , default='novel', help='base/val/novel, only for train.py and train_save_test.py')

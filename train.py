@@ -189,7 +189,17 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            model = FewShotTransformer(feature_model, 
+                                       n_way=params.n_way, 
+                                       k_shot=params.k_shot,
+                                       n_query=params.n_query, 
+                                       variant=variant,
+                                       depth=params.depth if hasattr(params, 'depth') else 1,
+                                       heads=params.heads if hasattr(params, 'heads') else 8, 
+                                       dim_head=params.dim_head if hasattr(params, 'dim_head') else 64,
+                                       mlp_dim=params.mlp_dim if hasattr(params, 'mlp_dim') else 512,
+                                       initial_cov_weight=params.cov_weight if hasattr(params, 'cov_weight') else 0.5,
+                                       dynamic_weight=params.dynamic_weight if hasattr(params, 'dynamic_weight') else True)
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'

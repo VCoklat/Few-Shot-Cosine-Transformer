@@ -14,9 +14,10 @@ import IPython
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class FewShotTransformer(MetaTemplate):
-    def __init__(self, model_func,  n_way, k_shot, n_query, variant = "softmax",
-                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512):
-        super(FewShotTransformer, self).__init__(model_func,  n_way, k_shot, n_query)
+    def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
+                depth=1, heads=8, dim_head=64, mlp_dim=512, 
+                initial_cov_weight=0.5, dynamic_weight=True):
+        super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
         
@@ -25,7 +26,9 @@ class FewShotTransformer(MetaTemplate):
         self.depth = depth
         dim = self.feat_dim
 
-        self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
+        self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
+                             initial_cov_weight=initial_cov_weight, 
+                             dynamic_weight=dynamic_weight)
         
         self.sm = nn.Softmax(dim = -2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
