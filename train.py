@@ -243,14 +243,16 @@ if __name__ == '__main__':
                 stats = module.get_weight_stats()
                 if stats:
                     print(f"Attention Block {i} weight stats:")
-                    print(f"  Mean: {stats['mean']:.4f}")
-                    print(f"  Std: {stats['std']:.4f}")
-                    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
+                    print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
+                    print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
+                    print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
                     print("  Distribution:")
-                    for bin_idx, count in enumerate(stats['histogram']):
-                        bin_start = bin_idx/10
-                        bin_end = (bin_idx+1)/10
-                        print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                    for comp in ['cosine', 'cov', 'var']:
+                        print(f"    {comp.capitalize()}:")
+                        for bin_idx, count in enumerate(stats['histogram'][comp]):
+                            bin_start = bin_idx/10
+                            bin_end = (bin_idx+1)/10
+                            print(f"      {bin_start:.1f}-{bin_end:.1f}: {count}")
                 module.clear_weight_history()
                 module.record_weights = False
 
