@@ -71,7 +71,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, cov_weight=0.3):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.3, dynamic_weight=True):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -80,7 +80,22 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
-        self.cov_weight = cov_weight  # Weight for covariance contribution
+        
+        # Dynamic weighting components
+        self.dynamic_weight = dynamic_weight
+        if dynamic_weight:
+            # Network to predict the weight based on features
+            self.weight_predictor = nn.Sequential(
+                nn.Linear(dim_head * 2, dim_head),
+                nn.LayerNorm(dim_head),
+                nn.ReLU(),
+                nn.Linear(dim_head, 1),
+                nn.Sigmoid()  # Output between 0-1
+            )
+        else:
+            # Fixed weight as parameter (still learnable)
+            self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
+            
         self.input_linear = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias = False))
@@ -92,25 +107,38 @@ class Attention(nn.Module):
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            # Use original cosine distance calculation
+            # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
-            # Add covariance-based component
-            if self.cov_weight > 0:
-                # Calculate per-head covariance using same dimensionality as cosine_sim
-                q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
-                k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
+            # Calculate covariance component
+            q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
+            k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
+            cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
+            cov_component = cov_component / f_q.size(-1)
+            
+            # Determine weight dynamically
+            if self.dynamic_weight:
+                # Create feature representations for weight prediction
+                # Use average pooling over spatial dimensions
+                q_pool = f_q.mean(dim=2)  # [h, q, d]
+                k_pool = f_k.mean(dim=2)  # [h, q, d]
                 
-                # Use similar approach as cosine_distance but without normalization
-                cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
+                # Concatenate query and key features
+                qk_features = torch.cat([q_pool, k_pool], dim=-1)  # [h, q, 2d]
                 
-                # Scale appropriately - use feature dimension for stability
-                cov_component = cov_component / f_q.size(-1)
+                # Reshape for weight prediction
+                qk_flat = qk_features.reshape(-1, qk_features.size(-1))  # [h*q, 2d]
                 
-                # Combine the two components
-                dots = (1 - self.cov_weight) * cosine_sim + self.cov_weight * cov_component
+                # Predict weight
+                weights = self.weight_predictor(qk_flat)  # [h*q, 1]
+                weights = weights.reshape(f_q.size(0), f_q.size(1), 1, 1)  # [h, q, 1, 1]
+                
+                # Apply weight
+                dots = (1 - weights) * cosine_sim + weights * cov_component
             else:
-                dots = cosine_sim
+                # Use fixed but learnable weight
+                cov_weight = torch.sigmoid(self.fixed_cov_weight)  # Constrain between 0-1
+                dots = (1 - cov_weight) * cosine_sim + cov_weight * cov_component
                 
             out = torch.matmul(dots, f_v)
         
