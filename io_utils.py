@@ -42,6 +42,7 @@ def parse_args():
     parser.add_argument('--save_iter'       , default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
     parser.add_argument('--use_amp', action='store_true', help='Use mixed precision training for better efficiency')
     parser.add_argument('--dynamic_weights', action='store_true', help='Use dynamic prototype weighting')
+    parser.add_argument('--memory_efficient', action='store_true', help='Enable extreme memory optimization techniques')
     return parser.parse_args()
 
 

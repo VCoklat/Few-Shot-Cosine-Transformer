@@ -196,7 +196,7 @@ if __name__ == '__main__':
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
         
         # Add this before creating the data manager
-        base_episode_size = max(1, params.n_episode // 4)  # Reduce episode batch size
+        base_episode_size = max(1, min(params.n_episode // 4, 10))  # Cap at max 10 episodes
 
         base_datamgr = SetDataManager(
             image_size, n_episode=base_episode_size, **few_shot_params)
