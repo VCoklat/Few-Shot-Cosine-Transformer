@@ -118,20 +118,18 @@ class Attention(nn.Module):
             
             # Determine weight dynamically
             if self.dynamic_weight:
-                # Create feature representations for weight prediction
-                # Use average pooling over spatial dimensions
-                q_pool = f_q.mean(dim=2)  # [h, q, d]
-                k_pool = f_k.mean(dim=2)  # [h, q, d]
+                # Use global feature statistics instead of trying to match dimensions
+                q_global = f_q.mean(dim=(1, 2))  # [h, d]
+                k_global = f_k.mean(dim=(1, 2))  # [h, d]
                 
-                # Concatenate query and key features
-                qk_features = torch.cat([q_pool, k_pool], dim=-1)  # [h, q, 2d]
+                # Concatenate global query and key features
+                qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
                 
-                # Reshape for weight prediction
-                qk_flat = qk_features.reshape(-1, qk_features.size(-1))  # [h*q, 2d]
+                # Predict single weight per attention head
+                weights = self.weight_predictor(qk_features)  # [h, 1]
                 
-                # Predict weight
-                weights = self.weight_predictor(qk_flat)  # [h*q, 1]
-                weights = weights.reshape(f_q.size(0), f_q.size(1), 1, 1)  # [h, q, 1, 1]
+                # Reshape for broadcasting
+                weights = weights.view(self.heads, 1, 1, 1)  # [h, 1, 1, 1]
                 
                 # Apply weight
                 dots = (1 - weights) * cosine_sim + weights * cov_component
