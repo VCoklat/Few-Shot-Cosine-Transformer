@@ -120,15 +120,17 @@ class Attention(nn.Module):
             cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
             cov_component = cov_component / f_q.size(-1)
             
-            # Calculate variance component
-            # Use variance of features to weight attention
+            # Calculate variance component - FIX THE DIMENSIONS HERE
+            # Calculate variance along feature dimension
             q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
-            k_var = torch.var(f_k, dim=-2, keepdim=True)  # [h, q, 1, m]
+            # Ensure k_var has correct dimensions for multiplication
+            k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
             
             # Create variance-based attention - higher variance features get more attention
-            var_component = torch.matmul(q_var, k_var.transpose(-1, -2))
+            var_component = torch.matmul(q_var, k_var)  # Now dimensions match
             var_component = var_component / f_q.size(-1)
             
+            # Proceed with dynamic weighting as before
             if self.dynamic_weight:
                 # Use global feature statistics 
                 q_global = f_q.mean(dim=(1, 2))  # [h, d]

@@ -26,6 +26,7 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+from methods.transformer import Attention
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
