@@ -71,7 +71,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant):
+    def __init__(self, dim, heads, dim_head, variant, cov_weight=0.3):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -80,6 +80,7 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
+        self.cov_weight = cov_weight  # Weight for covariance contribution
         self.input_linear = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias = False))
@@ -91,16 +92,37 @@ class Attention(nn.Module):
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
-            out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
+            # Calculate cosine similarity as before
+            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
+            
+            # Add covariance information
+            # Center the features
+            q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
+            k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
+            
+            # Calculate normalized covariance (correlation)
+            # Reshape for batch calculation
+            q_flat = q_centered.flatten(2)
+            k_flat = k_centered.flatten(2)
+            
+            # Calculate correlation matrix
+            q_std = torch.norm(q_flat, dim=2, keepdim=True) + 1e-8
+            k_std = torch.norm(k_flat, dim=2, keepdim=True) + 1e-8
+            cov_matrix = torch.bmm(q_flat, k_flat.transpose(-1, -2)) / torch.bmm(q_std, k_std.transpose(-1, -2))
+            
+            # Reshape back
+            cov_attention = cov_matrix.view_as(cosine_sim)
+            
+            # Combine cosine similarity with covariance
+            dots = (1 - self.cov_weight) * cosine_sim + self.cov_weight * cov_attention
+            out = torch.matmul(dots, f_v)
         
         else: # self.variant == "softmax"
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
             out = torch.matmul(self.sm(dots), f_v)
         
-        out = rearrange(out, 'h q n d -> q n (h d)')                                                   # (q, n, d)
-        return self.output_linear(out)                                              
-
+        out = rearrange(out, 'h q n d -> q n (h d)')
+        return self.output_linear(out)
 
 def cosine_distance(x1, x2):
     '''
