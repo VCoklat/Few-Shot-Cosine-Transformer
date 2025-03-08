@@ -113,13 +113,16 @@ class Attention(nn.Module):
             # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
-            # Calculate covariance component
+            # Calculate covariance component - ensure matching dimensions with cosine_sim
+            # Center the features properly
             q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
             k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
+            
+            # Match dimensions with cosine_sim
             cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
             cov_component = cov_component / f_q.size(-1)
             
-            # Determine weight dynamically
+            # Reshape weights for proper broadcasting
             if self.dynamic_weight:
                 # Use global feature statistics instead of trying to match dimensions
                 q_global = f_q.mean(dim=(1, 2))  # [h, d]
@@ -135,16 +138,18 @@ class Attention(nn.Module):
                 if self.record_weights and not self.training:
                     self.weight_history.append(weights.detach().cpu().numpy().mean())
                 
-                # Apply weight
+                # Reshape weights to match dimensions for broadcasting
+                # This is the fix for the dimension mismatch
+                weights = weights.view(self.heads, 1, 1, 1)  # [h, 1, 1, 1]
+                
                 dots = (1 - weights) * cosine_sim + weights * cov_component
             else:
-                # Use fixed but learnable weight
-                cov_weight = torch.sigmoid(self.fixed_cov_weight)  # Constrain between 0-1
+                cov_weight = torch.sigmoid(self.fixed_cov_weight)
                 dots = (1 - cov_weight) * cosine_sim + cov_weight * cov_component
                 
             out = torch.matmul(dots, f_v)
         
-        else: # self.variant == "softmax"
+        else: # self.variant == "softmax" 
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
             out = torch.matmul(self.sm(dots), f_v)
         
