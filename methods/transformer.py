@@ -71,7 +71,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.3, dynamic_weight=True):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.5, dynamic_weight=True):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -102,6 +102,9 @@ class Attention(nn.Module):
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
+        self.weight_history = []  # To store weights for analysis
+        self.record_weights = False  # Toggle for weight recording
+    
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
@@ -128,8 +131,9 @@ class Attention(nn.Module):
                 # Predict single weight per attention head
                 weights = self.weight_predictor(qk_features)  # [h, 1]
                 
-                # Reshape for broadcasting
-                weights = weights.view(self.heads, 1, 1, 1)  # [h, 1, 1, 1]
+                # Record weights during evaluation if needed
+                if self.record_weights and not self.training:
+                    self.weight_history.append(weights.detach().cpu().numpy().mean())
                 
                 # Apply weight
                 dots = (1 - weights) * cosine_sim + weights * cov_component
@@ -146,6 +150,24 @@ class Attention(nn.Module):
         
         out = rearrange(out, 'h q n d -> q n (h d)')
         return self.output_linear(out)
+    
+    def get_weight_stats(self):
+        """Returns statistics about the weights used"""
+        if not self.weight_history:
+            return None
+        
+        weights = np.array(self.weight_history)
+        return {
+            'mean': float(weights.mean()),
+            'std': float(weights.std()),
+            'min': float(weights.min()),
+            'max': float(weights.max()),
+            'histogram': np.histogram(weights, bins=10, range=(0,1))[0].tolist()
+        }
+    
+    def clear_weight_history(self):
+        """Clear recorded weights"""
+        self.weight_history = []
 
 def cosine_distance(x1, x2):
     '''
