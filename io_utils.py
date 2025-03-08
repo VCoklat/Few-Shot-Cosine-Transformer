@@ -35,12 +35,13 @@ def parse_args():
     parser.add_argument('--optimization'    , type=str, default='AdamW', help='Optimization algorithms. Support Adam, AdamW, SGD')
     parser.add_argument('--wandb'           , type=int, default=0, help='[1:0] - [True:False]; Wandb Log, only for train.py and train_save_test.py')
     parser.add_argument('--datetime'        , default = str("{:%Y%m%d@%H%M%S}".format(datetime.datetime.now())), help='Execute time log')
-
     parser.add_argument('--save_freq'       , default=50, type=int, help='Save frequency')
     parser.add_argument('--num_epoch'       , default=50, type=int, help ='Stopping epoch')
     parser.add_argument('--split'           , default='novel', help='base/val/novel, only for train.py and train_save_test.py')
                                               # default novel, but you can also test base/val class accuracy if you want 
     parser.add_argument('--save_iter'       , default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
+    parser.add_argument('--use_amp', action='store_true', help='Use mixed precision training for better efficiency')
+    parser.add_argument('--dynamic_weights', action='store_true', help='Use dynamic prototype weighting')
     return parser.parse_args()
 
 
