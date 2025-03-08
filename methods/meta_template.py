@@ -44,17 +44,33 @@ class MetaTemplate(nn.Module):
             if hasattr(self, '_feature_cache') and self._feature_cache.get('x_id') == id(x) and not self.training:
                 z_all = self._feature_cache.get('features')
             else:
-                x = x.contiguous().view(self.n_way * (self.k_shot + self.n_query), *x.size()[2:]) 
-                z_all = self.feature.forward(x)
-                z_all = z_all.view(self.n_way, self.k_shot + self.n_query, *z_all.size()[1:])
+                # Process in chunks to save memory
+                chunk_size = 10  # Adjust based on your hardware
+                x_chunks = x.chunk(max(1, x.size(0) // chunk_size), dim=0)
                 
-                # Cache features during evaluation to speed up multiple forward passes
+                # Process each chunk separately
+                features = []
+                for x_chunk in x_chunks:
+                    x_chunk = x_chunk.contiguous().view(x_chunk.size(0), *x_chunk.size()[2:]) 
+                    with torch.cuda.amp.autocast(enabled=True):  # Use mixed precision
+                        feat_chunk = self.feature.forward(x_chunk)
+                    features.append(feat_chunk)
+                    # Force immediate garbage collection
+                    torch.cuda.empty_cache()
+                    
+                # Concatenate chunks
+                z_all_flat = torch.cat(features, dim=0)
+                
+                # Reshape to original format
+                z_all = z_all_flat.view(self.n_way, self.k_shot + self.n_query, *z_all_flat.size()[1:])
+                
+                # Cache features during evaluation
                 if not self.training:
                     if not hasattr(self, '_feature_cache'):
                         self._feature_cache = {}
                     self._feature_cache['x_id'] = id(x)
                     self._feature_cache['features'] = z_all
-                
+                    
         z_support = z_all[:, :self.k_shot]
         z_query = z_all[:, self.k_shot:]
 
@@ -70,14 +86,14 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, use_amp=False, accumulation_steps=4):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, use_amp=True, accumulation_steps=8):
         avg_loss = 0
         avg_acc = []
         
-        # Initialize gradient scaler for mixed precision
-        scaler = amp.GradScaler() if use_amp else None
+        # Force using mixed precision
+        scaler = amp.GradScaler()
         
-        # Clear cache at beginning of epoch
+        # Clear cache
         torch.cuda.empty_cache()
         
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
@@ -85,43 +101,49 @@ class MetaTemplate(nn.Module):
                 if self.change_way:
                     self.n_way = x.size(0)
                 
-                # Only zero gradients when accumulation is complete
+                # Zero gradients at appropriate intervals
                 if i % accumulation_steps == 0:
                     optimizer.zero_grad()
                 
-                # Use mixed precision if enabled
-                if use_amp:
-                    with amp.autocast():
-                        acc, loss = self.set_forward_loss(x = x.to(device))
-                        # Normalize loss for gradient accumulation
-                        loss = loss / accumulation_steps
-                    
-                    # Scale and accumulate gradients
-                    scaler.scale(loss).backward()
-                    
-                    # Only step optimizer and scaler after accumulation
-                    if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
-                        scaler.step(optimizer)
-                        scaler.update()
+                # Try gradual loading to GPU to avoid spikes
+                if isinstance(x, list):
+                    x = [item.to(device) for item in x]
                 else:
-                    acc, loss = self.set_forward_loss(x = x.to(device))
-                    # Normalize loss for gradient accumulation
-                    loss = loss / accumulation_steps
-                    loss.backward()
+                    x = x.to(device)
+                
+                # Always use mixed precision
+                with amp.autocast():
+                    try:
+                        acc, loss = self.set_forward_loss(x)
+                        # Scale loss for accumulation
+                        loss = loss / accumulation_steps
+                    except RuntimeError as e:
+                        if "CUDA out of memory" in str(e):
+                            # Emergency cleanup and retry with CPU offloading
+                            torch.cuda.empty_cache()
+                            print("Emergency CPU offloading...")
+                            # This time we'll process on CPU if needed
+                            acc, loss = self.set_forward_loss_cpu_fallback(x)
+                            loss = loss / accumulation_steps
+                        else:
+                            raise e
+                
+                # Scale and accumulate gradients
+                scaler.scale(loss).backward()
+                
+                # Update weights after accumulation
+                if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+                    scaler.step(optimizer)
+                    scaler.update()
                     
-                    # Only step optimizer after accumulation
-                    if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
-                        optimizer.step()
-                        optimizer.zero_grad()
-                    
-                avg_loss += loss.item() * accumulation_steps  # Adjust for proper reporting
+                avg_loss += loss.item() * accumulation_steps
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f} | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
                 
-                # Explicitly clear memory periodically
-                if i % 50 == 0:
+                # Aggressive cleanup every few iterations
+                if i % 10 == 0:
                     torch.cuda.empty_cache()
         
         if wandb_flag:
@@ -150,3 +172,23 @@ class MetaTemplate(nn.Module):
         print('Val Acc = %4.2f%% +- %4.2f%%' %(  acc_mean, 1.96* acc_std/np.sqrt(iter_num)))
 
         return acc_mean
+
+    def set_forward_loss_cpu_fallback(self, x):
+        """Emergency fallback that offloads computation to CPU when OOM occurs"""
+        # Move model to CPU temporarily
+        self.cpu()
+        torch.cuda.empty_cache()
+        
+        # Process in smaller chunks on CPU
+        if isinstance(x, list):
+            x = [item.cpu() for item in x]
+        else:
+            x = x.cpu()
+        
+        # Forward pass on CPU
+        acc, loss = self.set_forward_loss(x)
+        
+        # Move model back to GPU
+        self.to(device)
+        
+        return acc, loss

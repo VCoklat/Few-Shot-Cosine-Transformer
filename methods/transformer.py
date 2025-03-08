@@ -92,40 +92,52 @@ class FewShotTransformer(MetaTemplate):
         return attention_weights
         
     def set_forward(self, x, is_feature=False):
-        # Clear cache if it's getting large
-        if len(self.feature_cache) > 5:
-            self.feature_cache = {}
-        
-        # Explicitly manage memory during forward pass
-        with torch.cuda.amp.autocast(enabled=False):  # Don't use autocast here, we handle it elsewhere
+        # Use half-precision for feature extraction where possible
+        with torch.cuda.amp.autocast():
             z_support, z_query = self.parse_feature(x, is_feature)
+            
+            # Move to CPU if needed to save GPU memory, then back when needed
+            if not self.training:
+                torch.cuda.empty_cache()  # Clear GPU memory
+                
             z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
             z_query_flat = z_query.contiguous().view(self.n_way * self.n_query, -1)
-        
-        # Compute dynamic weights with minimal memory footprint
-        with torch.set_grad_enabled(self.training):
+            
+            # Compute dynamic weights with memory efficiency
             dynamic_weights = self.compute_dynamic_weights(z_support, z_query_flat)
+            
             # Generate prototypes with dynamic weights
-            z_proto = (z_support * dynamic_weights).sum(1).unsqueeze(0)  # [1, n_way, dim]
-        
-        # Free memory explicitly
-        del z_support
-        
-        # Process query features
-        z_query = z_query_flat.unsqueeze(1)  # [n_way*n_query, 1, dim]
-        del z_query_flat  # Free memory
-        
-        x, query = z_proto, z_query
-        
-        # Process through transformer layers with memory efficient operations
-        for _ in range(self.depth):
-            # Use more efficient attention implementation
-            attn_out = self.ATTN(q=x, k=query, v=query)
-            x = x + attn_out
-            x = x + self.FFN(x)
-        
-        # Final classification
-        return self.linear(x).squeeze()
+            z_proto = (z_support * dynamic_weights).sum(1, keepdim=True)  # [n_way, 1, dim]
+            
+            # Free up memory
+            del z_support
+            
+            # Process in smaller chunks if query set is large
+            chunk_size = 10  # Adjust based on memory
+            scores_list = []
+            
+            for i in range(0, self.n_way * self.n_query, chunk_size):
+                query_chunk = z_query_flat[i:i+chunk_size].unsqueeze(1)  # [chunk, 1, dim]
+                
+                # Process through transformer for this chunk
+                x = z_proto.transpose(0, 1)  # [1, n_way, dim]
+                query = query_chunk  # [chunk, 1, dim]
+                
+                for _ in range(self.depth):
+                    x = x + self.ATTN(q=x, k=query, v=query)
+                    x = x + self.FFN(x)
+                
+                # Get scores for this chunk
+                chunk_scores = self.linear(x).squeeze()  # [chunk, n_way]
+                scores_list.append(chunk_scores)
+                
+                # Clear memory after each chunk
+                del query_chunk, x, query
+                torch.cuda.empty_cache()
+            
+            # Combine results from all chunks
+            scores = torch.cat(scores_list, dim=0)
+            return scores
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))

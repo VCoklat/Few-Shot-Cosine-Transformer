@@ -143,6 +143,8 @@ def change_model(model_name):
     return model_name
 
 if __name__ == '__main__':
+    # Add import at the top
+    import gc
     
     params = parse_args()
     pp = pprint.PrettyPrinter(indent=4)
@@ -192,8 +194,12 @@ if __name__ == '__main__':
 
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
+        
+        # Add this before creating the data manager
+        base_episode_size = max(1, params.n_episode // 4)  # Reduce episode batch size
+
         base_datamgr = SetDataManager(
-            image_size, n_episode=params.n_episode, **few_shot_params)
+            image_size, n_episode=base_episode_size, **few_shot_params)
         base_loader = base_datamgr.get_data_loader(
             base_file, aug=params.train_aug)
 
@@ -225,6 +231,24 @@ if __name__ == '__main__':
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
     else:
         raise ValueError('Unknown method')
+
+    # Force garbage collection
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    # Use a smaller model if hitting memory issues
+    if params.memory_efficient:
+        # Reduce model size for memory efficiency
+        few_shot_params['n_query'] = min(few_shot_params['n_query'], 5)
+        
+    # Create model with extreme memory optimization
+    # Rest of your existing model creation code
+    
+    # Force PYTORCH_CUDA_ALLOC_CONF for fragmentation management
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True,garbage_collection_threshold:0.6'
+    
+    # Train with forced mixed precision
+    params.use_amp = True
 
     model = model.to(device)
     
