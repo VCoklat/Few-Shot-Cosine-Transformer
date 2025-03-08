@@ -92,29 +92,26 @@ class Attention(nn.Module):
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            # Calculate cosine similarity as before
+            # Use original cosine distance calculation
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
-            # Add covariance information
-            # Center the features
-            q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
-            k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
-            
-            # Calculate normalized covariance (correlation)
-            # Reshape for batch calculation
-            q_flat = q_centered.flatten(2)
-            k_flat = k_centered.flatten(2)
-            
-            # Calculate correlation matrix
-            q_std = torch.norm(q_flat, dim=2, keepdim=True) + 1e-8
-            k_std = torch.norm(k_flat, dim=2, keepdim=True) + 1e-8
-            cov_matrix = torch.bmm(q_flat, k_flat.transpose(-1, -2)) / torch.bmm(q_std, k_std.transpose(-1, -2))
-            
-            # Reshape back
-            cov_attention = cov_matrix.view_as(cosine_sim)
-            
-            # Combine cosine similarity with covariance
-            dots = (1 - self.cov_weight) * cosine_sim + self.cov_weight * cov_attention
+            # Add covariance-based component
+            if self.cov_weight > 0:
+                # Calculate per-head covariance using same dimensionality as cosine_sim
+                q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
+                k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
+                
+                # Use similar approach as cosine_distance but without normalization
+                cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
+                
+                # Scale appropriately - use feature dimension for stability
+                cov_component = cov_component / f_q.size(-1)
+                
+                # Combine the two components
+                dots = (1 - self.cov_weight) * cosine_sim + self.cov_weight * cov_component
+            else:
+                dots = cosine_sim
+                
             out = torch.matmul(dots, f_v)
         
         else: # self.variant == "softmax"
