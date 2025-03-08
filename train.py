@@ -26,6 +26,7 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+import argparse
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -52,6 +53,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                          params.wandb,  optimizer, use_amp=params.use_amp)
         with torch.no_grad():
             model.eval()
+            model.clear_cache()
 
             if not os.path.isdir(params.checkpoint_dir):
                 os.makedirs(params.checkpoint_dir)

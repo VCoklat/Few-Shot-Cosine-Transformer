@@ -178,5 +178,3 @@ def cosine_distance(x1, x2):
             (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
     return (dots / scale)
 
-# Call this between episodes during inference
-model.clear_cache()
