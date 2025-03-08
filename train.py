@@ -49,7 +49,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         model.train()
 
         model.train_loop(epoch, num_epoch, base_loader,
-                         params.wandb,  optimizer)
+                         params.wandb,  optimizer, use_amp=params.use_amp)
         with torch.no_grad():
             model.eval()
 
@@ -229,4 +229,3 @@ if __name__ == '__main__':
     print("===================================")
     print("Test phase: ")
 
-    

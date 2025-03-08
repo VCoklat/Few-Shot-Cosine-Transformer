@@ -10,6 +10,7 @@ from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
 import pdb
 import IPython
+from torch.cuda.amp import autocast
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -28,7 +29,21 @@ class FewShotTransformer(MetaTemplate):
         self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
         
         self.sm = nn.Softmax(dim = -2)
-        self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+        
+        # Replace static proto_weight with dynamic weight network
+        self.weight_network = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim_head),
+            nn.GELU(),
+            nn.Linear(dim_head, 1)
+        )
+        
+        # Compatibility projections for query-support matching
+        self.query_proj = nn.Linear(dim, dim)
+        self.support_proj = nn.Linear(dim, dim)
+        
+        # Cache for feature reuse
+        self.feature_cache = {}
         
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
@@ -42,23 +57,68 @@ class FewShotTransformer(MetaTemplate):
             CosineDistLinear(dim_head, 1) if variant == "cosine"
             else nn.Linear(dim_head, 1))
         
-    def set_forward(self, x, is_feature=False):
-
-        z_support, z_query = self.parse_feature(x, is_feature)
-                
-        z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
-        z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+    def compute_dynamic_weights(self, support, query):
+        """Compute weights based on query-support compatibility"""
+        batch_size = query.shape[0]
         
-        z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
-
+        # Check cache first to avoid recomputation
+        cache_key = f"query_{batch_size}"
+        if cache_key in self.feature_cache:
+            q_proj = self.feature_cache[cache_key]
+        else:
+            # Project query features - do once for efficiency
+            with autocast(enabled=torch.cuda.is_available()):
+                q_proj = self.query_proj(query)
+                self.feature_cache[cache_key] = q_proj
+        
+        # Project support features
+        with autocast(enabled=torch.cuda.is_available()):
+            s_proj = self.support_proj(support)  # [n_way, k_shot, dim]
+            
+            # Calculate average query embedding per class to reduce computation
+            q_avg = q_proj.view(self.n_way, self.n_query, -1).mean(1)  # [n_way, dim]
+            q_expanded = q_avg.unsqueeze(1).expand(-1, self.k_shot, -1)  # [n_way, k_shot, dim]
+            
+            # Get input for weight network by combining support and query information
+            # Use element-wise addition for faster computation than concatenation
+            weight_input = s_proj + q_expanded
+            
+            # Generate weights through the network
+            attention_logits = self.weight_network(weight_input)  # [n_way, k_shot, 1]
+            
+            # Apply softmax per class for proper weighting
+            attention_weights = F.softmax(attention_logits, dim=1)  # [n_way, k_shot, 1]
+            
+        return attention_weights
+        
+    def set_forward(self, x, is_feature=False):
+        # Clear cache at the start of each episode
+        self.feature_cache = {}
+        
+        z_support, z_query = self.parse_feature(x, is_feature)
+        
+        z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
+        z_query_flat = z_query.contiguous().view(self.n_way * self.n_query, -1)
+        
+        # Compute dynamic weights based on the query
+        with torch.set_grad_enabled(self.training):  # Save memory during inference
+            dynamic_weights = self.compute_dynamic_weights(z_support, z_query_flat)
+            
+            # Generate prototypes with dynamic weights
+            z_proto = (z_support * dynamic_weights).sum(1).unsqueeze(0)  # [1, n_way, dim]
+        
+        # Reshape query for transformer
+        z_query = z_query_flat.unsqueeze(1)  # [n_way*n_query, 1, dim]
+        
         x, query = z_proto, z_query
         
         for _ in range(self.depth):
-           x = self.ATTN(q = x, k = query, v = query) + x
-           x = self.FFN(x) + x
+            # Apply transformer layers
+            x = self.ATTN(q=x, k=query, v=query) + x
+            x = self.FFN(x) + x
         
         # Output is the probabilistic prediction for each class
-        return self.linear(x).squeeze()                                                                # (q, n)
+        return self.linear(x).squeeze()  # [n_way*n_query, n_way]
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
@@ -69,6 +129,11 @@ class FewShotTransformer(MetaTemplate):
         predict = torch.argmax(scores, dim = 1)
         acc = (predict == target).sum().item() / target.size(0)
         return acc, loss
+
+    def clear_cache(self):
+        self.feature_cache = {}
+        if hasattr(self, '_feature_cache'):
+            self._feature_cache = {}
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant):
@@ -112,3 +177,6 @@ def cosine_distance(x1, x2):
     scale = torch.einsum('bhi, bhj -> bhij', 
             (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
     return (dots / scale)
+
+# Call this between episodes during inference
+model.clear_cache()

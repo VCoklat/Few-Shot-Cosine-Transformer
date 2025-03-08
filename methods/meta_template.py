@@ -8,6 +8,7 @@ import tqdm
 from abc import abstractmethod
 import pdb
 import wandb
+import torch.cuda.amp as amp
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import warnings
@@ -34,17 +35,28 @@ class MetaTemplate(nn.Module):
         out  = self.feature.forward(x)
         return out
 
-    def parse_feature(self,x,is_feature):
-        x    = Variable(x.to(device))
+    def parse_feature(self, x, is_feature, cache_support=False):
+        x = Variable(x.to(device))
         if is_feature:
             z_all = x
         else:
-            x           = x.contiguous().view( self.n_way * (self.k_shot + self.n_query), *x.size()[2:]) 
-            z_all       = self.feature.forward(x)
-            z_all       = z_all.view( self.n_way, self.k_shot + self.n_query, *z_all.size()[1:])
-            
-        z_support   = z_all[:, :self.k_shot]
-        z_query     = z_all[:, self.k_shot:]
+            # Check if we've already computed features for this input
+            if hasattr(self, '_feature_cache') and self._feature_cache.get('x_id') == id(x) and not self.training:
+                z_all = self._feature_cache.get('features')
+            else:
+                x = x.contiguous().view(self.n_way * (self.k_shot + self.n_query), *x.size()[2:]) 
+                z_all = self.feature.forward(x)
+                z_all = z_all.view(self.n_way, self.k_shot + self.n_query, *z_all.size()[1:])
+                
+                # Cache features during evaluation to speed up multiple forward passes
+                if not self.training:
+                    if not hasattr(self, '_feature_cache'):
+                        self._feature_cache = {}
+                    self._feature_cache['x_id'] = id(x)
+                    self._feature_cache['features'] = z_all
+                
+        z_support = z_all[:, :self.k_shot]
+        z_query = z_all[:, self.k_shot:]
 
         return z_support, z_query
 
@@ -58,23 +70,38 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, use_amp=False):
         avg_loss = 0
         avg_acc = []
+        
+        # Initialize gradient scaler for mixed precision
+        scaler = amp.GradScaler() if use_amp else None
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
                     self.n_way  = x.size(0)
                 
                 optimizer.zero_grad()
-                acc, loss = self.set_forward_loss(x = x.to(device))
-                loss.backward()
-                optimizer.step()
+                
+                # Use mixed precision if enabled
+                if use_amp:
+                    with amp.autocast():
+                        acc, loss = self.set_forward_loss(x = x.to(device))
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    acc, loss = self.set_forward_loss(x = x.to(device))
+                    loss.backward()
+                    optimizer.step()
+                    
                 avg_loss += loss.item()
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
+        
         if wandb_flag:
             wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
 
