@@ -45,24 +45,30 @@ class MetaTemplate(nn.Module):
                 z_all = self._feature_cache.get('features')
             else:
                 # Process in chunks to save memory
-                chunk_size = 10  # Adjust based on your hardware
-                x_chunks = x.chunk(max(1, x.size(0) // chunk_size), dim=0)
+                chunk_size = 5  # Use smaller chunk size
+                
+                # Properly reshape: flatten the first two dimensions to batch dimension
+                shots_per_class = x.size(1)  # This is k_shot + n_query
+                x_flat = x.reshape(-1, *x.shape[2:])  # [n_way*(k_shot+n_query), C, H, W]
+                
+                # Create chunks of the flattened tensor
+                total_samples = x_flat.size(0)
+                num_chunks = max(1, total_samples // chunk_size)
+                x_chunks = torch.chunk(x_flat, num_chunks, dim=0)
                 
                 # Process each chunk separately
                 features = []
                 for x_chunk in x_chunks:
-                    x_chunk = x_chunk.contiguous().view(x_chunk.size(0), *x_chunk.size()[2:]) 
-                    with torch.cuda.amp.autocast(enabled=True):  # Use mixed precision
+                    with torch.cuda.amp.autocast(enabled=True):
                         feat_chunk = self.feature.forward(x_chunk)
                     features.append(feat_chunk)
-                    # Force immediate garbage collection
                     torch.cuda.empty_cache()
-                    
-                # Concatenate chunks
+                
+                # Concatenate features and reshape back
                 z_all_flat = torch.cat(features, dim=0)
                 
-                # Reshape to original format
-                z_all = z_all_flat.view(self.n_way, self.k_shot + self.n_query, *z_all_flat.size()[1:])
+                # Reshape back to [n_way, shots_per_class, feature_dim]
+                z_all = z_all_flat.view(self.n_way, shots_per_class, *z_all_flat.shape[1:])
                 
                 # Cache features during evaluation
                 if not self.training:

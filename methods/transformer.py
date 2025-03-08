@@ -92,6 +92,20 @@ class FewShotTransformer(MetaTemplate):
         return attention_weights
         
     def set_forward(self, x, is_feature=False):
+        # First try to offload unused parameters to CPU
+        if hasattr(self, 'offload_unused_modules') and not self.training:
+            # Only keep active modules on GPU during inference
+            self.feature = self.feature.to(device)
+            self.ATTN = self.ATTN.to('cpu')
+            torch.cuda.empty_cache()
+        
+        # Extract features with optimized memory
+        z_support, z_query = self.parse_feature(x, is_feature)
+        
+        # Now bring attention modules back to GPU
+        self.ATTN = self.ATTN.to(device)
+        torch.cuda.empty_cache()
+        
         # Use half-precision for feature extraction where possible
         with torch.cuda.amp.autocast():
             z_support, z_query = self.parse_feature(x, is_feature)

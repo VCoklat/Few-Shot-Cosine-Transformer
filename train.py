@@ -198,6 +198,10 @@ if __name__ == '__main__':
         # Add this before creating the data manager
         base_episode_size = max(1, min(params.n_episode // 4, 10))  # Cap at max 10 episodes
 
+        # Reduce episode size drastically
+        base_episode_size = max(1, min(params.n_episode // 8, 5))  # Even smaller
+
+        # Use smaller episode size for base loader
         base_datamgr = SetDataManager(
             image_size, n_episode=base_episode_size, **few_shot_params)
         base_loader = base_datamgr.get_data_loader(
