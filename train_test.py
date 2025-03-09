@@ -262,9 +262,48 @@ if __name__ == '__main__':
 
     print("===================================")
     print("Test phase: ")
-    
-    model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
 
+    # Clear CUDA cache to free up memory
+    torch.cuda.empty_cache()
+
+    # Implement memory optimization
+    import os
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
+    # Process batches in smaller chunks
+    def direct_test(test_loader, model, params):
+        acc = []
+        iter_num = len(test_loader)
+        
+        with tqdm.tqdm(total=len(test_loader)) as pbar:
+            for i, (x, _) in enumerate(test_loader):
+                # Process in smaller chunks to avoid OOM
+                if x.size(0) > 16:  # If batch is larger than 16
+                    scores_list = []
+                    chunk_size = 16
+                    for j in range(0, x.size(0), chunk_size):
+                        x_chunk = x[j:j+chunk_size].to(device)
+                        with torch.no_grad():  # Ensure no gradients
+                            scores_chunk = model.set_forward(x_chunk)
+                        scores_list.append(scores_chunk.cpu())
+                        torch.cuda.empty_cache()  # Clear cache after each chunk
+                    scores = torch.cat(scores_list, dim=0)
+                else:
+                    with torch.no_grad():  # Ensure no gradients
+                        x = x.to(device)
+                        scores = model.set_forward(x)
+                        
+                pred = scores.data.cpu().numpy().argmax(axis=1)
+                y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                acc.append(np.mean(pred == y)*100)
+                pbar.set_description(
+                    'Test       | Acc {:.6f}'.format(np.mean(acc)))
+                pbar.update(1)
+                
+        acc_all = np.asarray(acc)
+        acc_mean = np.mean(acc_all)
+        acc_std = np.std(acc_all)
+        return acc_mean, acc_std
 
 ######################################################################
 
