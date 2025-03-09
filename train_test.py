@@ -26,6 +26,7 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+from methods.transformer import Attention
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -220,6 +221,47 @@ if __name__ == '__main__':
     
     print("===================================")
     print("Train phase: ")
+    
+    model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
+
+    # Add to train.py after training loop
+    def analyze_dynamic_weights(model):
+        """Analyze the learned dynamic weights"""
+        # Enable weight recording
+        for module in model.modules():
+            if isinstance(module, Attention):
+                module.record_weights = True
+        
+        # Run validation to collect weights
+        print("Collecting dynamic weight statistics...")
+        with torch.no_grad():
+            model.eval()
+            model.val_loop(val_loader, 0, False)
+        
+        # Analyze weights
+        for i, module in enumerate(model.modules()):
+            if isinstance(module, Attention):
+                stats = module.get_weight_stats()
+                if stats:
+                    print(f"Attention Block {i} weight stats:")
+                    print(f"  Mean: {stats['mean']:.4f}")
+                    print(f"  Std: {stats['std']:.4f}")
+                    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
+                    print("  Distribution:")
+                    for bin_idx, count in enumerate(stats['histogram']):
+                        bin_start = bin_idx/10
+                        bin_end = (bin_idx+1)/10
+                        print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                module.clear_weight_history()
+                module.record_weights = False
+
+    # Call this function after training
+    analyze_dynamic_weights(model)
+
+######################################################################
+
+    print("===================================")
+    print("Test phase: ")
     
     model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
 
