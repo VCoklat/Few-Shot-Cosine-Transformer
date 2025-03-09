@@ -30,16 +30,30 @@ from methods.transformer import FewShotTransformer
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# Set memory management parameters
+torch.cuda.empty_cache()
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 def direct_test(test_loader, model, params):
-
-    correct = 0
-    count = 0
     acc = []
-
     iter_num = len(test_loader)
+    
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            scores = model.set_forward(x)
+            # Process in smaller chunks if needed
+            if x.size(0) > 20:  # If batch is larger than 20
+                scores_list = []
+                chunk_size = 20
+                for j in range(0, x.size(0), chunk_size):
+                    x_chunk = x[j:j+chunk_size]
+                    with torch.cuda.amp.autocast():  # Use mixed precision
+                        scores_chunk = model.set_forward(x_chunk)
+                    scores_list.append(scores_chunk.cpu())
+                scores = torch.cat(scores_list, dim=0)
+            else:
+                with torch.cuda.amp.autocast():  # Use mixed precision
+                    scores = model.set_forward(x)
+                    
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
             acc.append(np.mean(pred == y)*100)
@@ -209,4 +223,3 @@ if __name__ == '__main__':
         acc_str = 'Test Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std/np.sqrt(iter_num))
         
         f.write('Time: %s   Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
-    
