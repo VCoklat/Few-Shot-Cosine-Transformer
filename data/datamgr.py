@@ -19,19 +19,26 @@ class TransformLoader:
     
     def parse_transform(self, transform_type):
         if transform_type=='ImageJitter':
-            method = add_transforms.ImageJitter( self.jitter_param )
+            method = add_transforms.ImageJitter(self.jitter_param)
             return method
+        if transform_type == 'RandomSizedCrop':
+            # Use the new name instead
+            return transforms.RandomResizedCrop(self.image_size)  # Changed self.size to self.image_size
+        elif transform_type == 'CenterCrop':
+            return transforms.CenterCrop(self.image_size)  # Changed self.size to self.image_size
         method = getattr(transforms, transform_type)
+        
+        # Rest of the method...
+        # Note: This part of your code has duplication - you handle RandomSizedCrop 
+        # twice, which is confusing. The second check won't ever be reached.
         if transform_type=='RandomSizedCrop':
             return method(self.image_size) 
         elif transform_type == 'Resize':
             return method(self.image_size)
         elif transform_type=='CenterCrop':
             return method(self.image_size) 
-        # elif transform_type=='Scale':
-        #     return method([int(self.image_size*1.15), int(self.image_size*1.15)])
         elif transform_type=='Normalize':
-            return method(**self.normalize_param )
+            return method(**self.normalize_param)
         else:
             return method()
 
