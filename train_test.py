@@ -76,6 +76,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     return model
 
 def direct_test(test_loader, model, params):
+
     correct = 0
     count = 0
     acc = []
@@ -83,27 +84,7 @@ def direct_test(test_loader, model, params):
     iter_num = len(test_loader)
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            # Process smallwith tqdm.tqdm(total=len(test_loader)) as pbar:
-            for i, (x, _) in enumerate(test_loader):
-                # Process in smaller chunks to avoid OOM
-                if x.size(0) > 16:  # If batch is larger than 16
-                    scores_list = []
-                    chunk_size = 16
-                    for j in range(0, x.size(0), chunk_size):
-                        x_chunk = x[j:j+chunk_size].to(device)
-                        with torch.no_grad():  # Ensure no gradients
-                            scores_chunk = model.set_forward(x_chunk)
-                        scores_list.append(scores_chunk.cpu())
-                        torch.cuda.empty_cache()  # Clear cache after each chunk
-                    scores = torch.cat(scores_list, dim=0)
-                else:
-                    with torch.no_grad():  # Ensure no gradients
-                        x = x.to(device)
-                        scores = model.set_forward(x)er batches if needed
-            if x.size(0) > 4:  # If batch size is large
-                batch_results = []
-                
-                
+            scores = model.set_forward(x)
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
             acc.append(np.mean(pred == y)*100)
