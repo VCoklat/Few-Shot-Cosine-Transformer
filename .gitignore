@@ -1,12 +1,3 @@
-checkpoints/
-features/
-dataset/CIFAR_FS/cifar100/
-dataset/CUB/CUB_200_2011/
-dataset/emnist/emnist
-dataset/emnist/inv_emnist
-dataset/miniImagenet/Dataset
-dataset/Omniglot/images
-dataset/Yoga/Dataset
 .vscode/
 *.pyc
 *__pycache__*
