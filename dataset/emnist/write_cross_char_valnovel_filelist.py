@@ -8,7 +8,7 @@ import random
 cwd = os.getcwd() 
 data_path = join(cwd,'inv_emnist')
 savedir = './'
-dataset_list = ['val','novel']
+dataset_list = ['base','val','novel']
 
 #if not os.path.exists(savedir):
 #    os.makedirs(savedir)
