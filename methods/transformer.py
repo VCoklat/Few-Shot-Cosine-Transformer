@@ -71,7 +71,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.75, dynamic_weight=False):
+    def __init__(self, dim, heads, dim_head, variant):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -80,99 +80,27 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
-        
-        # Dynamic weighting components
-        self.dynamic_weight = dynamic_weight
-        if dynamic_weight:
-            # Network to predict the weight based on features
-            self.weight_predictor = nn.Sequential(
-                nn.Linear(dim_head * 2, dim_head),
-                nn.LayerNorm(dim_head),
-                nn.ReLU(),
-                nn.Linear(dim_head, 1),
-                nn.Sigmoid()  # Output between 0-1
-            )
-        else:
-            # Fixed weight as parameter (still learnable)
-            self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
-            
         self.input_linear = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias = False))
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
-        self.weight_history = []  # To store weights for analysis
-        self.record_weights = False  # Toggle for weight recording
-    
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            # Calculate cosine similarity (invariance component)
-            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
-            
-            # Calculate covariance component - ensure matching dimensions with cosine_sim
-            # Center the features properly
-            q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
-            k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
-            
-            # Match dimensions with cosine_sim
-            cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
-            cov_component = cov_component / f_q.size(-1)
-            
-            # Reshape weights for proper broadcasting
-            if self.dynamic_weight:
-                # Use global feature statistics instead of trying to match dimensions
-                q_global = f_q.mean(dim=(1, 2))  # [h, d]
-                k_global = f_k.mean(dim=(1, 2))  # [h, d]
-                
-                # Concatenate global query and key features
-                qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
-                
-                # Predict single weight per attention head
-                weights = self.weight_predictor(qk_features)  # [h, 1]
-                
-                # Record weights during evaluation if needed
-                if self.record_weights and not self.training:
-                    self.weight_history.append(weights.detach().cpu().numpy().mean())
-                
-                # Reshape weights to match dimensions for broadcasting
-                # This is the fix for the dimension mismatch
-                weights = weights.view(self.heads, 1, 1, 1)  # [h, 1, 1, 1]
-                
-                dots = (1 - weights) * cosine_sim + weights * cov_component
-            else:
-                cov_weight = torch.sigmoid(self.fixed_cov_weight)
-                dots = (1 - cov_weight) * cosine_sim + cov_weight * cov_component
-                
-            out = torch.matmul(dots, f_v)
+            dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
+            out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
         
-        else: # self.variant == "softmax" 
+        else: # self.variant == "softmax"
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
             out = torch.matmul(self.sm(dots), f_v)
         
-        out = rearrange(out, 'h q n d -> q n (h d)')
-        return self.output_linear(out)
-    
-    def get_weight_stats(self):
-        """Returns statistics about the weights used"""
-        if not self.weight_history:
-            return None
-        
-        weights = np.array(self.weight_history)
-        return {
-            'mean': float(weights.mean()),
-            'std': float(weights.std()),
-            'min': float(weights.min()),
-            'max': float(weights.max()),
-            'histogram': np.histogram(weights, bins=10, range=(0,1))[0].tolist()
-        }
-    
-    def clear_weight_history(self):
-        """Clear recorded weights"""
-        self.weight_history = []
+        out = rearrange(out, 'h q n d -> q n (h d)')                                                   # (q, n, d)
+        return self.output_linear(out)                                              
+
 
 def cosine_distance(x1, x2):
     '''
