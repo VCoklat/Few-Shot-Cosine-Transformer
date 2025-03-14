@@ -26,7 +26,6 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
-from methods.transformer import Attention
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -206,7 +205,7 @@ if __name__ == '__main__':
     model = model.to(device)
     
     
-    params.checkpoint_dir = '%sc/%s/%s_%s' % (
+    params.checkpoint_dir = '%scheckpoints/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
     if params.train_aug:
         params.checkpoint_dir += '_aug'
@@ -224,86 +223,6 @@ if __name__ == '__main__':
     
     model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
 
-    # Add to train.py after training loop
-    def analyze_dynamic_weights(model):
-        """Analyze the learned dynamic weights"""
-        # Enable weight recording
-        for module in model.modules():
-            if isinstance(module, Attention):
-                module.record_weights = True
-        
-        # Run validation to collect weights
-        print("Collecting dynamic weight statistics...")
-        with torch.no_grad():
-            model.eval()
-            model.val_loop(val_loader, 0, False)
-        
-        # Analyze weights
-        for i, module in enumerate(model.modules()):
-            if isinstance(module, Attention):
-                stats = module.get_weight_stats()
-                if stats:
-                    print(f"Attention Block {i} weight stats:")
-                    print(f"  Mean: {stats['mean']:.4f}")
-                    print(f"  Std: {stats['std']:.4f}")
-                    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
-                    print("  Distribution:")
-                    for bin_idx, count in enumerate(stats['histogram']):
-                        bin_start = bin_idx/10
-                        bin_end = (bin_idx+1)/10
-                        print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
-                module.clear_weight_history()
-                module.record_weights = False
-
-    # Call this function after training
-    analyze_dynamic_weights(model)
-
-######################################################################
-
-    print("===================================")
-    print("Test phase: ")
-
-    # Clear CUDA cache to free up memory
-    torch.cuda.empty_cache()
-
-    # Implement memory optimization
-    import os
-    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-
-    # Process batches in smaller chunks
-    def direct_test(test_loader, model, params):
-        acc = []
-        iter_num = len(test_loader)
-        
-        with tqdm.tqdm(total=len(test_loader)) as pbar:
-            for i, (x, _) in enumerate(test_loader):
-                # Process in smaller chunks to avoid OOM
-                if x.size(0) > 16:  # If batch is larger than 16
-                    scores_list = []
-                    chunk_size = 16
-                    for j in range(0, x.size(0), chunk_size):
-                        x_chunk = x[j:j+chunk_size].to(device)
-                        with torch.no_grad():  # Ensure no gradients
-                            scores_chunk = model.set_forward(x_chunk)
-                        scores_list.append(scores_chunk.cpu())
-                        torch.cuda.empty_cache()  # Clear cache after each chunk
-                    scores = torch.cat(scores_list, dim=0)
-                else:
-                    with torch.no_grad():  # Ensure no gradients
-                        x = x.to(device)
-                        scores = model.set_forward(x)
-                        
-                pred = scores.data.cpu().numpy().argmax(axis=1)
-                y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
-                acc.append(np.mean(pred == y)*100)
-                pbar.set_description(
-                    'Test       | Acc {:.6f}'.format(np.mean(acc)))
-                pbar.update(1)
-                
-        acc_all = np.asarray(acc)
-        acc_mean = np.mean(acc_all)
-        acc_std = np.std(acc_all)
-        return acc_mean, acc_std
 
 ######################################################################
 
