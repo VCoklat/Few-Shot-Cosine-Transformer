@@ -236,7 +236,11 @@ if __name__ == '__main__':
         print("Collecting dynamic weight statistics...")
         with torch.no_grad():
             model.eval()
-            model.val_loop(val_loader, 0, False)
+            with tqdm.tqdm(total=len(val_loader)) as pbar:
+                for i, (x, _) in enumerate(val_loader):
+                    x = x.to(device)
+                    model.set_forward(x)
+                    pbar.update(1)
         
         # Analyze weights
         for i, module in enumerate(model.modules()):
@@ -244,14 +248,26 @@ if __name__ == '__main__':
                 stats = module.get_weight_stats()
                 if stats:
                     print(f"Attention Block {i} weight stats:")
-                    print(f"  Mean: {stats['mean']:.4f}")
-                    print(f"  Std: {stats['std']:.4f}")
-                    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
-                    print("  Distribution:")
-                    for bin_idx, count in enumerate(stats['histogram']):
-                        bin_start = bin_idx/10
-                        bin_end = (bin_idx+1)/10
-                        print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                    if 'cosine_mean' in stats:  # 3-component format
+                        print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
+                        print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
+                        print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
+                        print("  Distribution:")
+                        for comp in ['cosine', 'cov', 'var']:
+                            print(f"    {comp.capitalize()}:")
+                            for bin_idx, count in enumerate(stats['histogram'][comp]):
+                                bin_start = bin_idx/10
+                                bin_end = (bin_idx+1)/10
+                                print(f"      {bin_start:.1f}-{bin_end:.1f}: {count}")
+                    else:  # Legacy format
+                        print(f"  Mean: {stats['mean']:.4f}")
+                        print(f"  Std: {stats['std']:.4f}")
+                        print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
+                        print("  Distribution:")
+                        for bin_idx, count in enumerate(stats['histogram']):
+                            bin_start = bin_idx/10
+                            bin_end = (bin_idx+1)/10
+                            print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
                 module.clear_weight_history()
                 module.record_weights = False
 

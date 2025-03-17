@@ -14,9 +14,10 @@ import IPython
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class FewShotTransformer(MetaTemplate):
-    def __init__(self, model_func,  n_way, k_shot, n_query, variant = "softmax",
-                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512):
-        super(FewShotTransformer, self).__init__(model_func,  n_way, k_shot, n_query)
+    def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
+                depth=1, heads=8, dim_head=64, mlp_dim=512,
+                initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
+        super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
         
@@ -25,7 +26,10 @@ class FewShotTransformer(MetaTemplate):
         self.depth = depth
         dim = self.feat_dim
 
-        self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
+        self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
+                             initial_cov_weight=initial_cov_weight,
+                             initial_var_weight=initial_var_weight,
+                             dynamic_weight=dynamic_weight)
         
         self.sm = nn.Softmax(dim = -2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
@@ -71,7 +75,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.9, dynamic_weight=False):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, dynamic_weight=False):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -84,17 +88,18 @@ class Attention(nn.Module):
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
-            # Network to predict the weight based on features
+            # Network to predict the weights based on features (now 3 components)
             self.weight_predictor = nn.Sequential(
                 nn.Linear(dim_head * 2, dim_head),
                 nn.LayerNorm(dim_head),
                 nn.ReLU(),
-                nn.Linear(dim_head, 1),
-                nn.Sigmoid()  # Output between 0-1
+                nn.Linear(dim_head, 3),  # Now predict 3 weights instead of 1
+                nn.Softmax(dim=-1)  # Ensure weights sum to 1.0
             )
         else:
-            # Fixed weight as parameter (still learnable)
+            # Fixed weights as parameters (still learnable)
             self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
+            self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
             
         self.input_linear = nn.Sequential(
             nn.LayerNorm(dim),
@@ -113,39 +118,55 @@ class Attention(nn.Module):
             # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
-            # Calculate covariance component - ensure matching dimensions with cosine_sim
-            # Center the features properly
+            # Calculate covariance component
             q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
             k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
-            
-            # Match dimensions with cosine_sim
             cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
             cov_component = cov_component / f_q.size(-1)
             
-            # Reshape weights for proper broadcasting
+            # Calculate variance component (new)
+            # Compute variance along feature dimension
+            q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
+            k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
+            
+            # Create variance-based attention
+            var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
+            var_component = var_component / f_q.size(-1)  # Scale like covariance
+            
             if self.dynamic_weight:
-                # Use global feature statistics instead of trying to match dimensions
+                # Use global feature statistics
                 q_global = f_q.mean(dim=(1, 2))  # [h, d]
                 k_global = f_k.mean(dim=(1, 2))  # [h, d]
                 
                 # Concatenate global query and key features
                 qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
                 
-                # Predict single weight per attention head
-                weights = self.weight_predictor(qk_features)  # [h, 1]
+                # Predict three weights per attention head
+                weights = self.weight_predictor(qk_features)  # [h, 3]
                 
                 # Record weights during evaluation if needed
                 if self.record_weights and not self.training:
-                    self.weight_history.append(weights.detach().cpu().numpy().mean())
+                    self.weight_history.append(weights.detach().cpu().numpy().mean(axis=0))
                 
-                # Reshape weights to match dimensions for broadcasting
-                # This is the fix for the dimension mismatch
-                weights = weights.view(self.heads, 1, 1, 1)  # [h, 1, 1, 1]
+                # Extract individual weights
+                cos_weight = weights[:, 0].view(self.heads, 1, 1, 1)  # Cosine weight
+                cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)  # Covariance weight
+                var_weight = weights[:, 2].view(self.heads, 1, 1, 1)  # Variance weight
                 
-                dots = (1 - weights) * cosine_sim + weights * cov_component
+                # Combine all three components
+                dots = (cos_weight * cosine_sim + 
+                       cov_weight * cov_component + 
+                       var_weight * var_component)
             else:
-                cov_weight = torch.sigmoid(self.fixed_cov_weight)
-                dots = (1 - cov_weight) * cosine_sim + cov_weight * cov_component
+                # Use fixed weights
+                cov_weight = torch.sigmoid(self.fixed_cov_weight) 
+                var_weight = torch.sigmoid(self.fixed_var_weight)
+                # Ensure weights sum to approximately 1 by using the remaining portion for cosine
+                cos_weight = 1.0 - cov_weight - var_weight
+                
+                dots = (cos_weight * cosine_sim + 
+                       cov_weight * cov_component + 
+                       var_weight * var_component)
                 
             out = torch.matmul(dots, f_v)
         
@@ -162,13 +183,29 @@ class Attention(nn.Module):
             return None
         
         weights = np.array(self.weight_history)
-        return {
-            'mean': float(weights.mean()),
-            'std': float(weights.std()),
-            'min': float(weights.min()),
-            'max': float(weights.max()),
-            'histogram': np.histogram(weights, bins=10, range=(0,1))[0].tolist()
-        }
+        if weights.shape[1] == 3:  # We have 3 components
+            return {
+                'cosine_mean': float(weights[:, 0].mean()),
+                'cov_mean': float(weights[:, 1].mean()),
+                'var_mean': float(weights[:, 2].mean()),
+                'cosine_std': float(weights[:, 0].std()),
+                'cov_std': float(weights[:, 1].std()),
+                'var_std': float(weights[:, 2].std()),
+                'histogram': {
+                    'cosine': np.histogram(weights[:, 0], bins=10, range=(0,1))[0].tolist(),
+                    'cov': np.histogram(weights[:, 1], bins=10, range=(0,1))[0].tolist(),
+                    'var': np.histogram(weights[:, 2], bins=10, range=(0,1))[0].tolist()
+                }
+            }
+        else:  # Legacy format with single weight
+            weights = np.array(self.weight_history)
+            return {
+                'mean': float(weights.mean()),
+                'std': float(weights.std()),
+                'min': float(weights.min()),
+                'max': float(weights.max()),
+                'histogram': np.histogram(weights, bins=10, range=(0,1))[0].tolist()
+            }
     
     def clear_weight_history(self):
         """Clear recorded weights"""
