@@ -107,6 +107,10 @@ class Attention(nn.Module):
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
+        # DFDE components
+        self.var_normalization = nn.LayerNorm(1, elementwise_affine=True)
+        self.feature_weight = nn.Parameter(torch.ones(1, dim_head))  # Learnable feature weights
+        
         self.weight_history = []  # To store weights for analysis
         self.record_weights = False  # Toggle for weight recording
     
@@ -124,14 +128,24 @@ class Attention(nn.Module):
             cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
             cov_component = cov_component / f_q.size(-1)
             
-            # Calculate variance component (new)
-            # Compute variance along feature dimension
-            q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
-            k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
+            # DFDE-inspired variance component
+            # Step 1: Calculate variance matrix (D_matrix in the diagram)
+            q_var = torch.var(f_q, dim=2, keepdim=True)  # Variance across samples [h, q, 1, d]
+            k_var = torch.var(f_k, dim=2, keepdim=True)  # [h, q, 1, d]
             
-            # Create variance-based attention
-            var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
-            var_component = var_component / f_q.size(-1)  # Scale like covariance
+            # Step 2: Variance normalization (as shown in the diagram)
+            normalized_q_var = self.var_normalization(q_var)  # [h, q, 1, d]
+            normalized_k_var = self.var_normalization(k_var)  # [h, q, 1, d]
+            
+            # Step 3: Feature distance weighting
+            # Apply feature weights to emphasize discriminative features
+            weighted_q_var = normalized_q_var * self.feature_weight  # [h, q, 1, d]
+            weighted_k_var = normalized_k_var * self.feature_weight  # [h, q, 1, d]
+            
+            # Step 4: Generate variance-based attention maps
+            # Compute variance distance matrix
+            var_dist = torch.abs(weighted_q_var - weighted_k_var.transpose(-1, -2))  # [h, q, n, m]
+            var_component = -var_dist.mean(dim=-1, keepdim=True)  # Convert distance to similarity
             
             if self.dynamic_weight:
                 # Use global feature statistics
