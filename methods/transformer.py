@@ -89,7 +89,7 @@ class FewShotTransformer(MetaTemplate):
                 z_support, z_query = self.parse_feature(x, is_feature=False)
                 
                 # Reshape support features for regularization
-                support_features = z_support.view(-1, z_support.size(-1))
+                support_features = z_support.reshape(-1, z_support.size(-1))
                 
                 # Compute prototypes
                 z_support_reshaped = z_support.contiguous().view(self.n_way, self.k_shot, -1)
