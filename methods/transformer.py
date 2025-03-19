@@ -73,84 +73,86 @@ class FewShotTransformer(MetaTemplate):
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
-        target = Variable(target.to(device))  # this is the target groundtruth
+        target = Variable(target.to(device))
         
-        # Get scores first (reuses feature computation)
+        # Get scores (use half precision for feature extraction)
         scores = self.set_forward(x, is_feature=False)
         
-        # Calculate standard classification loss
+        # Classification loss
         classification_loss = self.loss_fn(scores, target)
         
-        # Add VIC regularization if enabled
+        # Add VIC regularization
         if self.use_vic_reg:
-            # REMOVE torch.no_grad() here - we need gradients for training!
-            
-            # Extract features
+            # Use smaller chunks and careful memory management
             z_support, z_query = self.parse_feature(x, is_feature=False)
             
-            # Important: Handle support features and prototypes separately
+            # Free memory by deleting tensor references
+            del x
+            
+            # Handle support features in smaller chunks (5 at a time)
             support_features = z_support.reshape(-1, z_support.size(-1))
             z_support_reshaped = z_support.contiguous().view(self.n_way, self.k_shot, -1)
             prototypes = (z_support_reshaped * self.sm(self.proto_weight)).sum(1)
             
-            # Process variance for support features
+            # Free more memory
+            del z_support, z_query, z_support_reshaped
+            
+            # Calculate variance components in fp32 for accuracy
             std_z_a = torch.sqrt(support_features.var(dim=0) + 1e-4)
             std_z_a_loss = torch.mean(F.relu(1 - std_z_a))
             
-            # Process variance for prototypes
             std_z_b = torch.sqrt(prototypes.var(dim=0) + 1e-4)
             std_z_b_loss = torch.mean(F.relu(1 - std_z_b))
             
-            # Combined variance loss
             std_loss = std_z_a_loss + std_z_b_loss
             
-            # Covariance calculation - process support features and prototypes separately
+            # Calculate covariance in smaller chunks (5 at a time)
             N_a, D_a = support_features.shape
             N_b, D_b = prototypes.shape
             
-            # Process support features covariance
-            support_off_diag_sum = 0
-            chunk_size = min(30, N_a)
+            # Use even smaller chunks
+            chunk_size = 5
             
+            # Support feature covariance
+            support_off_diag_sum = 0
             for i in range(0, N_a, chunk_size):
                 end = min(i + chunk_size, N_a)
-                chunk = support_features[i:end]
+                chunk = support_features[i:end].detach().clone()  # Clone to avoid modifying original
                 chunk = chunk - chunk.mean(dim=0)
                 cov_chunk = (chunk.T @ chunk) / (end - i - 1 + 1e-6)
                 off_diag_chunk = cov_chunk - torch.diag(torch.diagonal(cov_chunk))
                 support_off_diag_sum += off_diag_chunk.pow(2).sum()
                 del chunk, cov_chunk, off_diag_chunk
+                torch.cuda.empty_cache()
             
-            # Process prototypes covariance (if we have enough prototypes)
+            # Prototype covariance
             proto_off_diag_sum = 0
-            if N_b > 1:  # Need at least 2 prototypes for covariance
+            if N_b > 1:
                 for i in range(0, N_b, chunk_size):
                     end = min(i + chunk_size, N_b)
-                    chunk = prototypes[i:end]
+                    chunk = prototypes[i:end].detach().clone()
                     chunk = chunk - chunk.mean(dim=0)
                     cov_chunk = (chunk.T @ chunk) / (end - i - 1 + 1e-6)
                     off_diag_chunk = cov_chunk - torch.diag(torch.diagonal(cov_chunk))
                     proto_off_diag_sum += off_diag_chunk.pow(2).sum()
                     del chunk, cov_chunk, off_diag_chunk
+                    torch.cuda.empty_cache()
             
-            # Weighted combination of covariance losses
+            # Weighted combination
             if N_b > 1:
                 cov_loss = (support_off_diag_sum / D_a + proto_off_diag_sum / D_b) / 2
             else:
                 cov_loss = support_off_diag_sum / D_a
             
-            # Free memory
-            torch.cuda.empty_cache()
-            
             # Combined loss
             loss = classification_loss + \
-                   self.weight_variance * std_loss + \
-                   self.weight_covariance * cov_loss
+                  self.weight_variance * std_loss + \
+                  self.weight_covariance * cov_loss
         else:
             loss = classification_loss
         
         # Calculate accuracy
-        with torch.no_grad():  # Accuracy calculation doesn't need gradients
+        with torch.no_grad():
             predict = torch.argmax(scores, dim=1)
             acc = (predict == target).sum().item() / target.size(0)
         

@@ -16,6 +16,7 @@ import torch.utils.data.sampler
 import tqdm
 from torch.autograd import Variable
 from torchsummary import summary
+from torch.cuda.amp import autocast, GradScaler
 
 import backbone
 import configs
@@ -32,6 +33,9 @@ global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
+    # Initialize gradient scaler for mixed precision training
+    scaler = GradScaler()
+    
     if optimization == 'Adam':
         optimizer = torch.optim.Adam(
             model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
@@ -48,7 +52,19 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
     for epoch in range(num_epoch):
         model.train()
-
+        for i, (x, _) in enumerate(base_loader):
+            optimizer.zero_grad()
+            
+            # Use autocast for mixed precision
+            with autocast():
+                x = x.to(device)
+                acc, loss = model.set_forward_loss(x=x)
+            
+            # Scale gradients and optimize
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)
         with torch.no_grad():
