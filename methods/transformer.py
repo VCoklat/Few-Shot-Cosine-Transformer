@@ -16,22 +16,26 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
+                use_vic_reg=True, weight_variance=25, weight_invariance=25, weight_covariance=1):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
+        
+        # VIC regularization parameters
+        self.use_vic_reg = use_vic_reg
+        self.weight_variance = weight_variance
+        self.weight_invariance = weight_invariance
+        self.weight_covariance = weight_covariance
         
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
         dim = self.feat_dim
 
-        self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
-                             initial_cov_weight=initial_cov_weight,
-                             initial_var_weight=initial_var_weight,
-                             dynamic_weight=dynamic_weight)
+        # Use simplified attention mechanism
+        self.ATTN = SimplifiedAttention(dim, heads=heads, dim_head=dim_head, variant=variant)
         
-        self.sm = nn.Softmax(dim = -2)
+        self.sm = nn.Softmax(dim=-2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
         
         self.FFN = nn.Sequential(
@@ -67,11 +71,50 @@ class FewShotTransformer(MetaTemplate):
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
+        
+        # Get features first to use for VIC regularization
+        z_support, z_query = self.parse_feature(x)
+        
+        # Compute prototypes (same calculation as in set_forward)
+        z_support_reshaped = z_support.contiguous().view(self.n_way, self.k_shot, -1)
+        prototypes = (z_support_reshaped * self.sm(self.proto_weight)).sum(1)  # [n_way, dim]
+        
+        # Get scores using the standard forward pass
         scores = self.set_forward(x)
         
-        loss = self.loss_fn(scores, target)
-        predict = torch.argmax(scores, dim = 1)
+        # Calculate standard classification loss
+        classification_loss = self.loss_fn(scores, target)
+        
+        # Add VIC regularization if enabled
+        if self.use_vic_reg:
+            # Reshape support features for regularization
+            support_features = z_support.view(-1, z_support.size(-1))  # [n_way*k_shot, dim]
+            
+            # Variance component: encourage high variance
+            std_z_a = torch.sqrt(support_features.var(dim=0) + 1e-4)
+            std_z_b = torch.sqrt(prototypes.var(dim=0) + 1e-4)
+            std_loss = torch.mean(F.relu(1 - std_z_a)) + torch.mean(F.relu(1 - std_z_b))
+            
+            # Covariance component: encourage feature decorrelation
+            N_a, D = support_features.shape
+            N_b, _ = prototypes.shape
+            z_joint = torch.cat([support_features, prototypes], dim=0)
+            z_joint = z_joint - z_joint.mean(dim=0)
+            cov_z_joint = (z_joint.T @ z_joint) / (N_a + N_b - 1)
+            off_diag_cov_z_joint = cov_z_joint - torch.diag(torch.diagonal(cov_z_joint))
+            cov_loss = off_diag_cov_z_joint.pow(2).sum() / D
+            
+            # Combined loss
+            loss = classification_loss + \
+                   self.weight_variance * std_loss + \
+                   self.weight_covariance * cov_loss
+        else:
+            loss = classification_loss
+            
+        # Calculate accuracy
+        predict = torch.argmax(scores, dim=1)
         acc = (predict == target).sum().item() / target.size(0)
+        
         return acc, loss
 
 class Attention(nn.Module):
@@ -210,6 +253,39 @@ class Attention(nn.Module):
     def clear_weight_history(self):
         """Clear recorded weights"""
         self.weight_history = []
+
+class SimplifiedAttention(nn.Module):
+    def __init__(self, dim, heads, dim_head, variant):
+        super().__init__()
+        inner_dim = heads * dim_head
+        project_out = not(heads == 1 and dim_head == dim)
+        
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+        self.sm = nn.Softmax(dim=-1)
+        self.variant = variant
+            
+        self.input_linear = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, inner_dim, bias=False)
+        )
+        
+        self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
+    
+    def forward(self, q, k, v):
+        f_q, f_k, f_v = map(lambda t: rearrange(
+            self.input_linear(t), 'q n (h d) ->  h q n d', h=self.heads), (q, k, v))    
+        
+        if self.variant == "cosine":
+            # Use only cosine similarity
+            dots = cosine_distance(f_q, f_k.transpose(-1, -2))
+            out = torch.matmul(dots, f_v)
+        else:  # self.variant == "softmax"
+            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
+            out = torch.matmul(self.sm(dots), f_v)
+        
+        out = rearrange(out, 'h q n d -> q n (h d)')
+        return self.output_linear(out)
 
 def cosine_distance(x1, x2):
     '''
