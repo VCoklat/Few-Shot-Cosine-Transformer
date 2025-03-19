@@ -102,8 +102,8 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     if stats:
                         print(f"Epoch {epoch}: Weights - Cos: {stats['cosine_mean']:.3f}, " +
                               f"Cov: {stats['cov_mean']:.3f}, Var: {stats['var_mean']:.3f}")
-                module.clear_weight_history()
-                module.record_weights = False
+                        module.clear_weight_history()
+                        module.record_weights = False
 
         scheduler.step()
         print()
