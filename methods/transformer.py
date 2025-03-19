@@ -73,7 +73,7 @@ class FewShotTransformer(MetaTemplate):
         target = Variable(target.to(device))  # this is the target groundtruth
         
         # Get features first to use for VIC regularization
-        z_support, z_query = self.parse_feature(x)
+        z_support, z_query = self.parse_feature(x, is_feature=False)  # Add is_feature parameter
         
         # Compute prototypes (same calculation as in set_forward)
         z_support_reshaped = z_support.contiguous().view(self.n_way, self.k_shot, -1)
