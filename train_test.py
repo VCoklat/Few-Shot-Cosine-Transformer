@@ -227,7 +227,19 @@ if __name__ == '__main__':
     device = torch.device('cpu')
 
     # Run first epoch on CPU
-    model.train_loop(0, 1, base_loader, optimization)
+    if optimization == 'Adam':
+        cpu_optimizer = torch.optim.Adam(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+    elif optimization == 'AdamW':
+        cpu_optimizer = torch.optim.AdamW(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+    elif optimization == 'SGD':
+        cpu_optimizer = torch.optim.SGD(
+            model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
+    else:
+        raise ValueError('Unknown optimization, please define by yourself')
+
+    model.train_loop(0, 1, base_loader, params.wandb, cpu_optimizer)
 
     # Move back to GPU
     print("Moving to GPU for remaining training...")
