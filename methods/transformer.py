@@ -16,7 +16,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
+                initial_cov_weight=0.2, initial_var_weight=0.2, dynamic_weight=False):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -118,20 +118,87 @@ class Attention(nn.Module):
             # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
-            # Calculate covariance component
-            q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
-            k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
-            cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
-            cov_component = cov_component / f_q.size(-1)
+            # Enhanced covariance component for better decorrelation
+            # Center features properly
+            q_centered = f_q - f_q.mean(dim=-1, keepdim=True)  # [h, q, n, d]
+            k_centered = f_k - f_k.mean(dim=-1, keepdim=True)  # [h, q, m, d]
             
-            # Calculate variance component (new)
-            # Compute variance along feature dimension
-            q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
-            k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
+            # Compute feature dimension for normalization
+            d = f_q.size(-1)
             
-            # Create variance-based attention
-            var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
-            var_component = var_component / f_q.size(-1)  # Scale like covariance
+            # For each head, query position, and query/key pair:
+            # Create improved covariance component that promotes decorrelation
+            
+            # Method 1: Full decorrelation using off-diagonal covariance
+            # Reshape to process pairs efficiently
+            batch_size = f_q.size(1) * f_q.size(2)  # q*n
+            key_size = f_k.size(2)  # m
+            
+            # Process each head separately to reduce memory
+            cov_matrices = []
+            for h in range(f_q.shape[0]):  # For each head
+                # Compute per-head covariance values
+                head_cov_values = []
+                
+                for i in range(f_q.size(1)):  # For each query position
+                    q_feat = q_centered[h, i]  # [n, d]
+                    k_feat = k_centered[h, i]  # [m, d]
+                    
+                    # Joint features for this query position
+                    z_joint = torch.cat([q_feat, k_feat], dim=0)  # [n+m, d]
+                    
+                    # Compute covariance matrix
+                    cov_matrix = torch.matmul(z_joint.transpose(-2, -1), z_joint) / (q_feat.size(0) + k_feat.size(0) - 1)  # [d, d]
+                    
+                    # Isolate off-diagonal elements (the correlations)
+                    off_diag = cov_matrix - torch.diag(torch.diagonal(cov_matrix))  # [d, d]
+                    
+                    # Calculate Frobenius norm of off-diagonal elements (squared and summed)
+                    off_diag_norm = torch.sum(off_diag.pow(2)) / d
+                    
+                    # Create attention values that are higher when decorrelation is better (lower off-diag)
+                    decorr_factor = 1.0 / (1.0 + off_diag_norm)  # Inversely proportional to correlation
+                    
+                    # Expand to create attention values for each n,m pair
+                    att_values = decorr_factor * torch.ones(q_feat.size(0), k_feat.size(0), device=q_feat.device)
+                    head_cov_values.append(att_values)
+                
+                # Stack for this head
+                head_matrix = torch.stack(head_cov_values, dim=0)  # [q, n, m]
+                cov_matrices.append(head_matrix)
+            
+            # Stack across heads
+            cov_component = torch.stack(cov_matrices, dim=0)  # [h, q, n, m]
+            
+            # Normalize to similar scale as other components
+            cov_component = cov_component / torch.max(cov_component)
+            
+            # Continue with rest of attention mechanism (variance and weighting)
+            # Improved variance component using standard deviation
+            # Compute standard deviation along feature dimension (with better numerical stability)
+            q_std = torch.sqrt(torch.var(f_q, dim=-1, keepdim=True) + 1e-5)  # [h, q, n, 1]
+            k_std = torch.sqrt(torch.var(f_k, dim=-1, keepdim=True) + 1e-5).transpose(-1, -2)  # [h, q, 1, m]
+            
+            # Calculate standard deviation target values (desired minimum spread)
+            std_target = 1.0
+            
+            # Create penalty terms using ReLU to only apply when std is below target
+            q_std_penalty = F.relu(std_target - q_std)  # Penalty when std < 1
+            k_std_penalty = F.relu(std_target - k_std)  # Penalty when std < 1
+            
+            # Combine penalties with matrix multiplication to create variance attention component
+            # Higher values indicate both q and k need more feature spread
+            var_component = torch.matmul(q_std_penalty, k_std_penalty)  # [h, q, n, m]
+            
+            # Normalize to have similar scale as other components
+            var_component = var_component / f_q.size(-1)
+            
+            # Invert to make it an attention component (higher = more attention)
+            # This way, it gives more attention to pairs where both features have good spread
+            var_component = std_target - var_component
+            
+            # Ensure non-negativity
+            var_component = F.relu(var_component)
             
             if self.dynamic_weight:
                 # Use global feature statistics
