@@ -69,9 +69,24 @@ class FewShotTransformer(MetaTemplate):
         target = Variable(target.to(device))  # this is the target groundtruth
         scores = self.set_forward(x)
         
-        loss = self.loss_fn(scores, target)
+        classification_loss = self.loss_fn(scores, target)
         predict = torch.argmax(scores, dim = 1)
         acc = (predict == target).sum().item() / target.size(0)
+        
+        # Add VIC regularization
+        support_features = z_support.reshape(-1, z_support.size(-1))
+        
+        # Variance regularization
+        std_loss = torch.mean(F.relu(0.5 - torch.sqrt(torch.var(support_features, dim=0) + 1e-5)))
+        
+        # Covariance regularization
+        z_centered = support_features - support_features.mean(0)
+        cov = (z_centered.T @ z_centered) / (z_centered.size(0) - 1)
+        cov_reg = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / support_features.size(1)
+        
+        # Combined loss
+        loss = classification_loss + 0.1 * std_loss + 0.01 * cov_reg
+        
         return acc, loss
 
 class Attention(nn.Module):
@@ -175,30 +190,37 @@ class Attention(nn.Module):
             
             # Continue with rest of attention mechanism (variance and weighting)
             # Improved variance component using standard deviation
-            # Compute standard deviation along feature dimension (with better numerical stability)
-            q_std = torch.sqrt(torch.var(f_q, dim=-1, keepdim=True) + 1e-5)  # [h, q, n, 1]
-            k_std = torch.sqrt(torch.var(f_k, dim=-1, keepdim=True) + 1e-5).transpose(-1, -2)  # [h, q, 1, m]
+            # Compute per-feature variance, not just total variance
+            q_var = torch.var(f_q, dim=-1, unbiased=True)  # [h, q, n]
+            k_var = torch.var(f_k, dim=-1, unbiased=True)  # [h, q, m]
+
+            # Target variance (encourage feature diversity)
+            target_var = 1.0
+
+            # Create variance ratio that peaks at optimal variance
+            q_var_ratio = 2 * torch.min(q_var, target_var) / (q_var + target_var)
+            k_var_ratio = 2 * torch.min(k_var, target_var) / (k_var + target_var)
+
+            # Create variance component through outer product
+            var_component = torch.bmm(
+                q_var_ratio.view(f_q.shape[0], -1), 
+                k_var_ratio.view(f_k.shape[0], -1).transpose(-2, -1)
+            ).view_as(cosine_sim)
             
-            # Calculate standard deviation target values (desired minimum spread)
-            std_target = 1.0
-            
-            # Create penalty terms using ReLU to only apply when std is below target
-            q_std_penalty = F.relu(std_target - q_std)  # Penalty when std < 1
-            k_std_penalty = F.relu(std_target - k_std)  # Penalty when std < 1
-            
-            # Combine penalties with matrix multiplication to create variance attention component
-            # Higher values indicate both q and k need more feature spread
-            var_component = torch.matmul(q_std_penalty, k_std_penalty)  # [h, q, n, m]
-            
-            # Normalize to have similar scale as other components
-            var_component = var_component / f_q.size(-1)
-            
-            # Invert to make it an attention component (higher = more attention)
-            # This way, it gives more attention to pairs where both features have good spread
-            var_component = std_target - var_component
-            
-            # Ensure non-negativity
-            var_component = F.relu(var_component)
+            # More efficient covariance calculation
+            q_flat = q_centered.reshape(f_q.shape[0], -1, f_q.shape[-1])  # [h, q*n, d]
+            k_flat = k_centered.reshape(f_k.shape[0], -1, f_k.shape[-1])  # [h, q*m, d]
+
+            # Calculate feature correlation matrix
+            feature_corr = torch.bmm(q_flat.transpose(-2, -1), q_flat) / q_flat.size(1)  # [h, d, d]
+            feature_corr = feature_corr - torch.diag_embed(torch.diagonal(feature_corr, dim1=-2, dim2=-1))
+
+            # Compute decorrelation score (lower means better decorrelated)
+            decorr_score = torch.norm(feature_corr, p='fro', dim=(-2, -1)) / (f_q.size(-1) * f_q.size(-1))
+            decorr_scale = torch.exp(-5.0 * decorr_score).unsqueeze(-1).unsqueeze(-1)  # [h, 1, 1]
+
+            # Apply as scaling factor to cosine similarity
+            cov_component = cosine_sim * decorr_scale
             
             if self.dynamic_weight:
                 # Use global feature statistics

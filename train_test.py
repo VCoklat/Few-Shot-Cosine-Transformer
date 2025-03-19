@@ -51,6 +51,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         with torch.no_grad():
             model.eval()
 
