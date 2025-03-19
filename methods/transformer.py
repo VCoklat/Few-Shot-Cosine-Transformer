@@ -16,7 +16,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
+                initial_cov_weight=0.2, initial_var_weight=0.2, dynamic_weight=False):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -75,7 +75,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, dynamic_weight=False):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight, initial_var_weight, dynamic_weight=False):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
