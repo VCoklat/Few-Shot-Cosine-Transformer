@@ -221,6 +221,18 @@ if __name__ == '__main__':
 
     model = model.to(device)
     
+    # At the beginning of your script, after defining model:
+    print("Starting training on CPU for first epoch to establish parameters...")
+    model = model.to('cpu')
+    device = torch.device('cpu')
+
+    # Run first epoch on CPU
+    model.train_loop(0, 1, base_loader, optimization)
+
+    # Move back to GPU
+    print("Moving to GPU for remaining training...")
+    model = model.to(torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'))
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
