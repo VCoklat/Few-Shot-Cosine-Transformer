@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from torch.optim.lr_scheduler import OneCycleLR
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -43,6 +44,14 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
     else:
         raise ValueError('Unknown optimization, please define by yourself')
+
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=params.learning_rate,
+        epochs=num_epoch,
+        steps_per_epoch=len(base_loader),
+        pct_start=0.2  # Spend 20% of training warming up
+    )
 
     max_acc = 0
 
@@ -72,6 +81,31 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # In your training loop, periodically check:
+        if epoch % 5 == 0:
+            # Enable recording for a few batches
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    module.record_weights = True
+            
+            # Run a few validation batches
+            with torch.no_grad():
+                for i, (x, _) in enumerate(val_loader):
+                    if i >= 10: break  # Just need a sample
+                    model.set_forward(x.to(device))
+            
+            # Analyze weights
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    stats = module.get_weight_stats()
+                    if stats:
+                        print(f"Epoch {epoch}: Weights - Cos: {stats['cosine_mean']:.3f}, " +
+                              f"Cov: {stats['cov_mean']:.3f}, Var: {stats['var_mean']:.3f}")
+                module.clear_weight_history()
+                module.record_weights = False
+
+        scheduler.step()
         print()
 
     return model
