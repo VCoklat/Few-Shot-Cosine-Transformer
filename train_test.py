@@ -221,10 +221,12 @@ if __name__ == '__main__':
 
     model = model.to(device)
     
-    # At the beginning of your script, after defining model:
+    # Add these lines before moving model to CPU
+    original_device = device
+
     print("Starting training on CPU for first epoch to establish parameters...")
     model = model.to('cpu')
-    device = torch.device('cpu')
+    device = torch.device('cpu')  # Temporarily change global device
 
     # Run first epoch on CPU
     if optimization == 'Adam':
@@ -241,10 +243,10 @@ if __name__ == '__main__':
 
     model.train_loop(0, 1, base_loader, params.wandb, cpu_optimizer)
 
-    # Move back to GPU
+    # Use this to restore the device
     print("Moving to GPU for remaining training...")
-    model = model.to(torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'))
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = original_device  # Restore original device
+    model = model.to(device)
     
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
