@@ -10,6 +10,9 @@ from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
 import pdb
 import IPython
+import gc
+import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -72,39 +75,96 @@ class FewShotTransformer(MetaTemplate):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
         
-        # Get features first to use for VIC regularization
-        z_support, z_query = self.parse_feature(x, is_feature=False)  # Add is_feature parameter
-        
-        # Compute prototypes (same calculation as in set_forward)
-        z_support_reshaped = z_support.contiguous().view(self.n_way, self.k_shot, -1)
-        prototypes = (z_support_reshaped * self.sm(self.proto_weight)).sum(1)  # [n_way, dim]
-        
-        # Get scores using the standard forward pass
-        scores = self.set_forward(x)
+        # Get scores first (reuses feature computation)
+        scores = self.set_forward(x, is_feature=False)
         
         # Calculate standard classification loss
         classification_loss = self.loss_fn(scores, target)
         
-        # Add VIC regularization if enabled
+        # Add VIC regularization if enabled, with memory optimization
         if self.use_vic_reg:
-            # Reshape support features for regularization
-            support_features = z_support.view(-1, z_support.size(-1))  # [n_way*k_shot, dim]
+            # Recompute features on CPU to save GPU memory
+            with torch.no_grad():
+                # Extract features on CPU
+                x_cpu = x.to('cpu')
+                z_all_cpu = self.feature.to('cpu')(x_cpu)
+                
+                # Parse features
+                z_all_cpu = z_all_cpu.contiguous().view(self.n_way, self.k_shot + self.n_query, -1)
+                z_support_cpu = z_all_cpu[:, :self.k_shot].contiguous().view(self.n_way * self.k_shot, -1)
+                
+                # Compute prototypes
+                z_support_reshaped_cpu = z_support_cpu.view(self.n_way, self.k_shot, -1)
+                prototypes_cpu = (z_support_reshaped_cpu * F.softmax(self.proto_weight.to('cpu'), dim=-2)).sum(1)
+                
+                # Move only necessary tensors back to GPU for loss computation
+                support_features = z_support_cpu.to(device)
+                prototypes = prototypes_cpu.to(device)
+                
+                # Free CPU tensors
+                del z_all_cpu, z_support_cpu, z_support_reshaped_cpu, prototypes_cpu, x_cpu
+                torch.cuda.empty_cache()
+                gc.collect()
             
-            # Variance component: encourage high variance
-            std_z_a = torch.sqrt(support_features.var(dim=0) + 1e-4)
+            # Process in chunks if needed
+            if support_features.shape[0] > 50:  # If we have a large number of support features
+                chunk_size = 50
+                
+                std_loss_list = []
+                
+                # Process variance in chunks
+                for i in range(0, support_features.shape[0], chunk_size):
+                    end = min(i + chunk_size, support_features.shape[0])
+                    chunk = support_features[i:end]
+                    std_chunk = torch.sqrt(chunk.var(dim=0) + 1e-4)
+                    std_loss_chunk = torch.mean(F.relu(1 - std_chunk))
+                    std_loss_list.append(std_loss_chunk)
+                
+                std_z_a_loss = sum(std_loss_list) / len(std_loss_list)
+            else:
+                std_z_a = torch.sqrt(support_features.var(dim=0) + 1e-4)
+                std_z_a_loss = torch.mean(F.relu(1 - std_z_a))
+            
+            # Process prototype variance
             std_z_b = torch.sqrt(prototypes.var(dim=0) + 1e-4)
-            std_loss = torch.mean(F.relu(1 - std_z_a)) + torch.mean(F.relu(1 - std_z_b))
-            
-            # Covariance component: encourage feature decorrelation
+            std_loss = std_z_a_loss + torch.mean(F.relu(1 - std_z_b))
+                
+            # Covariance calculation with memory optimizations
             N_a, D = support_features.shape
             N_b, _ = prototypes.shape
-            z_joint = torch.cat([support_features, prototypes], dim=0)
-            z_joint = z_joint - z_joint.mean(dim=0)
-            cov_z_joint = (z_joint.T @ z_joint) / (N_a + N_b - 1)
-            off_diag_cov_z_joint = cov_z_joint - torch.diag(torch.diagonal(cov_z_joint))
-            cov_loss = off_diag_cov_z_joint.pow(2).sum() / D
             
-            # Combined loss
+            # Compute covariance in chunks to save memory
+            off_diag_sum = 0
+            chunk_size = min(30, N_a + N_b)  # Smaller chunk size
+            
+            for i in range(0, N_a + N_b, chunk_size):
+                end = min(i + chunk_size, N_a + N_b)
+                
+                # Get the appropriate slices
+                if i < N_a and end <= N_a:
+                    chunk = support_features[i:end]
+                elif i < N_a:
+                    chunk = torch.cat([support_features[i:], prototypes[:end-(N_a)]]) 
+                else:
+                    chunk = prototypes[i-N_a:end-N_a]
+                    
+                # Center this chunk
+                chunk = chunk - chunk.mean(dim=0)
+                
+                # Compute partial covariance
+                cov_chunk = (chunk.T @ chunk) / (end - i - 1 + 1e-6)
+                
+                # Remove diagonal and add to sum
+                off_diag_chunk = cov_chunk - torch.diag(torch.diagonal(cov_chunk))
+                off_diag_sum += off_diag_chunk.pow(2).sum()
+                
+                # Free memory
+                del chunk, cov_chunk, off_diag_chunk
+                torch.cuda.empty_cache()
+                
+            cov_loss = off_diag_sum / D
+                
+            # Combined loss with chunked processing
             loss = classification_loss + \
                    self.weight_variance * std_loss + \
                    self.weight_covariance * cov_loss
