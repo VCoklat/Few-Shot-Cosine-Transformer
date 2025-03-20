@@ -16,7 +16,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.789, initial_var_weight=0.052, dynamic_weight=True):
+                initial_cov_weight=0.620, initial_var_weight=0.048, dynamic_weight=True):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
