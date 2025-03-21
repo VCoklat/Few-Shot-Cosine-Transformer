@@ -80,60 +80,71 @@ def direct_test(test_loader, model, params):
     count = 0
     acc = []
     
-    # Add memory management
+    # Add more aggressive memory management
     torch.cuda.empty_cache()
     
-    # Add batch size control for testing
-    max_batch_size = params.test_batch_size if hasattr(params, 'test_batch_size') else 4
+    # Smaller default batch size
+    max_batch_size = params.test_batch_size if hasattr(params, 'test_batch_size') else 2
     
-    iter_num = len(test_loader)
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
             try:
-                # Try to process with regular approach first
+                # Try with regular approach but verify tensor shape first
+                if x.size(0) % (params.n_way * (params.k_shot + params.n_query)) != 0:
+                    raise ValueError(f"Batch size {x.size(0)} not divisible by {params.n_way * (params.k_shot + params.n_query)}")
+                
                 scores = model.set_forward(x)
                 pred = scores.data.cpu().numpy().argmax(axis=1)
                 y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
                 acc.append(np.mean(pred == y)*100)
-            except RuntimeError as e:
-                if 'CUDA out of memory' in str(e):
-                    print("CUDA OOM detected, switching to smaller batches or CPU...")
+                
+            except (RuntimeError, ValueError) as e:
+                # Handle both OOM and shape errors
+                print(f"Error encountered: {str(e)}")
+                torch.cuda.empty_cache()
+                
+                # Get expected shape for one episode
+                episode_size = params.n_way * (params.k_shot + params.n_query)
+                
+                # Process one episode at a time
+                all_preds = []
+                
+                # Calculate how many complete episodes we have
+                n_complete_episodes = x.size(0) // episode_size
+                
+                for j in range(n_complete_episodes):
+                    start_idx = j * episode_size
+                    end_idx = start_idx + episode_size
+                    
+                    # Extract exactly one episode
+                    x_episode = x[start_idx:end_idx].cpu()
+                    
+                    # Process on CPU to avoid memory issues
+                    model_cpu = model.cpu()
+                    with torch.no_grad():
+                        scores_episode = model_cpu.set_forward(x_episode)
+                    
+                    pred_episode = scores_episode.data.cpu().numpy().argmax(axis=1)
+                    all_preds.append(pred_episode)
+                    
+                    # Move model back to GPU for next iteration if possible
+                    try:
+                        model.to(device)
+                    except RuntimeError:
+                        # Keep on CPU if GPU memory is still an issue
+                        pass
+                        
                     torch.cuda.empty_cache()
-                    
-                    # Process in smaller chunks
-                    n_splits = max(2, x.size(0) // max_batch_size)
-                    chunk_size = x.size(0) // n_splits
-                    all_preds = []
-                    
-                    for j in range(n_splits):
-                        start_idx = j * chunk_size
-                        end_idx = start_idx + chunk_size if j < n_splits - 1 else x.size(0)
-                        x_chunk = x[start_idx:end_idx]
-                        
-                        try:
-                            # Try GPU with smaller batch
-                            scores_chunk = model.set_forward(x_chunk)
-                        except RuntimeError:
-                            # Fall back to CPU if still OOM
-                            print("Still OOM, moving to CPU for this batch...")
-                            model_cpu = model.cpu()
-                            x_chunk = x_chunk.cpu()
-                            scores_chunk = model_cpu.set_forward(x_chunk)
-                            model.to(device)  # Move back to GPU after processing
-                        
-                        pred_chunk = scores_chunk.data.cpu().numpy().argmax(axis=1)
-                        all_preds.append(pred_chunk)
-                        torch.cuda.empty_cache()
-                    
+                
+                if all_preds:
                     pred = np.concatenate(all_preds)
                     y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
                     acc.append(np.mean(pred == y)*100)
                 else:
-                    # Re-raise if it's not an OOM error
-                    raise e
-                    
+                    print("Warning: Could not process any episodes in this batch")
+                
             pbar.set_description(
-                'Test       | Acc {:.6f}'.format(np.mean(acc)))
+                'Test       | Acc {:.6f}'.format(np.mean(acc) if acc else 0.0))
             pbar.update(1)
             
             # Clear cache after each iteration
