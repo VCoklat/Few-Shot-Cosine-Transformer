@@ -76,21 +76,68 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     return model
 
 def direct_test(test_loader, model, params):
-
     correct = 0
     count = 0
     acc = []
-
+    
+    # Add memory management
+    torch.cuda.empty_cache()
+    
+    # Add batch size control for testing
+    max_batch_size = params.test_batch_size if hasattr(params, 'test_batch_size') else 4
+    
     iter_num = len(test_loader)
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            scores = model.set_forward(x)
-            pred = scores.data.cpu().numpy().argmax(axis=1)
-            y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
-            acc.append(np.mean(pred == y)*100)
+            try:
+                # Try to process with regular approach first
+                scores = model.set_forward(x)
+                pred = scores.data.cpu().numpy().argmax(axis=1)
+                y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                acc.append(np.mean(pred == y)*100)
+            except RuntimeError as e:
+                if 'CUDA out of memory' in str(e):
+                    print("CUDA OOM detected, switching to smaller batches or CPU...")
+                    torch.cuda.empty_cache()
+                    
+                    # Process in smaller chunks
+                    n_splits = max(2, x.size(0) // max_batch_size)
+                    chunk_size = x.size(0) // n_splits
+                    all_preds = []
+                    
+                    for j in range(n_splits):
+                        start_idx = j * chunk_size
+                        end_idx = start_idx + chunk_size if j < n_splits - 1 else x.size(0)
+                        x_chunk = x[start_idx:end_idx]
+                        
+                        try:
+                            # Try GPU with smaller batch
+                            scores_chunk = model.set_forward(x_chunk)
+                        except RuntimeError:
+                            # Fall back to CPU if still OOM
+                            print("Still OOM, moving to CPU for this batch...")
+                            model_cpu = model.cpu()
+                            x_chunk = x_chunk.cpu()
+                            scores_chunk = model_cpu.set_forward(x_chunk)
+                            model.to(device)  # Move back to GPU after processing
+                        
+                        pred_chunk = scores_chunk.data.cpu().numpy().argmax(axis=1)
+                        all_preds.append(pred_chunk)
+                        torch.cuda.empty_cache()
+                    
+                    pred = np.concatenate(all_preds)
+                    y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                    acc.append(np.mean(pred == y)*100)
+                else:
+                    # Re-raise if it's not an OOM error
+                    raise e
+                    
             pbar.set_description(
                 'Test       | Acc {:.6f}'.format(np.mean(acc)))
             pbar.update(1)
+            
+            # Clear cache after each iteration
+            torch.cuda.empty_cache()
 
     acc_all = np.asarray(acc)
     acc_mean = np.mean(acc_all)
