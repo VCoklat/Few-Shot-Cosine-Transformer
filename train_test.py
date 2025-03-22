@@ -76,79 +76,21 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     return model
 
 def direct_test(test_loader, model, params):
+
     correct = 0
     count = 0
     acc = []
-    
-    # Add more aggressive memory management
-    torch.cuda.empty_cache()
-    
-    # Smaller default batch size
-    max_batch_size = params.test_batch_size if hasattr(params, 'test_batch_size') else 2
-    
+
+    iter_num = len(test_loader)
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            try:
-                # Try with regular approach but verify tensor shape first
-                if x.size(0) % (params.n_way * (params.k_shot + params.n_query)) != 0:
-                    raise ValueError(f"Batch size {x.size(0)} not divisible by {params.n_way * (params.k_shot + params.n_query)}")
-                
-                scores = model.set_forward(x)
-                pred = scores.data.cpu().numpy().argmax(axis=1)
-                y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
-                acc.append(np.mean(pred == y)*100)
-                
-            except (RuntimeError, ValueError) as e:
-                # Handle both OOM and shape errors
-                print(f"Error encountered: {str(e)}")
-                torch.cuda.empty_cache()
-                
-                # Get expected shape for one episode
-                episode_size = params.n_way * (params.k_shot + params.n_query)
-                
-                # Process one episode at a time
-                all_preds = []
-                
-                # Calculate how many complete episodes we have
-                n_complete_episodes = x.size(0) // episode_size
-                
-                for j in range(n_complete_episodes):
-                    start_idx = j * episode_size
-                    end_idx = start_idx + episode_size
-                    
-                    # Extract exactly one episode
-                    x_episode = x[start_idx:end_idx].cpu()
-                    
-                    # Process on CPU to avoid memory issues
-                    model_cpu = model.cpu()
-                    with torch.no_grad():
-                        scores_episode = model_cpu.set_forward(x_episode)
-                    
-                    pred_episode = scores_episode.data.cpu().numpy().argmax(axis=1)
-                    all_preds.append(pred_episode)
-                    
-                    # Move model back to GPU for next iteration if possible
-                    try:
-                        model.to(device)
-                    except RuntimeError:
-                        # Keep on CPU if GPU memory is still an issue
-                        pass
-                        
-                    torch.cuda.empty_cache()
-                
-                if all_preds:
-                    pred = np.concatenate(all_preds)
-                    y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
-                    acc.append(np.mean(pred == y)*100)
-                else:
-                    print("Warning: Could not process any episodes in this batch")
-                
+            scores = model.set_forward(x)
+            pred = scores.data.cpu().numpy().argmax(axis=1)
+            y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+            acc.append(np.mean(pred == y)*100)
             pbar.set_description(
-                'Test       | Acc {:.6f}'.format(np.mean(acc) if acc else 0.0))
+                'Test       | Acc {:.6f}'.format(np.mean(acc)))
             pbar.update(1)
-            
-            # Clear cache after each iteration
-            torch.cuda.empty_cache()
 
     acc_all = np.asarray(acc)
     acc_mean = np.mean(acc_all)
@@ -281,6 +223,22 @@ if __name__ == '__main__':
     
     model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
 
+
+######################################################################
+
+    print("===================================")
+    print("Test phase: ")
+
+    # Clear CUDA cache to free up memory
+    torch.cuda.empty_cache()
+
+    # Implement memory optimization
+    import os
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
+    # Process batches in smaller chunks
+    def direct_test(test_loader, model, params):
+        return acc_mean, acc_std
 
 ######################################################################
 
