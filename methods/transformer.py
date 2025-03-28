@@ -441,14 +441,30 @@ class DynamicTransformerLayer(nn.Module):
         q = q + attn_out
         
         # Apply MLP with dynamic mlp_dim
-        # Use only portion of the weights
         x = self.norm2(q)
-        x = self.mlp_up(x)[:, :, :mlp_dim]
-        x = self.mlp_act(x)
-        x = self.mlp_down(x[:, :, :mlp_dim])
+        
+        # Up projection with padding
+        max_mlp_dim = self.mlp_up.weight.size(0)  # Get max MLP dimension
+        x_up = self.mlp_up(x)
+        if mlp_dim != max_mlp_dim:
+            x_up = x_up[:, :, :mlp_dim]  # Use only part of activation
+        
+        # Apply activation
+        x_up = self.mlp_act(x_up)
+        
+        # Down projection with padding
+        max_mlp_dim = self.mlp_down.weight.size(1)  # Get expected input size
+        if mlp_dim != max_mlp_dim:
+            # Create zero-padded tensor of right size
+            padded_x = torch.zeros(x_up.size(0), x_up.size(1), max_mlp_dim, device=x_up.device)
+            padded_x[:, :, :mlp_dim] = x_up  # Copy activations into padded tensor
+            x_down = self.mlp_down(padded_x)  # Apply down projection
+        else:
+            # If dimensions match, proceed normally
+            x_down = self.mlp_down(x_up)
         
         # Apply second residual connection
-        return q + x
+        return q + x_down
 
 
 class DynamicAttention(nn.Module):
