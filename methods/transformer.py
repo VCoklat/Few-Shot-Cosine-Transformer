@@ -16,7 +16,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.0007, initial_var_weight=0.0007, dynamic_weight=True):
+                initial_cov_weight=0.8494, initial_var_weight=0.0009, dynamic_weight=True):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -67,34 +67,11 @@ class FewShotTransformer(MetaTemplate):
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
-        
-        # Extract features first
-        z_support, z_query = self.parse_feature(x, is_feature=False)
-        
-        # Get scores using the forward pass
         scores = self.set_forward(x)
         
-        # Calculate standard classification loss
-        classification_loss = self.loss_fn(scores, target)
-        
-        # Add VIC regularization
-        support_features = z_support.reshape(-1, z_support.size(-1))
-        
-        # Variance regularization
-        std_loss = torch.mean(F.relu(0.5 - torch.sqrt(torch.var(support_features, dim=0) + 1e-5)))
-        
-        # Covariance regularization
-        z_centered = support_features - support_features.mean(0)
-        cov = (z_centered.T @ z_centered) / (z_centered.size(0) - 1)
-        cov_reg = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / support_features.size(1)
-        
-        # Combined loss
-        loss = classification_loss + 0.1 * std_loss + 0.01 * cov_reg
-        
-        # Calculate accuracy
-        predict = torch.argmax(scores, dim=1)
+        loss = self.loss_fn(scores, target)
+        predict = torch.argmax(scores, dim = 1)
         acc = (predict == target).sum().item() / target.size(0)
-        
         return acc, loss
 
 class Attention(nn.Module):
@@ -104,7 +81,6 @@ class Attention(nn.Module):
         project_out = not(heads == 1 and dim_head == dim)
         
         self.heads = heads
-        self.dim_head = dim_head  # Add this line to store dim_head as an attribute
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
@@ -245,18 +221,3 @@ def cosine_distance(x1, x2):
     scale = torch.einsum('bhi, bhj -> bhij', 
             (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
     return (dots / scale)
-
-def warm_up_weight_predictor(model, optimizer, dim_head):
-    """Pre-train weight predictor to start with balanced weights"""
-    print("Warming up weight predictor...")
-    for _ in range(100):
-        for module in model.modules():
-            if hasattr(module, 'weight_predictor'):
-                # Force predictions toward balanced weights
-                dummy_input = torch.randn(8, dim_head*2).to(device)
-                pred = module.weight_predictor(dummy_input)
-                loss = F.mse_loss(pred, torch.tensor([[0.33, 0.33, 0.34]]).expand_as(pred).to(device))
-                loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-    print("Weight predictor warm-up complete")
