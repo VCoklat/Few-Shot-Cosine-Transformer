@@ -104,6 +104,7 @@ class Attention(nn.Module):
         project_out = not(heads == 1 and dim_head == dim)
         
         self.heads = heads
+        self.dim_head = dim_head  # Add this line to store dim_head as an attribute
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
