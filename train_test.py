@@ -27,6 +27,8 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.transformer import DynamicFewShotTransformer
+from torch.optim.lr_scheduler import OneCycleLR
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -43,6 +45,14 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
     else:
         raise ValueError('Unknown optimization, please define by yourself')
+
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=params.learning_rate,
+        epochs=num_epoch,
+        steps_per_epoch=len(base_loader),
+        pct_start=0.2  # Spend 20% of training warming up
+    )
 
     max_acc = 0
 
@@ -73,6 +83,31 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # In your training loop, periodically check:
+        if epoch % 5 == 0:
+            # Enable recording for a few batches
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    module.record_weights = True
+            
+            # Run a few validation batches
+            with torch.no_grad():
+                for i, (x, _) in enumerate(val_loader):
+                    if i >= 10: break  # Just need a sample
+                    model.set_forward(x.to(device))
+            
+            # Analyze weights
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    stats = module.get_weight_stats()
+                    if stats:
+                        print(f"Epoch {epoch}: Weights - Cos: {stats['cosine_mean']:.3f}, " +
+                              f"Cov: {stats['cov_mean']:.3f}, Var: {stats['var_mean']:.3f}")
+                        module.clear_weight_history()
+                        module.record_weights = False
+
+        scheduler.step()
         print()
 
     return model
@@ -190,7 +225,16 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            model = DynamicFewShotTransformer(
+                feature_model, variant=variant,
+                min_depth=1, max_depth=4,
+                min_heads=4, max_heads=12, 
+                min_dim_head=32, max_dim_head=96,
+                min_mlp=256, max_mlp=768,
+                initial_cov_weight=0.3, initial_var_weight=0.3,
+                dynamic_weight=True,
+                **few_shot_params
+            )
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
