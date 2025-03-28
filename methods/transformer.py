@@ -67,11 +67,34 @@ class FewShotTransformer(MetaTemplate):
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
+        
+        # Extract features first
+        z_support, z_query = self.parse_feature(x, is_feature=False)
+        
+        # Get scores using the forward pass
         scores = self.set_forward(x)
         
-        loss = self.loss_fn(scores, target)
-        predict = torch.argmax(scores, dim = 1)
+        # Calculate standard classification loss
+        classification_loss = self.loss_fn(scores, target)
+        
+        # Add VIC regularization
+        support_features = z_support.reshape(-1, z_support.size(-1))
+        
+        # Variance regularization
+        std_loss = torch.mean(F.relu(0.5 - torch.sqrt(torch.var(support_features, dim=0) + 1e-5)))
+        
+        # Covariance regularization
+        z_centered = support_features - support_features.mean(0)
+        cov = (z_centered.T @ z_centered) / (z_centered.size(0) - 1)
+        cov_reg = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / support_features.size(1)
+        
+        # Combined loss
+        loss = classification_loss + 0.1 * std_loss + 0.01 * cov_reg
+        
+        # Calculate accuracy
+        predict = torch.argmax(scores, dim=1)
         acc = (predict == target).sum().item() / target.size(0)
+        
         return acc, loss
 
 class Attention(nn.Module):
@@ -157,10 +180,6 @@ class Attention(nn.Module):
                 dots = (cos_weight * cosine_sim + 
                        cov_weight * cov_component + 
                        var_weight * var_component)
-                
-                # Add regularization to encourage using covariance and variance:
-                vic_loss = -torch.log(weights[:, 1].mean()) - torch.log(weights[:, 2].mean())
-                loss = classification_loss + 0.01 * vic_loss
             else:
                 # Use fixed weights
                 cov_weight = torch.sigmoid(self.fixed_cov_weight) 
