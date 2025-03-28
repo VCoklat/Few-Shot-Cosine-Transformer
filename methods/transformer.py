@@ -115,14 +115,45 @@ class Attention(nn.Module):
         
         self.weight_history = []  # To store weights for analysis
         self.record_weights = False  # Toggle for weight recording
+        
+        # Add learnable temperature for cosine similarity
+        self.cosine_temp = nn.Parameter(torch.tensor(1.0))
+        
+        # Add learnable weight for feature correlation similarity
+        self.corr_weight = nn.Parameter(torch.tensor(0.1))
+        
+        # Add layer normalization for cosine similarity
+        self.cosine_ln = nn.LayerNorm(dim_head)
     
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            # Calculate cosine similarity (invariance component)
-            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
+            # Apply layer normalization before cosine similarity for better feature distribution
+            f_q_norm = self.cosine_ln(f_q)  
+            f_k_norm = self.cosine_ln(f_k)
+
+            # Calculate cosine with normalized features
+            temp = F.softplus(self.cosine_temp) + 0.1  # Keep positive but allow scaling
+            cosine_sim = cosine_distance(f_q_norm, f_k_norm.transpose(-1, -2)) / temp
+            
+            # Add feature correlation analysis to cosine similarity
+            batch_size, seq_len = f_q.size(1), f_q.size(2)
+            f_q_flat = f_q.view(self.heads, batch_size*seq_len, -1)
+            f_k_flat = f_k.view(self.heads, batch_size*seq_len, -1)
+
+            # Calculate feature correlation matrices
+            q_corr = torch.bmm(f_q_flat, f_q_flat.transpose(-1, -2))
+            k_corr = torch.bmm(f_k_flat, f_k_flat.transpose(-1, -2))
+
+            # Feature correlation similarity
+            corr_sim = torch.matmul(q_corr, k_corr) / (torch.norm(q_corr, dim=(-1,-2), keepdim=True) * 
+                                                      torch.norm(k_corr, dim=(-1,-2), keepdim=True) + 1e-8)
+                                                      
+            # Reshape back and scale
+            corr_sim = corr_sim.view(self.heads, batch_size, seq_len, seq_len)
+            cosine_sim = cosine_sim + torch.sigmoid(self.corr_weight) * corr_sim
             
             # Calculate covariance component
             q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
@@ -233,13 +264,25 @@ class Attention(nn.Module):
         """Clear recorded weight history"""
         self.weight_history = []
 
-def cosine_distance(x1, x2):
+def cosine_distance(x1, x2, eps=1e-8):
     '''
+    Numerically stable cosine similarity
     x1      =  [b, h, n, k]
     x2      =  [b, h, k, m]
     output  =  [b, h, n, m]
     '''
+    # Calculate dot product
     dots = torch.matmul(x1, x2)
-    scale = torch.einsum('bhi, bhj -> bhij', 
-            (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
-    return (dots / scale)
+    
+    # Calculate norms with epsilon for stability
+    x1_norm = torch.norm(x1, 2, dim=-1, keepdim=True)
+    x2_norm = torch.norm(x2, 2, dim=-2, keepdim=True)
+    
+    # Avoid division by zero
+    x1_norm = torch.clamp(x1_norm, min=eps)
+    x2_norm = torch.clamp(x2_norm, min=eps)
+    
+    # Calculate scale with broadcasting
+    scale = torch.matmul(x1_norm, x2_norm)
+    
+    return dots / scale
