@@ -523,8 +523,25 @@ class DynamicAttention(nn.Module):
                 q_global = f_q.mean(dim=(1, 2))  # [h, d]
                 k_global = f_k.mean(dim=(1, 2))  # [h, d]
                 
-                # Concatenate global query and key features, but only use dim_head dimensions
-                qk_features = torch.cat([q_global[:, :dim_head], k_global[:, :dim_head]], dim=-1)
+                # *** FIX: Ensure dimensions match weight predictor input size ***
+                # Pad or slice q_global and k_global to ensure correct dimensions
+                max_dim_head = self.weight_predictor[0].in_features // 2  # Extract expected dimension
+                
+                # Safely handle dimension mismatch
+                if q_global.size(-1) != dim_head or dim_head != max_dim_head:
+                    # Pad or truncate to match expected dimensions
+                    q_global_fixed = torch.zeros(num_heads, max_dim_head, device=q_global.device)
+                    k_global_fixed = torch.zeros(num_heads, max_dim_head, device=k_global.device)
+                    
+                    # Copy available dimensions
+                    min_dim = min(q_global.size(-1), max_dim_head)
+                    q_global_fixed[:, :min_dim] = q_global[:, :min_dim]
+                    k_global_fixed[:, :min_dim] = k_global[:, :min_dim]
+                    
+                    # Create properly sized feature vector
+                    qk_features = torch.cat([q_global_fixed, k_global_fixed], dim=-1)
+                else:
+                    qk_features = torch.cat([q_global, k_global], dim=-1)
                 
                 # Predict weights
                 weights = self.weight_predictor(qk_features)
