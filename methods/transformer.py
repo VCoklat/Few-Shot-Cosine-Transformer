@@ -85,6 +85,9 @@ class Attention(nn.Module):
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
         
+        # Add learnable variance scaling factor (initialize slightly above 1.0)
+        self.var_scale = nn.Parameter(torch.tensor(1.5))
+        
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
@@ -129,9 +132,12 @@ class Attention(nn.Module):
             q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
             k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
             
-            # Create variance-based attention
+            # Apply sigmoid to ensure positive scaling in a controlled range
+            var_scale = F.sigmoid(self.var_scale) * 3.0  # Allows scaling 0-3x
+            
+            # Create variance-based attention with learnable scaling
             var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
-            var_component = var_component / f_q.size(-1)  # Scale like covariance
+            var_component = var_component * var_scale / f_q.size(-1)  # Apply learnable scaling
             
             if self.dynamic_weight:
                 # Use global feature statistics
@@ -184,7 +190,7 @@ class Attention(nn.Module):
         
         weights = np.array(self.weight_history)
         if weights.shape[1] == 3:  # We have 3 components
-            return {
+            stats = {
                 'cosine_mean': float(weights[:, 0].mean()),
                 'cov_mean': float(weights[:, 1].mean()),
                 'var_mean': float(weights[:, 2].mean()),
@@ -197,6 +203,9 @@ class Attention(nn.Module):
                     'var': np.histogram(weights[:, 2], bins=10, range=(0,1))[0].tolist()
                 }
             }
+            if hasattr(self, 'var_scale'):
+                stats['var_scale'] = float(F.sigmoid(self.var_scale).item() * 3.0)
+            return stats
         else:  # Legacy format with single weight
             weights = np.array(self.weight_history)
             return {
