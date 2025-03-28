@@ -88,6 +88,9 @@ class Attention(nn.Module):
         # Add learnable variance scaling factor (initialize slightly above 1.0)
         self.var_scale = nn.Parameter(torch.tensor(1.5))
         
+        # Add learnable optimal variance target
+        self.optimal_variance = nn.Parameter(torch.tensor(1.0))
+        
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
@@ -135,9 +138,17 @@ class Attention(nn.Module):
             # Apply sigmoid to ensure positive scaling in a controlled range
             var_scale = F.sigmoid(self.var_scale) * 3.0  # Allows scaling 0-3x
             
-            # Create variance-based attention with learnable scaling
-            var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
-            var_component = var_component * var_scale / f_q.size(-1)  # Apply learnable scaling
+            # Create bell curve that peaks at optimal variance
+            q_var_ratio = torch.exp(-((q_var - self.optimal_variance)**2) / (2 * self.optimal_variance))
+            k_var_ratio = torch.exp(-((k_var - self.optimal_variance)**2) / (2 * self.optimal_variance))
+            
+            # Variance component that rewards being close to optimal variance
+            var_component = torch.matmul(q_var_ratio, k_var_ratio)
+            var_component = var_component * var_scale / f_q.size(-1)
+            
+            # Create interaction term between variance and covariance
+            interaction_scale = nn.Parameter(torch.tensor(0.5))
+            interaction_term = torch.tanh(interaction_scale) * var_component * cov_component
             
             if self.dynamic_weight:
                 # Use global feature statistics
@@ -162,7 +173,8 @@ class Attention(nn.Module):
                 # Combine all three components
                 dots = (cos_weight * cosine_sim + 
                        cov_weight * cov_component + 
-                       var_weight * var_component)
+                       var_weight * var_component +
+                       interaction_term)
             else:
                 # Use fixed weights
                 cov_weight = torch.sigmoid(self.fixed_cov_weight) 
@@ -172,7 +184,8 @@ class Attention(nn.Module):
                 
                 dots = (cos_weight * cosine_sim + 
                        cov_weight * cov_component + 
-                       var_weight * var_component)
+                       var_weight * var_component +
+                       interaction_term)
                 
             out = torch.matmul(dots, f_v)
         
