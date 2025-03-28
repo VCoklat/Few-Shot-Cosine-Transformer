@@ -140,8 +140,8 @@ class Attention(nn.Module):
             
             # Add feature correlation analysis to cosine similarity
             batch_size, seq_len = f_q.size(1), f_q.size(2)
-            f_q_flat = f_q.view(self.heads, batch_size*seq_len, -1)
-            f_k_flat = f_k.view(self.heads, batch_size*seq_len, -1)
+            f_q_flat = f_q.contiguous().view(self.heads, batch_size*seq_len, -1)
+            f_k_flat = f_k.contiguous().view(self.heads, batch_size*seq_len, -1)
 
             # Calculate feature correlation matrices
             q_corr = torch.bmm(f_q_flat, f_q_flat.transpose(-1, -2))
