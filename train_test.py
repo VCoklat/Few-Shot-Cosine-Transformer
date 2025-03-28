@@ -241,7 +241,24 @@ if __name__ == '__main__':
     model = model.to(device)
     
     if hasattr(model, 'ATTN') and model.ATTN.dynamic_weight:
-        warm_up_weight_predictor(model, optimizer, model.ATTN.heads * model.ATTN.dim_head)
+        # Create a temporary optimizer just for warming up the weight predictor
+        if optimization == 'Adam':
+            temp_optimizer = torch.optim.Adam(
+                model.parameters(), lr=0.001, weight_decay=params.weight_decay)
+        elif optimization == 'AdamW':
+            temp_optimizer = torch.optim.AdamW(
+                model.parameters(), lr=0.001, weight_decay=params.weight_decay)
+        elif optimization == 'SGD':
+            temp_optimizer = torch.optim.SGD(
+                model.parameters(), lr=0.001, momentum=params.momentum, weight_decay=params.weight_decay)
+        else:
+            raise ValueError('Unknown optimization, please define by yourself')
+        
+        # Use the temporary optimizer for warmup
+        warm_up_weight_predictor(model, temp_optimizer, model.ATTN.heads * model.ATTN.dim_head)
+        
+        # Delete the temporary optimizer to free memory
+        del temp_optimizer
 
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
