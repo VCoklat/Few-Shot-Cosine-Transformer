@@ -580,8 +580,19 @@ class DynamicAttention(nn.Module):
         # Reshape and project output
         out = rearrange(out, 'h q n d -> q n (h d)')
         
-        # Use only the needed portion of the output projection
-        return self.output_linear(out[:, :, :inner_dim])
+        # FIX: Handle output projection with correct dimensions
+        # Instead of slicing, we need to create a properly sized tensor
+        inner_dim = num_heads * dim_head
+        max_inner_dim = self.output_linear.weight.size(1)  # Get expected input size
+        
+        if inner_dim != max_inner_dim:
+            # Create a padded version of our output tensor
+            padded_out = torch.zeros(out.size(0), out.size(1), max_inner_dim, device=out.device)
+            padded_out[:, :, :inner_dim] = out[:, :, :inner_dim]
+            return self.output_linear(padded_out)
+        else:
+            # If dimensions match, proceed normally
+            return self.output_linear(out)
     
     def get_weight_stats(self):
         """Returns statistics about the weights used"""
