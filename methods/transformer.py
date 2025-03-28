@@ -658,5 +658,23 @@ class DynamicProjection(nn.Module):
     
     def forward(self, x, dim_head):
         x = self.norm(x)
-        x = self.linear(x)[:, :, :dim_head]  # Use only needed portion
-        return self.classifier(x).squeeze()
+        projected = self.linear(x)
+        
+        # Handle different dimension sizes
+        if self.variant == "cosine":
+            # For CosineDistLinear, we need to pad to the full dimension since 
+            # the weights are already fixed at max_dim_head size
+            max_dim_head = self.classifier.weight.size(1)  # Get expected input dimension
+            
+            # If dimensions don't match, pad with zeros
+            if dim_head != max_dim_head:
+                # Create padded tensor
+                padded = torch.zeros(*projected.shape[:-1], max_dim_head, device=projected.device)
+                # Copy data from projection
+                padded[:, :, :dim_head] = projected[:, :, :dim_head]
+                return self.classifier(padded).squeeze()
+            else:
+                return self.classifier(projected).squeeze()
+        else:
+            # For regular linear layer, we can just use the slice
+            return self.classifier(projected[:, :, :dim_head]).squeeze()
