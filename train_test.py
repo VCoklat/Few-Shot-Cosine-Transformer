@@ -27,7 +27,6 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
-from methods.transformer import DynamicFewShotTransformer
 from torch.optim.lr_scheduler import OneCycleLR
 
 global device
@@ -61,7 +60,6 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         with torch.no_grad():
             model.eval()
 
@@ -225,16 +223,7 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            model = DynamicFewShotTransformer(
-                feature_model, variant=variant,
-                min_depth=1, max_depth=4,
-                min_heads=4, max_heads=12, 
-                min_dim_head=32, max_dim_head=96,
-                min_mlp=256, max_mlp=768,
-                initial_cov_weight=0.3, initial_var_weight=0.3,
-                dynamic_weight=True,
-                **few_shot_params
-            )
+            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
