@@ -108,7 +108,7 @@ class Attention(nn.Module):
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
         self.weight_history = []  # To store weights for analysis
-        self.record_weights = False  # Toggle for weight recording
+        self.record_weights = False  # Toggle for weight recording during evaluation
     
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
