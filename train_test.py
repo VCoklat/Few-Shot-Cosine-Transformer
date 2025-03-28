@@ -27,7 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
-from methods.dynamic_transformer import DynamicFewShotTransformer
+from methods.transformer import DynamicFewShotTransformer
 from torch.optim.lr_scheduler import OneCycleLR
 
 global device
