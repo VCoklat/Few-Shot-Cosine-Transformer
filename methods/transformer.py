@@ -662,16 +662,23 @@ class DynamicProjection(nn.Module):
         
         # Handle different dimension sizes
         if self.variant == "cosine":
-            # For CosineDistLinear, we need to pad to the full dimension since 
-            # the weights are already fixed at max_dim_head size
-            max_dim_head = self.classifier.weight.size(1)  # Get expected input dimension
+            # For CosineDistLinear, get expected dimension from the in_features attribute
+            # or through introspection of the internal structure
+            if hasattr(self.classifier, 'in_features'):
+                max_dim_head = self.classifier.in_features
+            elif hasattr(self.classifier, 'L') and hasattr(self.classifier.L, 'in_features'):
+                max_dim_head = self.classifier.L.in_features
+            else:
+                # Fallback to the projection size - safer than trying to access weight
+                max_dim_head = self.linear.out_features
             
             # If dimensions don't match, pad with zeros
             if dim_head != max_dim_head:
                 # Create padded tensor
                 padded = torch.zeros(*projected.shape[:-1], max_dim_head, device=projected.device)
-                # Copy data from projection
-                padded[:, :, :dim_head] = projected[:, :, :dim_head]
+                # Copy data from projection (use min to avoid out-of-bounds)
+                copy_dims = min(dim_head, max_dim_head)
+                padded[:, :, :copy_dims] = projected[:, :, :copy_dims]
                 return self.classifier(padded).squeeze()
             else:
                 return self.classifier(projected).squeeze()
