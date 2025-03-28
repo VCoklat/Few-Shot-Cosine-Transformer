@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.transformer import warm_up_weight_predictor
 from torch.optim.lr_scheduler import OneCycleLR
 
 global device
@@ -239,7 +240,9 @@ if __name__ == '__main__':
 
     model = model.to(device)
     
-    
+    if hasattr(model, 'ATTN') and model.ATTN.dynamic_weight:
+        warm_up_weight_predictor(model, optimizer, model.ATTN.heads * model.ATTN.dim_head)
+
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
     if params.train_aug:

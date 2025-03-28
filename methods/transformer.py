@@ -245,14 +245,17 @@ def cosine_distance(x1, x2):
             (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
     return (dots / scale)
 
-# Before main training, warm up the weight predictor
-for _ in range(100):
-    for module in model.modules():
-        if hasattr(module, 'weight_predictor'):
-            # Force predictions toward balanced weights
-            dummy_input = torch.randn(8, dim_head*2).to(device)
-            pred = module.weight_predictor(dummy_input)
-            loss = F.mse_loss(pred, torch.tensor([[0.33, 0.33, 0.34]]).expand_as(pred).to(device))
-            loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
+def warm_up_weight_predictor(model, optimizer, dim_head):
+    """Pre-train weight predictor to start with balanced weights"""
+    print("Warming up weight predictor...")
+    for _ in range(100):
+        for module in model.modules():
+            if hasattr(module, 'weight_predictor'):
+                # Force predictions toward balanced weights
+                dummy_input = torch.randn(8, dim_head*2).to(device)
+                pred = module.weight_predictor(dummy_input)
+                loss = F.mse_loss(pred, torch.tensor([[0.33, 0.33, 0.34]]).expand_as(pred).to(device))
+                loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+    print("Weight predictor warm-up complete")
