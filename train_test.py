@@ -76,18 +76,23 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     return model
 
 def direct_test(test_loader, model, params):
-
-    correct = 0
-    count = 0
     acc = []
-
+    
     iter_num = len(test_loader)
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            scores = model.set_forward(x)
-            pred = scores.data.cpu().numpy().argmax(axis=1)
+            with torch.cuda.amp.autocast(enabled=True):  # Use mixed precision
+                scores = model.set_forward(x)
+                pred = scores.data.cpu().numpy().argmax(axis=1)
+            
+            # Move computation to CPU and free GPU memory
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
             acc.append(np.mean(pred == y)*100)
+            
+            # Clear unnecessary tensors
+            del scores
+            torch.cuda.empty_cache()
+            
             pbar.set_description(
                 'Test       | Acc {:.6f}'.format(np.mean(acc)))
             pbar.update(1)
@@ -235,10 +240,6 @@ if __name__ == '__main__':
     # Implement memory optimization
     import os
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-
-    # Process batches in smaller chunks
-    def direct_test(test_loader, model, params):
-        return acc_mean, acc_std
 
 ######################################################################
 
