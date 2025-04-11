@@ -75,10 +75,15 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
     return model
 
+# Add error handling to direct_test
 def direct_test(test_loader, model, params):
     acc = []
     
     iter_num = len(test_loader)
+    if iter_num == 0:
+        print("ERROR: Test loader is empty")
+        return 0.0, 0.0  # Return placeholder values instead of NaN
+        
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
             with torch.cuda.amp.autocast(enabled=True):  # Use mixed precision
@@ -234,17 +239,10 @@ if __name__ == '__main__':
     print("===================================")
     print("Test phase: ")
 
-    # Clear CUDA cache to free up memory
+    # Memory optimization (keep this part)
     torch.cuda.empty_cache()
-
-    # Implement memory optimization
     import os
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-
-######################################################################
-
-    print("===================================")
-    print("Test phase: ")
 
     iter_num = params.test_iter
     
@@ -261,7 +259,10 @@ if __name__ == '__main__':
             testfile = configs.data_dir['emnist'] + split + '.json'
     else:
         testfile = configs.data_dir[params.dataset] + split + '.json'
-        
+
+    print(f"Testing with file: {testfile}")
+    if not os.path.exists(testfile):
+        print(f"ERROR: Test file {testfile} does not exist!")
         
     if params.save_iter != -1:
         modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
@@ -271,6 +272,12 @@ if __name__ == '__main__':
     test_datamgr = SetDataManager(
         image_size, n_episode=iter_num,  **few_shot_params)
     test_loader = test_datamgr.get_data_loader(testfile, aug=False)
+
+    # Add this before calling direct_test
+    test_loader_size = len(test_loader)
+    print(f"Test loader contains {test_loader_size} episodes")
+    if test_loader_size == 0:
+        print("WARNING: Test loader is empty! Check your data paths and configuration.")
  
     acc_all = []
    
