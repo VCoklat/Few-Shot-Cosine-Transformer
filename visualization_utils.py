@@ -409,9 +409,12 @@ def analyze_class_specific_weights(model, data_loader, n_classes, save_path=None
     
     # Process batches
     with torch.no_grad():
+        batch_count = 0
         for x, y in data_loader:
+            if batch_count >= 5:  # Limit to 5 batches to speed up analysis
+                break
+                
             x = x.to(device)
-            y = y.to(device)
             
             # Forward pass to collect weights
             _ = model.set_forward(x)
@@ -419,25 +422,26 @@ def analyze_class_specific_weights(model, data_loader, n_classes, save_path=None
             # Get weights from attention module
             for module in model.modules():
                 if isinstance(module, Attention) and module.weight_history:
-                    # For each sample in the batch
-                    for i, label_tensor in enumerate(y.cpu().numpy()):
+                    # In few-shot learning, we might not have explicit class labels in y
+                    # Instead, we'll use position in the batch as pseudo-class
+                    n_samples = min(len(module.weight_history), n_classes)
+                    
+                    for i in range(n_samples):
+                        # Assign class based on position (simplified approach)
+                        class_idx = i % n_classes
+                        
                         if i < len(module.weight_history):
-                            # Convert numpy array to int for dictionary key
-                            label = int(label_tensor) if isinstance(label_tensor, np.ndarray) else int(label_tensor)
-                            
-                            # Check if the label is within our expected range
-                            if 0 <= label < n_classes:
-                                weights = module.weight_history[i]
-                                class_weights[label]['cosine'].append(weights[0])
-                                class_weights[label]['covariance'].append(weights[1])
-                                class_weights[label]['variance'].append(weights[2])
-                            else:
-                                print(f"Warning: Label {label} is out of expected range (0-{n_classes-1})")
+                            weights = module.weight_history[i]
+                            class_weights[class_idx]['cosine'].append(weights[0])
+                            class_weights[class_idx]['covariance'].append(weights[1])
+                            class_weights[class_idx]['variance'].append(weights[2])
             
             # Clear history after each batch
             for module in model.modules():
                 if isinstance(module, Attention):
                     module.clear_weight_history()
+                    
+            batch_count += 1
     
     # Turn off weight recording
     for module in model.modules():
@@ -464,7 +468,7 @@ def analyze_class_specific_weights(model, data_loader, n_classes, save_path=None
             data = [class_weights[c][comp] for c in active_classes]
             axes[i].boxplot(data)
             axes[i].set_title(f'{comp.capitalize()} Weight Distribution')
-            axes[i].set_xlabel('Class')
+            axes[i].set_xlabel('Position in Episode')
             axes[i].set_ylabel('Weight Value')
             axes[i].set_xticklabels([str(c) for c in active_classes])
     
