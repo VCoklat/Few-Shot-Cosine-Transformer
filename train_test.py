@@ -29,6 +29,14 @@ from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
 from torch.optim.lr_scheduler import OneCycleLR
 
+# In train_test.py, import the visualization utilities
+from visualization_utils import (
+    setup_visualization_tools,
+    visualize_attention_rollout,
+    analyze_class_specific_weights
+)
+import matplotlib.pyplot as plt
+
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -60,6 +68,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)
+        # Add this after the call to model.train_loop in train() function
+        if epoch % 5 == 0:
+            # Record weights for evolution tracking
+            model.record_epoch_weights(epoch)
+
         with torch.no_grad():
             model.eval()
 
@@ -107,6 +120,21 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         scheduler.step()
         print()
+
+    # Add this at the end of training:
+    if hasattr(model, 'plot_weight_evolution'):
+        fig = model.plot_weight_evolution()
+        if fig:
+            plt.savefig('visualizations/weight_evolution.png')
+            plt.close(fig)
+            print("Saved weight evolution plot: visualizations/weight_evolution.png")
+
+    if hasattr(model, 'plot_var_scale_evolution'):
+        fig = model.plot_var_scale_evolution()
+        if fig:
+            plt.savefig('visualizations/var_scale_evolution.png')
+            plt.close(fig)
+            print("Saved variance scale evolution plot: visualizations/var_scale_evolution.png")
 
     return model
 
@@ -238,7 +266,10 @@ if __name__ == '__main__':
         raise ValueError('Unknown method')
 
     model = model.to(device)
-    
+
+    # After creating the model:
+    from visualization_utils import setup_visualization_tools
+    model = setup_visualization_tools(model)
     
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
@@ -259,24 +290,68 @@ if __name__ == '__main__':
     model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
 
     # Add to train.py after training loop
-    def analyze_dynamic_weights(model):
-        """Analyze the learned dynamic weights"""
-        # Enable weight recording
+    def analyze_dynamic_weights_comprehensive(model, val_loader):
+        """Comprehensive analysis and visualization of dynamic weights"""
+        # Create output directory for visualizations
+        os.makedirs("visualizations", exist_ok=True)
+        
+        # Setup visualization tools if not already done
+        model = setup_visualization_tools(model)
+        
+        # 1. Collect basic dynamic weight statistics
+        print("\n===== COLLECTING DYNAMIC WEIGHT STATISTICS =====")
         for module in model.modules():
             if isinstance(module, Attention):
                 module.record_weights = True
+                module.clear_weight_history()
         
         # Run validation to collect weights
-        print("Collecting dynamic weight statistics...")
         with torch.no_grad():
             model.eval()
-            with tqdm.tqdm(total=len(val_loader)) as pbar:
+            with tqdm.tqdm(total=min(10, len(val_loader))) as pbar:
                 for i, (x, _) in enumerate(val_loader):
+                    if i >= 10: break  # Limit to 10 batches for speed
                     x = x.to(device)
                     model.set_forward(x)
                     pbar.update(1)
         
-        # Analyze weights
+        # 2. Generate radar charts
+        print("\n===== GENERATING WEIGHT RADAR CHARTS =====")
+        for i, module in enumerate(model.modules()):
+            if isinstance(module, Attention) and hasattr(module, 'visualize_weight_radar'):
+                fig = module.visualize_weight_radar()
+                if fig:
+                    plt.savefig(f"visualizations/weight_radar_{i}.png")
+                    plt.close(fig)
+                    print(f"Saved weight radar chart: visualizations/weight_radar_{i}.png")
+        
+        # 3. Generate component contribution heatmaps
+        print("\n===== GENERATING COMPONENT CONTRIBUTION HEATMAPS =====")
+        next(iter(val_loader))[0][:1].to(device)  # Get a single sample
+        for i, module in enumerate(model.modules()):
+            if isinstance(module, Attention) and hasattr(module, 'visualize_component_contributions'):
+                fig = module.visualize_component_contributions()
+                if fig:
+                    plt.savefig(f"visualizations/component_heatmap_{i}.png")
+                    plt.close(fig)
+                    print(f"Saved component heatmap: visualizations/component_heatmap_{i}.png")
+        
+        # 4. Generate attention rollout visualizations
+        print("\n===== GENERATING ATTENTION ROLLOUT VISUALIZATIONS =====")
+        sample_input, _ = next(iter(val_loader))
+        sample_input = sample_input[:1]  # Just one sample
+        figs = visualize_attention_rollout(model, sample_input, save_path="visualizations/attention_rollout")
+        for fig in figs:
+            plt.close(fig)
+        
+        # 5. Generate class-specific weight distribution
+        print("\n===== GENERATING CLASS-SPECIFIC WEIGHT DISTRIBUTIONS =====")
+        class_weights, fig = analyze_class_specific_weights(
+            model, val_loader, model.n_way, save_path="visualizations/class_specific_weights.png")
+        plt.close(fig)
+        
+        # 6. Print basic statistics
+        print("\n===== ATTENTION COMPONENT WEIGHT STATISTICS =====")
         for i, module in enumerate(model.modules()):
             if isinstance(module, Attention):
                 stats = module.get_weight_stats()
@@ -286,27 +361,14 @@ if __name__ == '__main__':
                         print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
                         print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
                         print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
-                        print("  Distribution:")
-                        for comp in ['cosine', 'cov', 'var']:
-                            print(f"    {comp.capitalize()}:")
-                            for bin_idx, count in enumerate(stats['histogram'][comp]):
-                                bin_start = bin_idx/10
-                                bin_end = (bin_idx+1)/10
-                                print(f"      {bin_start:.1f}-{bin_end:.1f}: {count}")
-                    else:  # Legacy format
-                        print(f"  Mean: {stats['mean']:.4f}")
-                        print(f"  Std: {stats['std']:.4f}")
-                        print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
-                        print("  Distribution:")
-                        for bin_idx, count in enumerate(stats['histogram']):
-                            bin_start = bin_idx/10
-                            bin_end = (bin_idx+1)/10
-                            print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                        if 'var_scale' in stats:
+                            print(f"  Variance scale: {stats['var_scale']:.4f}")
                 module.clear_weight_history()
-                module.record_weights = False
+        
+        print("\n===== VISUALIZATIONS SAVED IN ./visualizations DIRECTORY =====")
 
-    # Call this function after training
-    analyze_dynamic_weights(model)
+    # Call this improved function after training
+    analyze_dynamic_weights_comprehensive(model, val_loader)
 
 ######################################################################
 
