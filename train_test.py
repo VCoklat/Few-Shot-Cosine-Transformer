@@ -50,6 +50,41 @@ def enable_weight_recording(model, enable=True):
             if enable:
                 module.clear_weight_history()
 
+# Add debugging to record_epoch_weights function:
+def record_epoch_weights(self, epoch):
+    # Collect weights from all attention modules
+    print(f"Recording weights for epoch {epoch}...")
+    epoch_weights = []
+    epoch_var_scales = []
+    
+    count = 0
+    for module in self.modules():
+        if isinstance(module, Attention) and hasattr(module, 'dynamic_weight'):
+            if module.weight_history:
+                count += 1
+                print(f"Found {len(module.weight_history)} weight records in module")
+                # Average the weights collected during this epoch
+                avg_weights = np.mean(np.array(module.weight_history), axis=0)
+                epoch_weights.append((epoch, avg_weights))
+            
+            # Record the current var_scale value
+            if hasattr(module, 'var_scale'):
+                var_scale_value = float(F.sigmoid(module.var_scale).item() * 3.0)
+                epoch_var_scales.append((epoch, var_scale_value))
+            
+            # Clear the within-epoch history for the next epoch
+            module.clear_weight_history()
+    
+    if count == 0:
+        print("Warning: No modules with weight history found!")
+    
+    if epoch_weights:
+        print(f"Adding {len(epoch_weights)} weight records to history")
+        self.epoch_weight_history.extend(epoch_weights)
+    
+    if epoch_var_scales:
+        self.epoch_var_scale_history.extend(epoch_var_scales)
+
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
     if optimization == 'Adam':
         optimizer = torch.optim.Adam(
@@ -357,9 +392,7 @@ if __name__ == '__main__':
         
         # 4. Generate attention rollout visualizations
         print("\n===== GENERATING ATTENTION ROLLOUT VISUALIZATIONS =====")
-        sample_input, _ = next(iter(val_loader))
-        sample_input = sample_input[:1]  # Just one sample
-        figs = visualize_attention_rollout(model, sample_input, save_path="visualizations/attention_rollout")
+        figs = visualize_attention_rollout(model, val_loader, save_path="visualizations/attention_rollout")
         for fig in figs:
             plt.close(fig)
         

@@ -299,12 +299,12 @@ def add_weight_evolution_tracking(model):
     model.plot_var_scale_evolution = types.MethodType(plot_var_scale_evolution, model)
 
 
-def visualize_attention_rollout(model, x_sample, save_path=None):
-    """Visualize attention scores for a sample input
+def visualize_attention_rollout(model, val_loader, save_path=None):
+    """Visualize attention scores for few-shot episodes
     
     Args:
         model: FewShotTransformer model
-        x_sample: Input sample to visualize
+        val_loader: Validation data loader containing few-shot episodes
         save_path: Path to save the visualization (None for no saving)
     
     Returns:
@@ -319,10 +319,14 @@ def visualize_attention_rollout(model, x_sample, save_path=None):
             if not hasattr(module, 'attention_scores'):
                 module.attention_scores = None
     
-    # Process the sample through the model
+    # Process a proper few-shot episode through the model
     model.eval()
     with torch.no_grad():
-        _ = model.set_forward(x_sample.to(device))
+        # Get a single episode from the loader
+        x, _ = next(iter(val_loader))
+        x = x.to(device)
+        # Forward pass
+        _ = model.set_forward(x)
     
     # Create visualization
     figs = []
