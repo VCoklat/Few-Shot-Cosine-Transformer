@@ -33,12 +33,22 @@ from torch.optim.lr_scheduler import OneCycleLR
 from visualization_utils import (
     setup_visualization_tools,
     visualize_attention_rollout,
-    analyze_class_specific_weights
+    analyze_class_specific_weights,
+    enable_weight_recording
 )
 import matplotlib.pyplot as plt
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Add this function to enable weight recording
+def enable_weight_recording(model, enable=True):
+    """Enable or disable weight recording for all attention modules"""
+    for module in model.modules():
+        if isinstance(module, Attention):
+            module.record_weights = enable
+            if enable:
+                module.clear_weight_history()
 
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
     if optimization == 'Adam':
@@ -72,6 +82,9 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         if epoch % 5 == 0:
             # Record weights for evolution tracking
             model.record_epoch_weights(epoch)
+
+        # Before validation, enable weight recording
+        enable_weight_recording(model, True)
 
         with torch.no_grad():
             model.eval()
@@ -118,11 +131,16 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                         module.clear_weight_history()
                         module.record_weights = False
 
+        # Disable recording to avoid slowing down training
+        enable_weight_recording(model, False)
+
         scheduler.step()
         print()
 
     # Add this at the end of training:
     if hasattr(model, 'plot_weight_evolution'):
+        print("Generating weight evolution plot...")
+        os.makedirs("visualizations", exist_ok=True)
         fig = model.plot_weight_evolution()
         if fig:
             plt.savefig('visualizations/weight_evolution.png')
@@ -130,6 +148,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             print("Saved weight evolution plot: visualizations/weight_evolution.png")
 
     if hasattr(model, 'plot_var_scale_evolution'):
+        print("Generating variance scale evolution plot...")
         fig = model.plot_var_scale_evolution()
         if fig:
             plt.savefig('visualizations/var_scale_evolution.png')

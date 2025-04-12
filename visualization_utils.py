@@ -452,3 +452,12 @@ def setup_visualization_tools(model):
     add_weight_evolution_tracking(model)
     
     return model
+
+
+def enable_weight_recording(model, enable=True):
+    """Enable or disable weight recording for all attention modules"""
+    for module in model.modules():
+        if isinstance(module, Attention):
+            module.record_weights = enable
+            if enable:
+                module.clear_weight_history()
