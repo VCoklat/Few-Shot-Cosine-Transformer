@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import types
 from einops import rearrange
 import torch.nn.functional as F
-from methods.transformer import Attention
+from methods.transformer import Attention, cosine_distance  # Import the function directly
 
 def add_component_contribution_heatmap(module):
     """Add method to Attention class to capture component contributions"""
@@ -24,7 +24,8 @@ def add_component_contribution_heatmap(module):
         
         if self.variant == "cosine":
             # Calculate all components as in original forward
-            cosine_sim = self.cosine_distance(f_q, f_k.transpose(-1, -2))
+            # Use cosine_distance as a standalone function, not as a method
+            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
             q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
             k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
