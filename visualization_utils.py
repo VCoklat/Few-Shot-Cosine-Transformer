@@ -394,17 +394,7 @@ def visualize_attention_rollout(model, val_loader, save_path=None):
 
 
 def analyze_class_specific_weights(model, data_loader, n_classes, save_path=None):
-    """Collect and visualize class-specific attention weight distributions
-    
-    Args:
-        model: FewShotTransformer model
-        data_loader: Data loader for samples
-        n_classes: Number of classes
-        save_path: Path to save the visualization (None for no saving)
-    
-    Returns:
-        Dictionary with class-specific weights and matplotlib figure
-    """
+    """Collect and visualize class-specific attention weight distributions"""
     device = next(model.parameters()).device
     
     # Storage for class-specific weights
@@ -430,12 +420,19 @@ def analyze_class_specific_weights(model, data_loader, n_classes, save_path=None
             for module in model.modules():
                 if isinstance(module, Attention) and module.weight_history:
                     # For each sample in the batch
-                    for i, label in enumerate(y.cpu().numpy()):
+                    for i, label_tensor in enumerate(y.cpu().numpy()):
                         if i < len(module.weight_history):
-                            weights = module.weight_history[i]
-                            class_weights[label]['cosine'].append(weights[0])
-                            class_weights[label]['covariance'].append(weights[1])
-                            class_weights[label]['variance'].append(weights[2])
+                            # Convert numpy array to int for dictionary key
+                            label = int(label_tensor) if isinstance(label_tensor, np.ndarray) else int(label_tensor)
+                            
+                            # Check if the label is within our expected range
+                            if 0 <= label < n_classes:
+                                weights = module.weight_history[i]
+                                class_weights[label]['cosine'].append(weights[0])
+                                class_weights[label]['covariance'].append(weights[1])
+                                class_weights[label]['variance'].append(weights[2])
+                            else:
+                                print(f"Warning: Label {label} is out of expected range (0-{n_classes-1})")
             
             # Clear history after each batch
             for module in model.modules():
@@ -451,13 +448,25 @@ def analyze_class_specific_weights(model, data_loader, n_classes, save_path=None
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     components = ['cosine', 'covariance', 'variance']
     
-    for i, comp in enumerate(components):
-        data = [class_weights[c][comp] for c in range(n_classes) if class_weights[c][comp]]
-        if data:
+    # Filter out empty classes
+    active_classes = [c for c in range(n_classes) if class_weights[c]['cosine']]
+    
+    if not active_classes:
+        print("No class data collected. Check if labels are within the expected range.")
+        # Create empty plot with message
+        for i, comp in enumerate(components):
+            axes[i].text(0.5, 0.5, "No class data available", 
+                         horizontalalignment='center', verticalalignment='center')
+            axes[i].set_title(f'{comp.capitalize()} Weight Distribution')
+    else:
+        print(f"Found data for {len(active_classes)} classes: {active_classes}")
+        for i, comp in enumerate(components):
+            data = [class_weights[c][comp] for c in active_classes]
             axes[i].boxplot(data)
             axes[i].set_title(f'{comp.capitalize()} Weight Distribution')
             axes[i].set_xlabel('Class')
             axes[i].set_ylabel('Weight Value')
+            axes[i].set_xticklabels([str(c) for c in active_classes])
     
     plt.tight_layout()
     
