@@ -82,6 +82,7 @@ def add_component_contribution_heatmap(module):
             
             # Store attention scores for rollout visualization
             if hasattr(self, 'record_attention') and self.record_attention:
+                # Store full attention matrix, not just a single position
                 self.attention_scores = dots.detach().clone()
                 
             out = torch.matmul(dots, f_v)
@@ -92,7 +93,8 @@ def add_component_contribution_heatmap(module):
             
             # Store attention scores for rollout visualization
             if hasattr(self, 'record_attention') and self.record_attention:
-                self.attention_scores = self.sm(dots).detach().clone()
+                # Store full attention matrix, not just a single position
+                self.attention_scores = dots.detach().clone()
                 
             out = torch.matmul(self.sm(dots), f_v)
             final_output = out
@@ -335,6 +337,14 @@ def visualize_attention_rollout(model, val_loader, save_path=None):
         if isinstance(module, Attention) and hasattr(module, 'attention_scores') and module.attention_scores is not None:
             attention = module.attention_scores.cpu().numpy()
             
+            # Debug the attention tensor shape
+            print(f"Attention shape for module {i}: {attention.shape}")
+            
+            # Skip if the shape isn't suitable for visualization
+            if len(attention.shape) < 3:
+                print(f"Skipping module {i} - attention shape not suitable for visualization")
+                continue
+                
             # Create figure for this attention module
             n_heads = attention.shape[0]
             fig, axes = plt.subplots(1, n_heads, figsize=(n_heads*3, 3))
@@ -342,8 +352,23 @@ def visualize_attention_rollout(model, val_loader, save_path=None):
                 axes = [axes]
             
             for h in range(n_heads):
-                # Plot attention patterns from first query position
-                im = axes[h].imshow(attention[h, 0, 0], cmap='viridis')
+                # Select the full attention matrix for this head
+                # Instead of trying to get a specific position which might be a scalar
+                if len(attention.shape) == 4:  # [heads, query_batch, seq_len1, seq_len2]
+                    # Get the first query's attention pattern
+                    att_matrix = attention[h, 0]
+                elif len(attention.shape) == 3:  # [heads, seq_len1, seq_len2]
+                    att_matrix = attention[h]
+                else:
+                    print(f"Unexpected attention shape: {attention.shape}")
+                    continue
+                    
+                # Ensure we have a 2D matrix
+                if att_matrix.ndim < 2:
+                    print(f"Head {h} attention is not 2D, shape: {att_matrix.shape}")
+                    continue
+                
+                im = axes[h].imshow(att_matrix, cmap='viridis')
                 axes[h].set_title(f'Head {h+1}')
                 axes[h].set_xlabel('Key Position')
                 axes[h].set_ylabel('Query Position')
