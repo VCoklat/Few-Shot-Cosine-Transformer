@@ -71,12 +71,16 @@ class FewShotTransformer(MetaTemplate):
         scores = self.set_forward(x)
         
         loss = self.loss_fn(scores, target)
+        if self.ATTN.dynamic_weight and hasattr(self.ATTN, 'last_weights'):
+            weights = self.ATTN.last_weights
+            entropy = -torch.sum(weights * torch.log(weights + 1e-8), dim=-1).mean()
+            loss = loss - 0.01 * entropy  # Encourage higher entropy
         predict = torch.argmax(scores, dim = 1)
         acc = (predict == target).sum().item() / target.size(0)
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight, initial_var_weight, dynamic_weight, k_shot):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight, initial_var_weight, dynamic_weight, k_shot=1):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -142,15 +146,13 @@ class Attention(nn.Module):
             var_component = var_component * var_scale / f_q.size(-1)  # Apply learnable scaling
             
             if self.dynamic_weight:
-                # Add shot count as a feature
-                shot_feature = torch.ones_like(q_global[:, :1]) * self.k_shot / 10.0  # Normalize
-                
                 # Use global feature statistics with shot count
                 q_global = f_q.mean(dim=(1, 2))
                 k_global = f_k.mean(dim=(1, 2))
+                k_shot_feat = torch.full((self.heads, 1), float(self.k_shot) / 10.0, device=q_global.device)
                 
                 # Concatenate global query and key features
-                qk_features = torch.cat([q_global, k_global, shot_feature], dim=-1)
+                qk_features = torch.cat([q_global, k_global, k_shot_feat], dim=-1)
                 
                 # Predict three weights per attention head
                 weights = self.weight_predictor(qk_features)
