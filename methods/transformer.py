@@ -16,7 +16,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.8494, initial_var_weight=0.0009, dynamic_weight=True):
+                initial_cov_weight=0.0005, initial_var_weight=0.0002, dynamic_weight=True):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -29,7 +29,8 @@ class FewShotTransformer(MetaTemplate):
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
                              initial_cov_weight=initial_cov_weight,
                              initial_var_weight=initial_var_weight,
-                             dynamic_weight=dynamic_weight)
+                             dynamic_weight=dynamic_weight,
+                             k_shot=k_shot)
         
         self.sm = nn.Softmax(dim = -2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
@@ -75,7 +76,7 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight, initial_var_weight, dynamic_weight):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight, initial_var_weight, dynamic_weight, k_shot):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -84,6 +85,7 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
+        self.k_shot = k_shot  # Pass this parameter to the Attention module
         
         # Add learnable variance scaling factor (initialize slightly above 1.0)
         self.var_scale = nn.Parameter(torch.tensor(1.5))
@@ -93,7 +95,7 @@ class Attention(nn.Module):
         if dynamic_weight:
             # Network to predict the weights based on features (now 3 components)
             self.weight_predictor = nn.Sequential(
-                nn.Linear(dim_head * 2, dim_head),
+                nn.Linear(dim_head * 2 + 1, dim_head),  # +1 for shot count feature
                 nn.LayerNorm(dim_head),
                 nn.ReLU(),
                 nn.Linear(dim_head, 3),  # Now predict 3 weights instead of 1
@@ -140,15 +142,18 @@ class Attention(nn.Module):
             var_component = var_component * var_scale / f_q.size(-1)  # Apply learnable scaling
             
             if self.dynamic_weight:
-                # Use global feature statistics
-                q_global = f_q.mean(dim=(1, 2))  # [h, d]
-                k_global = f_k.mean(dim=(1, 2))  # [h, d]
+                # Add shot count as a feature
+                shot_feature = torch.ones_like(q_global[:, :1]) * self.k_shot / 10.0  # Normalize
+                
+                # Use global feature statistics with shot count
+                q_global = f_q.mean(dim=(1, 2))
+                k_global = f_k.mean(dim=(1, 2))
                 
                 # Concatenate global query and key features
-                qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
+                qk_features = torch.cat([q_global, k_global, shot_feature], dim=-1)
                 
                 # Predict three weights per attention head
-                weights = self.weight_predictor(qk_features)  # [h, 3]
+                weights = self.weight_predictor(qk_features)
                 
                 # Record weights during evaluation if needed
                 if self.record_weights and not self.training:
