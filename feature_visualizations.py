@@ -36,7 +36,7 @@ def visualize_feature_space(model, data_loader, save_dir='feature_viz', n_sample
             x = x.to(device)
             
             # Extract features before prototype aggregation
-            z_support, z_query = model.parse_feature(x)
+            z_support, z_query = model.parse_feature(x, is_feature=False)
             
             # Reshape to [n_samples, feature_dim]
             z_all = torch.cat([z_support, z_query], dim=0)
@@ -108,7 +108,7 @@ def visualize_prototypes(model, data_loader, save_dir='feature_viz'):
             x = x.to(device)
             
             # Extract support features and compute prototypes
-            z_support, _ = model.parse_feature(x)
+            z_support, _ = model.parse_feature(x, is_feature=False)
             z_support = z_support.contiguous().view(model.n_way, model.k_shot, -1)
             z_proto = (z_support * model.sm(model.proto_weight)).sum(1)  # [n_way, feat_dim]
             
