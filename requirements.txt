@@ -11,3 +11,7 @@ pillow
 tqdm
 wandb
 einops
+scikit-learn 
+seaborn 
+umap-learn 
+scipy

@@ -38,6 +38,9 @@ from visualization_utils import (
 )
 import matplotlib.pyplot as plt
 
+# Add at the top of the file with other imports
+from feature_visualizations import run_all_visualizations
+
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -190,6 +193,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             plt.close(fig)
             print("Saved variance scale evolution plot: visualizations/var_scale_evolution.png")
 
+    # Generate feature space visualizations after training
+    if params.feature_viz:
+        print("\n===== Generating Feature Space Visualizations =====")
+        run_all_visualizations(model, val_loader, save_dir='feature_viz')
+    
     return model
 
 def direct_test(test_loader, model, params):
@@ -234,6 +242,12 @@ def change_model(model_name):
     elif model_name == 'Conv6S':
         model_name = 'Conv6SNP'
     return model_name
+
+# Add a standalone visualization function for testing pre-trained models
+def visualize_features(model, val_loader, params):
+    """Generate feature space visualizations for a pre-trained model"""
+    print("\n===== Generating Feature Space Visualizations =====")
+    run_all_visualizations(model, val_loader, save_dir='feature_viz')
 
 if __name__ == '__main__':
     
