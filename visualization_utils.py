@@ -39,9 +39,19 @@ def add_component_contribution_heatmap(module):
             var_component = var_component * var_scale / f_q.size(-1)
             
             if self.dynamic_weight:
+                # Use global feature statistics with shot count
                 q_global = f_q.mean(dim=(1, 2))
                 k_global = f_k.mean(dim=(1, 2))
-                qk_features = torch.cat([q_global, k_global], dim=-1)
+                
+                # IMPORTANT: Add k_shot feature like in the original code
+                k_shot_feat = torch.full((self.heads, 1), float(self.k_shot) / 10.0, device=q_global.device)
+                
+                # Concatenate global query and key features WITH the k_shot feature
+                qk_features = torch.cat([q_global, k_global, k_shot_feat], dim=-1)
+                
+                print(f"qk_features shape: {qk_features.shape}, weight_predictor expects: {self.weight_predictor[0].weight.shape[1]} input features")
+                
+                # Predict three weights per attention head
                 weights = self.weight_predictor(qk_features)
                 
                 if self.record_weights and not self.training:
