@@ -10,15 +10,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import torch.nn.functional as F
 
 def visualize_feature_space(model, data_loader, save_dir='feature_viz', n_samples=100):
-    """
-    Generate t-SNE and UMAP visualizations of the feature space
-    
-    Args:
-        model: The Few-Shot Transformer model
-        data_loader: DataLoader containing samples to visualize
-        save_dir: Directory to save visualizations
-        n_samples: Maximum number of samples to use (for faster computation)
-    """
+    """Generate t-SNE and UMAP visualizations of the feature space"""
     os.makedirs(save_dir, exist_ok=True)
     
     device = next(model.parameters()).device
@@ -38,17 +30,23 @@ def visualize_feature_space(model, data_loader, save_dir='feature_viz', n_sample
             # Extract features before prototype aggregation
             z_support, z_query = model.parse_feature(x, is_feature=False)
             
-            # Reshape to [n_samples, feature_dim]
-            z_all = torch.cat([z_support, z_query], dim=0)
-            z_all = z_all.view(-1, z_all.size(-1))
+            # Reshape support features: [n_way*k_shot, feature_dim]
+            z_support = z_support.view(-1, z_support.size(-1))
             
-            # Get actual class labels (repeating support/query structure)
-            batch_size = x.size(0)
-            y_all = torch.arange(model.n_way).repeat_interleave(model.k_shot + model.n_query)
+            # Reshape query features: [n_way*n_query, feature_dim]
+            z_query = z_query.view(-1, z_query.size(-1))
+            
+            # Now concatenate along first dimension
+            z_all = torch.cat([z_support, z_query], dim=0)
+            
+            # Create appropriate labels
+            support_labels = torch.arange(model.n_way).repeat_interleave(model.k_shot)
+            query_labels = torch.arange(model.n_way).repeat_interleave(model.n_query)
+            all_labels = torch.cat([support_labels, query_labels])
             
             # Add to collection
             features.append(z_all.cpu().numpy())
-            labels.append(y_all.numpy())
+            labels.append(all_labels.numpy())
     
     # Combine all batches
     features = np.vstack(features[:n_samples])
