@@ -41,6 +41,13 @@ def parse_args():
     parser.add_argument('--split'           , default='novel', help='base/val/novel, only for train.py and train_save_test.py')
                                               # default novel, but you can also test base/val class accuracy if you want 
     parser.add_argument('--save_iter'       , default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
+    
+    # Add new feature visualization arguments
+    parser.add_argument('--feature_viz', action='store_true',
+                    help='Generate feature space visualizations after training')
+    parser.add_argument('--feature_viz_only', action='store_true',
+                    help='Only run feature visualizations on a pre-trained model')
+    
     return parser.parse_args()
 
 
