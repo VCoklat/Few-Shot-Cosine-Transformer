@@ -36,6 +36,12 @@ from visualization_utils import (
     analyze_class_specific_weights,
     enable_weight_recording
 )
+from feature_analysis import (
+    setup_visualization_folder,
+    analyze_feature_properties,
+    visualize_feature_clusters,
+    compare_shot_settings
+)
 import matplotlib.pyplot as plt
 
 global device
@@ -235,6 +241,45 @@ def change_model(model_name):
         model_name = 'Conv6SNP'
     return model_name
 
+def analyze_shot_influence(model, val_loader_1shot, val_loader_5shot):
+    """Analyze how shot count influences feature properties and dynamic weights"""
+    print("\n===== ANALYZING SHOT INFLUENCE ON FEATURE PROPERTIES =====")
+    
+    # Setup folders
+    setup_visualization_folder()
+    
+    # Save original shot count
+    original_k_shot = model.k_shot
+    
+    # Analyze 1-shot setting
+    print("Analyzing 1-shot setting...")
+    model.k_shot = 1
+    model.ATTN.k_shot = 1
+    stats_1shot = analyze_feature_properties(model, val_loader_1shot, "1", save_dir="feature_analysis")
+    visualize_feature_clusters(model, val_loader_1shot, "1", save_dir="feature_analysis")
+    
+    # Analyze 5-shot setting
+    print("Analyzing 5-shot setting...")
+    model.k_shot = 5
+    model.ATTN.k_shot = 5
+    stats_5shot = analyze_feature_properties(model, val_loader_5shot, "5", save_dir="feature_analysis") 
+    visualize_feature_clusters(model, val_loader_5shot, "5", save_dir="feature_analysis")
+    
+    # Compare settings
+    print("Comparing 1-shot and 5-shot settings...")
+    compare_shot_settings(stats_1shot, stats_5shot, save_dir="feature_analysis")
+    
+    # Restore original shot count
+    model.k_shot = original_k_shot
+    model.ATTN.k_shot = original_k_shot
+    
+    print(f"\nAnalysis complete. Visualizations saved to feature_analysis/")
+    print("\nKey findings:")
+    for metric in ['cosine_mean', 'cov_mean', 'var_mean']:
+        ratio = stats_5shot[metric] / stats_1shot[metric] if stats_1shot[metric] != 0 else float('inf')
+        change = "increased" if ratio > 1 else "decreased"
+        print(f"- {metric}: {change} by {abs(ratio-1)*100:.1f}% in 5-shot setting")
+
 if __name__ == '__main__':
     
     params = parse_args()
@@ -342,6 +387,19 @@ if __name__ == '__main__':
     print("Train phase: ")
     
     model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
+
+    # Add this to your main script or testing script
+    # Create 1-shot and 5-shot data loaders
+    k_shot = 1
+    n_way = 5
+    n_query = 16
+    val_loader_1shot = SetDataManager(image_size, n_way=n_way, n_support=k_shot, n_query=n_query, n_eposide=100).get_data_loader(...) 
+
+    k_shot = 5  
+    val_loader_5shot = SetDataManager(image_size, n_way=n_way, n_support=k_shot, n_query=n_query, n_eposide=100).get_data_loader(...)
+
+    # Run the analysis
+    analyze_shot_influence(model, val_loader_1shot, val_loader_5shot)
 
     # Add to train.py after training loop
     def analyze_dynamic_weights_comprehensive(model, val_loader):
