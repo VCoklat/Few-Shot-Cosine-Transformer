@@ -49,7 +49,7 @@ def add_component_contribution_heatmap(module):
                 # Concatenate global query and key features WITH the k_shot feature
                 qk_features = torch.cat([q_global, k_global, k_shot_feat], dim=-1)
                 
-                # print(f"qk_features shape: {qk_features.shape}, weight_predictor expects: {self.weight_predictor[0].weight.shape[1]} input features")
+                print(f"qk_features shape: {qk_features.shape}, weight_predictor expects: {self.weight_predictor[0].weight.shape[1]} input features")
                 
                 # Predict three weights per attention head
                 weights = self.weight_predictor(qk_features)
