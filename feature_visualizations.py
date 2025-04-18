@@ -31,10 +31,10 @@ def visualize_feature_space(model, data_loader, save_dir='feature_viz', n_sample
             z_support, z_query = model.parse_feature(x, is_feature=False)
             
             # Reshape support features: [n_way*k_shot, feature_dim]
-            z_support = z_support.view(-1, z_support.size(-1))
+            z_support = z_support.reshape(-1, z_support.size(-1))
             
             # Reshape query features: [n_way*n_query, feature_dim]
-            z_query = z_query.view(-1, z_query.size(-1))
+            z_query = z_query.reshape(-1, z_query.size(-1))
             
             # Now concatenate along first dimension
             z_all = torch.cat([z_support, z_query], dim=0)
