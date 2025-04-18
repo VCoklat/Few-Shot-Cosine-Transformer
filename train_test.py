@@ -135,19 +135,19 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
             acc = model.val_loop(val_loader, epoch, params.wandb)
             if acc > max_acc:  
-                print("best model! save...")
+                print("Better accuracy found: {:.4f} (previous best: {:.4f})".format(acc, max_acc))
                 max_acc = acc
-                outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
-                torch.save(
-                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
-                # if params.wandb:
-                #     wandb.save(outfile)
+                # Comment out model saving
+                # outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
+                # torch.save(
+                #     {'epoch': epoch, 'state': model.state_dict()}, outfile)
 
-            if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
-                outfile = os.path.join(
-                    params.checkpoint_dir, '{:d}.tar'.format(epoch))
-                torch.save(
-                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
+            # Also comment out periodic saving
+            # if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
+            #     outfile = os.path.join(
+            #         params.checkpoint_dir, '{:d}.tar'.format(epoch))
+            #     torch.save(
+            #         {'epoch': epoch, 'state': model.state_dict()}, outfile)
         
         # In your training loop, periodically check:
         if epoch % 5 == 0:
