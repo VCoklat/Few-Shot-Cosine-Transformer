@@ -389,14 +389,14 @@ if __name__ == '__main__':
     model = train(base_loader, val_loader,  model, optimization, params.num_epoch, params)
 
     # Add this to your main script or testing script
-    # Create 1-shot and 5-shot data loaders
+    # Create 1-shot and 5-shot data loaders for analysis
     k_shot = 1
     n_way = 5
     n_query = 16
-    val_loader_1shot = SetDataManager(image_size, n_way=n_way, n_support=k_shot, n_query=n_query, n_eposide=100).get_data_loader(...) 
+    val_loader_1shot = SetDataManager(image_size, n_way=n_way, k_shot=k_shot, n_query=n_query, n_episode=200).get_data_loader(val_file, aug=False) 
 
     k_shot = 5  
-    val_loader_5shot = SetDataManager(image_size, n_way=n_way, n_support=k_shot, n_query=n_query, n_eposide=100).get_data_loader(...)
+    val_loader_5shot = SetDataManager(image_size, n_way=n_way, k_shot=k_shot, n_query=n_query, n_episode=200).get_data_loader(val_file, aug=False)
 
     # Run the analysis
     analyze_shot_influence(model, val_loader_1shot, val_loader_5shot)
