@@ -10,3 +10,4 @@ matplotlib
 pillow
 tqdm
 wandb
+umap-learn
