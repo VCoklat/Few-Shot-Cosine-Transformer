@@ -88,14 +88,22 @@ class FeatureVisualizer:
             nonlocal features
             features = output.flatten(1)
             
-        # Register hook to the appropriate layer
+        # Register hook to the appropriate layer based on model type
         if hasattr(self.model, 'feature_extractor'):
-            # For FSCT or CTX, hook the feature extractor output
+            # For models with explicit feature_extractor
             handle = self.model.feature_extractor.register_forward_hook(hook_fn)
-        else:
-            # Generic fallback - assumes model.backbone is the feature extractor
+        elif hasattr(self.model, 'feature'):
+            # For FewShotTransformer which uses 'feature' attribute
+            handle = self.model.feature.register_forward_hook(hook_fn)
+        elif hasattr(self.model, 'backbone'):
+            # For models that use 'backbone' naming
             handle = self.model.backbone.register_forward_hook(hook_fn)
-            
+        else:
+            raise AttributeError(
+                f"Model {type(self.model).__name__} doesn't have a recognizable feature extraction component. "
+                "Please modify the _forward_hook_features method to support this model type."
+            )
+        
         # Forward pass to trigger the hook
         _ = self.model(x)
         
