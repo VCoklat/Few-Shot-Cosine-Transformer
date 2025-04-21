@@ -225,15 +225,7 @@ class FeatureVisualizer:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
                 
             return plt.gcf()
-```
 
-## 2. Add Model Extensions for Feature Extraction
-
-You need to modify your model classes to support feature extraction. Add these methods to your model classes:
-
-````python
-# filepath: /workspaces/Few-Shot-Cosine-Transformer/methods/transformer.py
-# Add this method to the FewShotTransformer class
 
 def extract_features(self, x, layer='penultimate'):
     """
