@@ -46,23 +46,25 @@ class FeatureVisualizer:
                 x = x.to(self.device)
                 
                 # Model-specific feature extraction
-                if hasattr(self.model, 'extract_features'):
-                    # Use the model's built-in feature extraction method
-                    batch_features = self.model.extract_features(x, layer=layer)
-                else:
-                    # For models without a specific feature extraction method,
-                    # we can add a hook to capture intermediate activations
-                    batch_features = self._forward_hook_features(x)
-                    
+                batch_features = self._forward_hook_features(x)
+                
                 # Move to CPU and convert to numpy
                 batch_features = batch_features.cpu().numpy()
                 features.append(batch_features)
                 
-                # Store true labels (depends on your data format)
-                if isinstance(y, torch.Tensor):
-                    labels.append(y.cpu().numpy())
+                # Generate labels from episodic structure
+                # For few-shot learning with [n_way, n_shot+n_query] structure
+                if len(x.shape) == 5:
+                    n_way, n_samples = x.shape[:2]
+                    # Create labels: each class has n_samples examples
+                    episode_labels = np.repeat(np.arange(n_way), n_samples)
+                    labels.append(episode_labels)
                 else:
-                    labels.append(y)
+                    # Use provided labels
+                    if isinstance(y, torch.Tensor):
+                        labels.append(y.cpu().numpy())
+                    else:
+                        labels.append(y)
         
         # Concatenate all batches
         self.features = np.vstack(features) if len(features) > 1 else features[0]
@@ -75,37 +77,54 @@ class FeatureVisualizer:
         Use forward hooks to extract features
         
         Args:
-            x: Input tensor
+            x: Input tensor - expects [n_way, n_shot+n_query, channels, height, width]
             
         Returns:
-            features: Feature tensor
+            features: Extracted feature tensor
         """
-        # Example for models where we need to capture intermediate features 
-        # using hooks (implement based on your model architecture)
         features = None
+        
+        # Reshape episode data to standard batch format
+        if len(x.shape) == 5:  # [n_way, n_shot+n_query, channels, height, width]
+            n_way, n_samples, channels, height, width = x.shape
+            x_reshaped = x.view(-1, channels, height, width)  # Flatten to [n_way*n_samples, channels, height, width]
+        else:
+            x_reshaped = x
         
         def hook_fn(module, input, output):
             nonlocal features
-            features = output.flatten(1)
+            if isinstance(output, tuple):
+                output = output[0]  # Some models return tuples
+            features = output
             
+            # Flatten if needed, but maintain batch dimension
+            if len(features.shape) > 2:
+                features = features.view(features.size(0), -1)
+        
         # Register hook to the appropriate layer based on model type
         if hasattr(self.model, 'feature_extractor'):
-            # For models with explicit feature_extractor
             handle = self.model.feature_extractor.register_forward_hook(hook_fn)
         elif hasattr(self.model, 'feature'):
-            # For FewShotTransformer which uses 'feature' attribute
             handle = self.model.feature.register_forward_hook(hook_fn)
         elif hasattr(self.model, 'backbone'):
-            # For models that use 'backbone' naming
             handle = self.model.backbone.register_forward_hook(hook_fn)
         else:
             raise AttributeError(
-                f"Model {type(self.model).__name__} doesn't have a recognizable feature extraction component. "
-                "Please modify the _forward_hook_features method to support this model type."
+                f"Model {type(self.model).__name__} doesn't have a recognizable feature extraction component."
             )
         
-        # Forward pass to trigger the hook
-        _ = self.model(x)
+        # Use the feature extractor directly instead of the full model
+        try:
+            if hasattr(self.model, 'feature'):
+                _ = self.model.feature(x_reshaped)
+            elif hasattr(self.model, 'feature_extractor'):
+                _ = self.model.feature_extractor(x_reshaped)
+            else:
+                # Only use backbone as fallback
+                _ = self.model.backbone(x_reshaped)
+        except Exception as e:
+            handle.remove()  # Clean up hook before re-raising
+            raise RuntimeError(f"Error during feature extraction: {e}")
         
         # Remove the hook
         handle.remove()
