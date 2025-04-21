@@ -326,3 +326,77 @@ if __name__ == '__main__':
         f.write('Time: %s   Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
         
     wandb.finish()
+
+def visualize_feature_space(model, params, test_loader=None):
+    """Visualize the feature space of the model"""
+    print("===================================")
+    print("Feature Space Visualization: ")
+    
+    from feature_visualizer import FeatureVisualizer
+    
+    # Use the same test loader or create a new one
+    if test_loader is None:
+        split = params.split
+        if params.dataset == 'cross':
+            if split == 'base':
+                testfile = configs.data_dir['miniImagenet'] + 'all.json'
+            else:
+                testfile = configs.data_dir['CUB'] + split + '.json'
+        elif params.dataset == 'cross_char':
+            if split == 'base':
+                testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
+            else:
+                testfile = configs.data_dir['emnist'] + split + '.json'
+        else:
+            testfile = configs.data_dir[params.dataset] + split + '.json'
+            
+        few_shot_params = dict(n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
+        test_datamgr = SetDataManager(image_size, n_episode=params.test_iter, **few_shot_params)
+        test_loader = test_datamgr.get_data_loader(testfile, aug=False)
+    
+    visualizer = FeatureVisualizer(model, device=device)
+    
+    # Extract features
+    print("Extracting features...")
+    features, labels = visualizer.extract_features(test_loader)
+    
+    # Create visualizations with different techniques
+    methods = ['tsne', 'pca', 'umap']
+    output_dir = os.path.join(params.checkpoint_dir, 'visualizations')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for method in methods:
+        print(f"Generating {method.upper()} visualization...")
+        try:
+            embeddings = visualizer.reduce_dimensions(method=method)
+            
+            # Generate interactive plot
+            fig = visualizer.visualize(
+                embeddings=embeddings, 
+                method=method,
+                title=f"{params.method} Feature Space ({method.upper()})",
+                interactive=True
+            )
+            
+            # Save visualization
+            save_path = os.path.join(output_dir, f"{params.method}_{params.dataset}_{method}.html")
+            if hasattr(fig, 'write_html'):  # Plotly figure
+                fig.write_html(save_path)
+                print(f"Interactive visualization saved to {save_path}")
+            else:  # Matplotlib figure
+                save_path = save_path.replace('.html', '.png')
+                fig.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"Static visualization saved to {save_path}")
+                
+        except Exception as e:
+            print(f"Error generating {method} visualization: {e}")
+    
+    print("Feature space visualization complete!")
+
+# Add this at the end of the main code
+if __name__ == '__main__':
+    # ...existing code...
+    
+    # After testing is done
+    if params.visualize_features:
+        visualize_feature_space(model, params, test_loader)
