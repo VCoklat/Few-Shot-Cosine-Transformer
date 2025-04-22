@@ -398,4 +398,5 @@ if __name__ == '__main__':
     # ...existing code...
     
     # After testing is done
-    visualize_feature_space(model, params, test_loader)
+    if params.visualize_features:
+        visualize_feature_space(model, params, test_loader)
