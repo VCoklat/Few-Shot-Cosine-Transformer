@@ -85,7 +85,8 @@ def direct_test(test_loader, model, params):
     iter_num = len(test_loader)
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            scores = model.set_forward(x)
+            # Change this line
+            acc, loss, f1_score = model.set_forward_loss(x=x)
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
             acc.append(np.mean(pred == y)*100)
