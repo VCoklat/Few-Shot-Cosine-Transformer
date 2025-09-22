@@ -70,7 +70,7 @@ def direct_test(loader, model, p):
     with tqdm.tqdm(total=len(loader)) as bar:
         for x,_ in loader:
             scores = chunked_forward(model,x)
-            pred=scores.numpy().argmax(1)
+            pred = scores.cpu().numpy().argmax(axis=1)
             y=np.repeat(range(p.n_way), len(pred)//p.n_way)
             res.append((pred==y).mean()*100)
             bar.set_description(f"Test | Acc {np.mean(res):.4f}")
