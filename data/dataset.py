@@ -2,45 +2,76 @@
 import json, os, random
 from PIL import Image
 from torch.utils.data import Dataset
-import torchvision.transforms as T
+#import torchvision.transforms as T
 import torchvision.transforms as transforms
 
-class SetDataset(Dataset):
-    """
-    • Expects `data_file` to be a JSON mapping each class name to
-      a list of image paths, e.g.
-        {
-          "cat"   : ["cat/0001.jpg", …],
-          "dog"   : ["dog/0007.jpg", …],
-          …
-        }
-    • `class_labels` (list[str]) is exposed so downstream code can show
-      readable per-class metrics.
-    """
+# ----------------------------------------------------------------------
+# helpers
+# ----------------------------------------------------------------------
+def identity(x):
+    """No-op target_transform (kept for API compatibility)."""
+    return x
 
-    def __init__(self, data_file: str, transform: T.Compose | None):
-        super().__init__()
-        with open(data_file, "r") as f:
-            self.meta = json.load(f)                # {cls: [paths]}
-        self.class_labels = sorted(self.meta.keys()) # <-- NEW
 
+# ----------------------------------------------------------------------
+# main dataset class
+# ----------------------------------------------------------------------
+class SubDataset(Dataset):
+    """
+    A minimal class-balanced dataset wrapper.
+
+    Parameters
+    ----------
+    sub_meta : dict
+        Mapping {class_name: [img_path, …]} for a single split
+        (base / val / test).
+    cl : list[str]
+        List of class names to keep in this SubDataset.
+    transform : callable
+        Image transform pipeline (default: transforms.ToTensor()).
+    target_transform : callable
+        Optional transform applied to the integer label.
+    """
+    def __init__(
+        self,
+        sub_meta: dict,
+        cl: list[str],
+        transform=transforms.ToTensor(),
+        target_transform=identity,
+    ):
         self.transform = transform
-        # flatten into [(img_path, cls_idx), …]
-        self.samples = []
-        for cls_idx, cls_name in enumerate(self.class_labels):
-            for path in self.meta[cls_name]:
-                self.samples.append((path, cls_idx))
+        self.target_transform = target_transform
 
-    # ------------- standard Dataset API ----------------------------
-    def __len__(self) -> int:
+        # ------------------------------------------------------------------
+        # build flat sample list  →  [(img_path, cls_name), …]
+        # ------------------------------------------------------------------
+        self.samples = [
+            (img_path, cls_name)
+            for cls_name in cl
+            for img_path in sub_meta[cls_name]
+        ]
+
+        # keep class names in a deterministic order for printing / mapping
+        self.class_labels = sorted(cl)
+
+    # --------------------- torch Dataset API -----------------------------
+    def __len__(self):
         return len(self.samples)
 
-    def __getitem__(self, idx: int):
-        path, label = self.samples[idx]
-        img = Image.open(path).convert("RGB")
+    def __getitem__(self, idx):
+        img_path, cls_name = self.samples[idx]
+
+        img = Image.open(img_path).convert("RGB")
         if self.transform is not None:
             img = self.transform(img)
+
+        # integer label 0 … (n_classes-1)
+        label = self.class_labels.index(cls_name)
+        if self.target_transform is not None:
+            label = self.target_transform(label)
+
         return img, label
+
 
 
 class SubDataset:
