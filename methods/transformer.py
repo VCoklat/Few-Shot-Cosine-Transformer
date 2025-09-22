@@ -1,30 +1,35 @@
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch
+import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
 from methods.meta_template import MetaTemplate
 from einops import rearrange
 from backbone import CosineDistLinear
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# ---------- Helper losses ----------
+# ----------------------------------------------------------------------
+# 1. Auxiliary functions
+# ----------------------------------------------------------------------
 def gram_squared_loss(E: torch.Tensor) -> torch.Tensor:
     """
-    E : (m, d) support embeddings
-    Returns scalar = Σ_{i≠j} (E_i·E_j)^2  / m²
+    E: (m, d) support embeddings
+    Returns Σ_{i≠j}(E_i·E_j)^2 / m²  – encourages pairwise orthogonality.
     """
-    G = E @ E.t()                       # Gram matrix (m×m)
+    G = E @ E.t()                             # Gram matrix (m×m)
     off_diag = G - torch.diag_embed(torch.diagonal(G))
     return off_diag.pow(2).sum() / (E.size(0) ** 2)
 
-def cosine_distance(x1, x2):
+def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     dots  = torch.matmul(x1, x2)
-    scale = torch.einsum('bhi,bhj->bhij',
+    scale = torch.einsum("bhi,bhj->bhij",
                          torch.norm(x1, 2, -1),
                          torch.norm(x2, 2, -2))
     return dots / scale
 
-# ---------- Few-Shot Transformer ----------
+# ----------------------------------------------------------------------
+# 2. Few-Shot Transformer
+# ----------------------------------------------------------------------
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query,
                  variant="softmax", depth=1, heads=8,
@@ -35,7 +40,7 @@ class FewShotTransformer(MetaTemplate):
         self.k_shot    = k_shot
         self.variant   = variant
         self.depth     = depth
-        self.lambda_cov = lambda_cov   # weight for new regularizer
+        self.lambda_cov = lambda_cov
 
         dim = self.feat_dim
         self.ATTN  = Attention(dim, heads, dim_head, variant)
@@ -51,13 +56,16 @@ class FewShotTransformer(MetaTemplate):
             CosineDistLinear(dim_head, 1) if variant == "cosine"
             else nn.Linear(dim_head, 1))
 
-    # ---------- forward passes ----------
+    # ------------------------------------------------------------------
+    # forward passes
+    # ------------------------------------------------------------------
     def set_forward(self, x, is_feature=False):
         z_support, z_query = self.parse_feature(x, is_feature)
 
-        z_support = z_support.view(self.n_way, self.k_shot, -1)
+        z_support = z_support.contiguous().reshape(self.n_way, self.k_shot, -1)
         z_proto   = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)
-        z_query   = z_query.view(self.n_way * self.n_query, -1).unsqueeze(1)
+
+        z_query   = z_query.contiguous().reshape(self.n_way * self.n_query, -1).unsqueeze(1)
 
         x, query = z_proto, z_query
         for _ in range(self.depth):
@@ -72,17 +80,18 @@ class FewShotTransformer(MetaTemplate):
         scores  = self.set_forward(x)
         ce_loss = self.loss_fn(scores, target)
 
-        # ---------- new regularizer ----------
+        # Gram-squared regularizer on support embeddings
         z_support, _ = self.parse_feature(x, is_feature=False)
-        z_support = z_support.view(self.n_way * self.k_shot, -1)
+        z_support = z_support.contiguous().reshape(self.n_way * self.k_shot, -1)
         cov_loss  = gram_squared_loss(z_support)
 
         loss = ce_loss + self.lambda_cov * cov_loss
         acc  = (scores.argmax(1) == target).float().mean().item()
-
         return acc, loss
 
-# ---------- Attention block ----------
+# ----------------------------------------------------------------------
+# 3. Attention block
+# ----------------------------------------------------------------------
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant,
                  initial_cov_weight=0.9, dynamic_weight=False):
@@ -93,7 +102,7 @@ class Attention(nn.Module):
         self.variant = variant
         self.sm     = nn.Softmax(dim=-1)
 
-        # optional learnable mixing weight (same as your original code)
+        # optional learnable mixing weight
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
             self.weight_predictor = nn.Sequential(
@@ -101,8 +110,7 @@ class Attention(nn.Module):
                 nn.LayerNorm(dim_head), nn.ReLU(),
                 nn.Linear(dim_head, 1), nn.Sigmoid())
         else:
-            self.fixed_cov_weight = nn.Parameter(
-                torch.tensor(initial_cov_weight))
+            self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
 
         self.input_linear  = nn.Sequential(
             nn.LayerNorm(dim), nn.Linear(dim, inner_dim, bias=False))
@@ -112,7 +120,7 @@ class Attention(nn.Module):
 
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
-            self.input_linear(t), 'q n (h d) -> h q n d', h=self.heads),
+            self.input_linear(t), "q n (h d) -> h q n d", h=self.heads),
             (q, k, v))
 
         if self.variant == "cosine":
@@ -137,5 +145,5 @@ class Attention(nn.Module):
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
             out  = torch.matmul(self.sm(dots), f_v)
 
-        out = rearrange(out, 'h q n d -> q n (h d)')
+        out = rearrange(out, "h q n d -> q n (h d)")
         return self.output_linear(out)
