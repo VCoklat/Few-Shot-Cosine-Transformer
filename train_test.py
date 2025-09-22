@@ -20,7 +20,14 @@ def seed_everything(seed=4040):
     torch.backends.cudnn.deterministic = True
 # ------------------------------------------------------------------ #
 def train(base_ldr, val_ldr, model, opt_name, epochs, p):
-    opt = getattr(torch.optim, opt_name)(model.parameters(), lr=p.learning_rate, weight_decay=p.weight_decay,**({"momentum":p.momentum} if opt_name=="SGD" else {}))scaler, best = GradScaler(), 0
+    opt = getattr(torch.optim, opt_name)(
+        model.parameters(),
+        lr=p.learning_rate,
+        weight_decay=p.weight_decay,
+        **({'momentum': p.momentum} if opt_name == 'SGD' else {}))
+
+    scaler, best = GradScaler(), 0
+
     for ep in range(epochs):
         model.train()
         for i,(x,_) in enumerate(base_ldr):
