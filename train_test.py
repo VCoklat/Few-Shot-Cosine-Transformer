@@ -4,7 +4,7 @@ from torch.cuda.amp import autocast, GradScaler
 
 import backbone, configs
 from data.datamgr import SetDataManager
-from io_utils import model_dict, parse_args, get_best_file, change_model
+from io_utils import model_dict, parse_args, get_best_file
 from methods.transformer import FewShotTransformer
 from methods.CTX import CTX
 from eval_utils import evaluate, pretty_print          # <<< new
@@ -22,7 +22,7 @@ def change_model(name: str) -> str:
         "Conv6S": "Conv6SNP",
     }
     return mapping.get(name, name)
-    
+
 def seed_everything(seed=4040):
     random.seed(seed); np.random.seed(seed)
     torch.manual_seed(seed); torch.cuda.manual_seed(seed)
