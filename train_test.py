@@ -4,7 +4,7 @@ from torch.cuda.amp import autocast, GradScaler
 
 import backbone, configs
 from data.datamgr import SetDataManager
-from io_utils import model_dict, parse_args, get_best_file, change_model
+from io_utils import model_dict, parse_args, get_best_file
 from methods.transformer import FewShotTransformer
 from methods.CTX import CTX
 from eval_utils import evaluate, pretty_print
@@ -13,6 +13,16 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ------------------------------------------------------------------ #
+def change_model(name: str) -> str:
+    """Swap vanilla Conv backbones for their ‘NP’ (no-pool) variants."""
+    mapping = {
+        "Conv4":  "Conv4NP",
+        "Conv6":  "Conv6NP",
+        "Conv4S": "Conv4SNP",
+        "Conv6S": "Conv6SNP",
+    }
+    return mapping.get(name, name)
+    
 def seed_everything(seed=4040):
     random.seed(seed); np.random.seed(seed)
     torch.manual_seed(seed); torch.cuda.manual_seed(seed)
