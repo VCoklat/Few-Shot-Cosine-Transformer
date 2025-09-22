@@ -29,7 +29,8 @@ def train(base_ldr, val_ldr, model, opt_name, epochs, p):
             scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
             if i%10==0: print(f"ep{ep+1}/{epochs} it{i} loss{loss:.3f} acc{acc:.3f}")
         # -------------- validation & ckpt -------------------------- #
-        model.eval(); with torch.no_grad(): 
+        model.eval(); 
+        with torch.no_grad(): 
             acc = model.val_loop(val_ldr, ep, p.wandb)
         if acc>best:
             best=acc; torch.save({"state":model.state_dict()}, os.path.join(p.checkpoint_dir,"best_model.tar"))
