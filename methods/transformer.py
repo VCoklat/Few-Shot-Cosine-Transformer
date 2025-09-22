@@ -84,8 +84,7 @@ class FewShotTransformer(MetaTemplate):
 
 # ---------- Attention block ----------
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant,
-                 initial_cov_weight=0.9, dynamic_weight=False):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.8, dynamic_weight=False):
         super().__init__()
         inner_dim   = heads * dim_head
         self.heads  = heads
