@@ -1,5 +1,4 @@
-import torch
-import torch.nn as nn
+import torch, torch.nn as nn, torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 from methods.meta_template import MetaTemplate
@@ -8,17 +7,18 @@ from backbone import CosineDistLinear
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# ----------------------------------------------------------------------
-# 1. Auxiliary functions
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------------ #
+# 1. Regularizers
+# ------------------------------------------------------------------ #
 def gram_squared_loss(E: torch.Tensor) -> torch.Tensor:
-    """
-    E: (m, d) support embeddings
-    Returns Σ_{i≠j}(E_i·E_j)^2 / m²  – encourages pairwise orthogonality.
-    """
-    G = E @ E.t()                             # Gram matrix (m×m)
-    off_diag = G - torch.diag_embed(torch.diagonal(G))
-    return off_diag.pow(2).sum() / (E.size(0) ** 2)
+    G = E @ E.t()
+    off = G - torch.diag_embed(torch.diagonal(G))
+    return off.pow(2).sum() / (E.size(0) ** 2)
+
+def variance_term(E: torch.Tensor, γ: float = 1.0, ε: float = 1e-4) -> torch.Tensor:
+    flat = E.reshape(-1, E.size(-1))
+    std  = torch.sqrt(flat.var(dim=0) + ε)
+    return torch.clamp(γ - std, min=0).mean()
 
 def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     dots  = torch.matmul(x1, x2)
@@ -27,24 +27,22 @@ def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
                          torch.norm(x2, 2, -2))
     return dots / scale
 
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------------ #
 # 2. Few-Shot Transformer
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------------ #
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query,
                  variant="softmax", depth=1, heads=8,
-                 dim_head=64, mlp_dim=512, lambda_cov=1e-4):
+                 dim_head=64, mlp_dim=512, λ_cov=1e-4):
         super().__init__(model_func, n_way, k_shot, n_query)
 
-        self.loss_fn   = nn.CrossEntropyLoss()
-        self.k_shot    = k_shot
-        self.variant   = variant
-        self.depth     = depth
-        self.lambda_cov = lambda_cov
-
+        self.k_shot, self.variant, self.depth = k_shot, variant, depth
+        self.λ_cov = λ_cov
         dim = self.feat_dim
-        self.ATTN  = Attention(dim, heads, dim_head, variant)
-        self.sm    = nn.Softmax(dim=-2)
+
+        self.ATTN = Attention(dim, heads, dim_head, variant,
+                              dynamic_weight=True)   # turn on dynamic branch
+        self.sm = nn.Softmax(dim=-2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
 
         self.FFN = nn.Sequential(
@@ -53,97 +51,106 @@ class FewShotTransformer(MetaTemplate):
 
         self.linear = nn.Sequential(
             nn.LayerNorm(dim), nn.Linear(dim, dim_head),
-            CosineDistLinear(dim_head, 1) if variant == "cosine"
+            CosineDistLinear(dim_head, 1) if variant=="cosine"
             else nn.Linear(dim_head, 1))
 
-    # ------------------------------------------------------------------
-    # forward passes
-    # ------------------------------------------------------------------
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    # -------------------------------------------------------------- #
     def set_forward(self, x, is_feature=False):
-        z_support, z_query = self.parse_feature(x, is_feature)
+        z_s, z_q = self.parse_feature(x, is_feature)
+        z_s = z_s.reshape(self.n_way, self.k_shot, -1)
+        proto = (z_s * self.sm(self.proto_weight)).sum(1).unsqueeze(0)
 
-        z_support = z_support.contiguous().reshape(self.n_way, self.k_shot, -1)
-        z_proto   = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)
+        z_q = z_q.reshape(self.n_way * self.n_query, -1).unsqueeze(1)
+        x, q = proto, z_q
 
-        z_query   = z_query.contiguous().reshape(self.n_way * self.n_query, -1).unsqueeze(1)
-
-        x, query = z_proto, z_query
         for _ in range(self.depth):
-            x = self.ATTN(q=x, k=query, v=query) + x
+            x = self.ATTN(q=x, k=q, v=q) + x
             x = self.FFN(x) + x
 
-        return self.linear(x).squeeze()              # (q, n)
+        return self.linear(x).squeeze()           # (q, n)
 
     def set_forward_loss(self, x):
-        target  = Variable(torch.from_numpy(
-                   np.repeat(range(self.n_way), self.n_query)).to(device))
-        scores  = self.set_forward(x)
-        ce_loss = self.loss_fn(scores, target)
+        tgt = Variable(torch.from_numpy(
+              np.repeat(range(self.n_way), self.n_query)).to(device))
+        scores = self.set_forward(x)
+        loss   = self.loss_fn(scores, tgt)
 
-        # Gram-squared regularizer on support embeddings
-        z_support, _ = self.parse_feature(x, is_feature=False)
-        z_support = z_support.contiguous().reshape(self.n_way * self.k_shot, -1)
-        cov_loss  = gram_squared_loss(z_support)
+        z_s, _ = self.parse_feature(x, is_feature=False)
+        z_s = z_s.reshape(self.n_way * self.k_shot, -1)
+        loss += self.λ_cov * gram_squared_loss(z_s)
 
-        loss = ce_loss + self.lambda_cov * cov_loss
-        acc  = (scores.argmax(1) == target).float().mean().item()
+        acc = (scores.argmax(1)==tgt).float().mean().item()
         return acc, loss
 
-# ----------------------------------------------------------------------
-# 3. Attention block
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------------ #
+# 3. Attention with dynamic covariance + variance weighting
+# ------------------------------------------------------------------ #
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant,
-                 initial_cov_weight=0.9, dynamic_weight=False):
+                 dynamic_weight=True, initial_mix=0.9):
         super().__init__()
-        inner_dim   = heads * dim_head
-        self.heads  = heads
-        self.scale  = dim_head ** -0.5
-        self.variant = variant
-        self.sm     = nn.Softmax(dim=-1)
+        inner = heads * dim_head
+        self.heads, self.scale, self.variant = heads, dim_head**-0.5, variant
+        self.sm = nn.Softmax(dim=-1)
 
-        # optional learnable mixing weight
-        self.dynamic_weight = dynamic_weight
-        if dynamic_weight:
-            self.weight_predictor = nn.Sequential(
-                nn.Linear(dim_head * 2, dim_head),
+        self.dynamic = dynamic_weight
+        if self.dynamic:
+            self.predictor = nn.Sequential(
+                nn.Linear(dim_head*2, dim_head),
                 nn.LayerNorm(dim_head), nn.ReLU(),
                 nn.Linear(dim_head, 1), nn.Sigmoid())
         else:
-            self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
+            self.fixed_mix = nn.Parameter(torch.tensor(initial_mix))
 
-        self.input_linear  = nn.Sequential(
-            nn.LayerNorm(dim), nn.Linear(dim, inner_dim, bias=False))
-        self.output_linear = (nn.Linear(inner_dim, dim)
-                              if (heads != 1 or dim_head != dim)
-                              else nn.Identity())
+        self.in_proj  = nn.Sequential(nn.LayerNorm(dim),
+                                      nn.Linear(dim, inner, bias=False))
+        self.out_proj = nn.Identity() if (heads==1 and dim_head==dim) \
+                        else nn.Linear(inner, dim)
 
-    def forward(self, q, k, v):
-        f_q, f_k, f_v = map(lambda t: rearrange(
-            self.input_linear(t), "q n (h d) -> h q n d", h=self.heads),
-            (q, k, v))
+        self.weight_hist, self.record = [], False
 
-        if self.variant == "cosine":
-            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
+    # -------------------------------------------------------------- #
+    def forward(self, q,k,v):
+        f_q,f_k,f_v = map(lambda t:
+            rearrange(self.in_proj(t), 'q n (h d)->h q n d', h=self.heads),
+            (q,k,v))
 
-            # covariance-like component
-            q_c = f_q - f_q.mean(-1, keepdim=True)
-            k_c = f_k - f_k.mean(-1, keepdim=True)
-            cov_component = torch.matmul(q_c, k_c.transpose(-1, -2)) / f_q.size(-1)
+        if self.variant=="cosine":
+            cos = cosine_distance(f_q, f_k.transpose(-1,-2))
 
-            if self.dynamic_weight:
+            q_c = f_q - f_q.mean(-1,keepdim=True)
+            k_c = f_k - f_k.mean(-1,keepdim=True)
+            cov = torch.matmul(q_c, k_c.transpose(-1,-2)) / f_q.size(-1)
+
+            # -------- dynamic branch with variance penalty ----------
+            if self.dynamic:
+                v_pen = variance_term(f_q) + variance_term(f_k)
                 qg, kg = f_q.mean((1,2)), f_k.mean((1,2))
-                w = self.weight_predictor(torch.cat([qg, kg], -1)).view(self.heads,1,1,1)
-                dots = (1-w)*cosine_sim + w*cov_component
+                w = self.predictor(torch.cat([qg,kg],-1))      # (H,1)
+                w = w / (1.0 + v_pen)                          # penalise low-var
+                if self.record and not self.training:
+                    self.weight_hist.append(w.mean().item())
+                w = w.view(self.heads,1,1,1)
+                dots = (1-w)*cos + w*cov
             else:
-                w = torch.sigmoid(self.fixed_cov_weight)
-                dots = (1-w)*cosine_sim + w*cov_component
+                mix = torch.sigmoid(self.fixed_mix)
+                dots = (1-mix)*cos + mix*cov
 
             out = torch.matmul(dots, f_v)
-
-        else:  # vanilla softmax attention
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
+        else:  # softmax
+            dots = torch.matmul(f_q, f_k.transpose(-1,-2)) * self.scale
             out  = torch.matmul(self.sm(dots), f_v)
 
-        out = rearrange(out, "h q n d -> q n (h d)")
-        return self.output_linear(out)
+        out = rearrange(out, 'h q n d -> q n (h d)')
+        return self.out_proj(out)
+
+    # optional logging helpers
+    def get_weight_stats(self):
+        if not self.weight_hist: return None
+        arr = np.array(self.weight_hist)
+        return dict(mean=float(arr.mean()), std=float(arr.std()),
+                    min=float(arr.min()), max=float(arr.max()))
+
+    def clear_weight_history(self): self.weight_hist=[]

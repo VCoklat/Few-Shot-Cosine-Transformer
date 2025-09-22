@@ -127,3 +127,4 @@ if __name__=="__main__":
 
     acc,std=direct_test(test_ldr,model,p)
     print(f"{p.test_iter} Test Acc = {acc:.2f}% ± {1.96*std/np.sqrt(p.test_iter):.2f}%")
+    
