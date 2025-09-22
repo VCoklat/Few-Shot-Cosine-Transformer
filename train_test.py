@@ -12,7 +12,7 @@ from eval_utils import evaluate, pretty_print
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ------------------------------------------------------------------ #
+# --------------------------------------------\---------------------- #
 def change_model(name: str) -> str:
     """Swap vanilla Conv backbones for their ‘NP’ (no-pool) variants."""
     mapping = {
@@ -22,7 +22,7 @@ def change_model(name: str) -> str:
         "Conv6S": "Conv6SNP",
     }
     return mapping.get(name, name)
-    
+
 def seed_everything(seed=4040):
     random.seed(seed); np.random.seed(seed)
     torch.manual_seed(seed); torch.cuda.manual_seed(seed)
@@ -104,12 +104,6 @@ if __name__=="__main__":
     base_loader = base_mgr.get_data_loader(base_json, aug=p.train_aug)
     val_loader = val_mgr.get_data_loader(val_json, aug=False)
 
-    # CRANK UP LOADER PERFORMANCE
-    for ldr in (base_loader, val_loader):
-        ldr.num_workers = os.cpu_count()
-        ldr.pin_memory = True
-        ldr.persistent_workers = True
-
     if "FSCT" in p.method:
         variant = "cosine" if "cosine" in p.method else "softmax"
         feat = lambda: build_feature(p.backbone, p, flatten=True)
@@ -141,11 +135,6 @@ if __name__=="__main__":
 
     test_mgr = SetDataManager(img_sz, n_episode=p.test_iter, **params)
     test_loader = test_mgr.get_data_loader(test_json, aug=False)
-
-    # CRANK UP TEST LOADER PERFORMANCE
-    test_loader.num_workers = os.cpu_count()
-    test_loader.pin_memory = True
-    test_loader.persistent_workers = True
 
     best = get_best_file(p.checkpoint_dir)
     if best:
