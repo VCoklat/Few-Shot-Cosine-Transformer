@@ -141,7 +141,7 @@ if __name__=="__main__":
         model.load_state_dict(torch.load(best)["state"])
 
     class_names = getattr(test_loader.dataset, 'class_labels', None)
-    metrics = evaluate(test_loader, model, p.n_way, \class_names=class_names, device=device)
+    metrics = evaluate(test_loader, model, p.n_way, class_names=class_names, device=device)
     pretty_print(metrics)
 
     if p.wandb:
