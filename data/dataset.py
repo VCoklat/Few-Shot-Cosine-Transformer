@@ -3,6 +3,7 @@ import json, os, random
 from PIL import Image
 from torch.utils.data import Dataset
 import torchvision.transforms as T
+import torchvision.transforms as transforms
 
 class SetDataset(Dataset):
     """
