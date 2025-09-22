@@ -1,47 +1,47 @@
 # This code is modified from https://github.com/facebookresearch/low-shot-shrink-hallucinate
-#import torchvision.transforms as T
-import torchvision.transforms as transforms
-import json, os
+import pdb
+import torch
 from PIL import Image
-import torchvision.transforms as transforms       # NEW
-from torch.utils.data import Dataset              # (already there if you copied earlier)
+import json
+import numpy as np
+import random
+import torchvision.transforms as transforms
+import os
+import cv2 as cv
 
-def identity(x):                                  # NEW
-    return x
+identity = lambda x:x
 
-class SubDataset(Dataset):
-    def __init__(self,
-                 sub_meta: dict,
-                 cl: list[str],
-                 transform=transforms.ToTensor(),
-                 target_transform=identity):      # ← uses identity
-        self.transform = transform
-        self.target_transform = target_transform
+class SetDataset:
+    def __init__(self, data_file, batch_size, transform):
+        with open(data_file, 'r') as f:
+            self.meta = json.load(f)
+ 
+        self.cl_list = np.unique(self.meta['image_labels']).tolist()
 
-        # flat list: (img_path , cls_name)
-        self.samples = [(p, c) for c in cl for p in sub_meta[c]]
+        self.sub_meta = {}
+        for cl in self.cl_list:
+            self.sub_meta[cl] = []
 
-        # readable names made available downstream
-        self.class_labels = sorted(cl)            # NEW
+        for x,y in zip(self.meta['image_names'],self.meta['image_labels']):
+            self.sub_meta[y].append(x)
 
+        self.sub_dataloader = [] 
+        
+        sub_data_loader_params = dict(batch_size = batch_size,
+                                  shuffle = True,
+                                  num_workers = 0, #use main thread only or may receive multiple batches
+                                  pin_memory = False)        
+        for cl in self.cl_list:
+            sub_dataset = SubDataset(
+                self.sub_meta[cl], cl, transform=transform)
+            self.sub_dataloader.append( torch.utils.data.DataLoader(sub_dataset, **sub_data_loader_params) )
+        # pdb.set_trace()
 
-    # --------------------- torch Dataset API -----------------------------
+    def __getitem__(self,i):
+        return next(iter(self.sub_dataloader[i]))
+
     def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        img_path, cls_name = self.samples[idx]
-
-        img = Image.open(img_path).convert("RGB")
-        if self.transform is not None:
-            img = self.transform(img)
-
-        # integer label 0 … (n_classes-1)
-        label = self.class_labels.index(cls_name)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-
-        return img, label
+        return len(self.cl_list)
 
 class SubDataset:
     def __init__(self, sub_meta, cl, transform=transforms.ToTensor(), target_transform=identity):
