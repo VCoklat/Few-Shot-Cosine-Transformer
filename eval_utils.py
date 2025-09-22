@@ -60,11 +60,25 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
 
 
 def pretty_print(res):
+    """
+    Nicely format evaluation metrics.
+
+    Expects `res` to contain:
+        – macro_f1      : float
+        – class_f1      : list[float]
+        – class_names   : list[str]  # must already hold the real labels
+        – conf_mat      : list[list[int]]
+        – avg_inf_time  : float  (s)
+        – param_count   : float  (million)
+        – gpu_util, cpu_util, *mem keys …
+    """
     print(f"\nMacro-F1: {res['macro_f1']:.4f}")
-    for name, f in zip(res["class_names"], res["class_f1"]):
+
+    # show class name instead of numeric index
+    for name, f in zip(res['class_names'], res['class_f1']):
         print(f"  F1 '{name}': {f:.4f}")
 
-    print("\nConfusion matrix:\n", np.array(res["conf_mat"]))
+    print("\nConfusion matrix:\n", np.array(res['conf_mat']))
     print(f"\nAvg inference time/episode: {res['avg_inf_time']*1e3:.1f} ms")
     print(f"Model size: {res['param_count']:.2f} M params")
     print(f"GPU util: {res['gpu_util']*100:.1f}% | "
