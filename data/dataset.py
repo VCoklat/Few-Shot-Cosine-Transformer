@@ -1,58 +1,29 @@
 # This code is modified from https://github.com/facebookresearch/low-shot-shrink-hallucinate
-import json, os, random
-from PIL import Image
-from torch.utils.data import Dataset
 #import torchvision.transforms as T
 import torchvision.transforms as transforms
+import json, os
+from PIL import Image
+import torchvision.transforms as transforms       # NEW
+from torch.utils.data import Dataset              # (already there if you copied earlier)
 
-# ----------------------------------------------------------------------
-# helpers
-# ----------------------------------------------------------------------
-def identity(x):
-    """No-op target_transform (kept for API compatibility)."""
+def identity(x):                                  # NEW
     return x
 
-
-# ----------------------------------------------------------------------
-# main dataset class
-# ----------------------------------------------------------------------
 class SubDataset(Dataset):
-    """
-    A minimal class-balanced dataset wrapper.
-
-    Parameters
-    ----------
-    sub_meta : dict
-        Mapping {class_name: [img_path, …]} for a single split
-        (base / val / test).
-    cl : list[str]
-        List of class names to keep in this SubDataset.
-    transform : callable
-        Image transform pipeline (default: transforms.ToTensor()).
-    target_transform : callable
-        Optional transform applied to the integer label.
-    """
-    def __init__(
-        self,
-        sub_meta: dict,
-        cl: list[str],
-        transform=transforms.ToTensor(),
-        target_transform=identity,
-    ):
+    def __init__(self,
+                 sub_meta: dict,
+                 cl: list[str],
+                 transform=transforms.ToTensor(),
+                 target_transform=identity):      # ← uses identity
         self.transform = transform
         self.target_transform = target_transform
 
-        # ------------------------------------------------------------------
-        # build flat sample list  →  [(img_path, cls_name), …]
-        # ------------------------------------------------------------------
-        self.samples = [
-            (img_path, cls_name)
-            for cls_name in cl
-            for img_path in sub_meta[cls_name]
-        ]
+        # flat list: (img_path , cls_name)
+        self.samples = [(p, c) for c in cl for p in sub_meta[c]]
 
-        # keep class names in a deterministic order for printing / mapping
-        self.class_labels = sorted(cl)
+        # readable names made available downstream
+        self.class_labels = sorted(cl)            # NEW
+
 
     # --------------------- torch Dataset API -----------------------------
     def __len__(self):
@@ -71,8 +42,6 @@ class SubDataset(Dataset):
             label = self.target_transform(label)
 
         return img, label
-
-
 
 class SubDataset:
     def __init__(self, sub_meta, cl, transform=transforms.ToTensor(), target_transform=identity):
