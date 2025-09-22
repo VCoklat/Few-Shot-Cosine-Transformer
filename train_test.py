@@ -60,15 +60,14 @@ def train(base_loader, val_loader, model, opt_name, epochs, p):
         # ── validation ───────────────────────────────────────
         model.eval()
         with torch.no_grad():
-            val_acc, val_loss = model.val_loop(
-                val_loader, ep, p.wandb, return_loss=True
-            )
-        print(f"Epoch {ep+1}/{epochs}: "f"val_acc {val_acc:.3f} | val_loss {val_loss:.3f}")
+            val_acc = model.val_loop(val_loader, ep, p.wandb)   # ← remove return_loss
+            val_loss = np.nan                                   # placeholder
+
+        print(f"Epoch {ep+1}/{epochs}: val_acc {val_acc:.3f}")
 
         # save “best” model on either criterion
-        if (val_acc > best_acc) or (val_loss < best_loss):
-            best_acc  = max(best_acc,  val_acc)
-            best_loss = min(best_loss, val_loss)
+        if val_acc > best_acc:
+            best_acc = val_acc
             torch.save({"state": model.state_dict()}, os.path.join(p.checkpoint_dir, "best_model.tar"))
 
         # periodic snapshot
@@ -79,7 +78,7 @@ def train(base_loader, val_loader, model, opt_name, epochs, p):
     return model
 
 
-# ──────────────────────────────────────────────────────────────
+# ────────────────────────────\──────────────────────────────────
 def build_feature(backbone_key, p, flatten=True):
     if p.dataset in ["Omniglot", "cross_char"]:
         backbone_key = change_model(backbone_key)
