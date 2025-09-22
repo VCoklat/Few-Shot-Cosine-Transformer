@@ -20,10 +20,7 @@ def seed_everything(seed=4040):
     torch.backends.cudnn.deterministic = True
 # ------------------------------------------------------------------ #
 def train(base_ldr, val_ldr, model, opt_name, epochs, p):
-    opt = getattr(torch.optim, opt_name)(model.parameters(),
-          lr=p.learning_rate, weight_decay=p.weight_decay,
-          **({"momentum":p.momentum} if opt_name=="SGD" else {}))
-    scaler, best = GradScaler(), 0
+    opt = getattr(torch.optim, opt_name)(model.parameters(), lr=p.learning_rate, weight_decay=p.weight_decay,**({"momentum":p.momentum} if opt_name=="SGD" else {}))scaler, best = GradScaler(), 0
     for ep in range(epochs):
         model.train()
         for i,(x,_) in enumerate(base_ldr):
@@ -35,11 +32,9 @@ def train(base_ldr, val_ldr, model, opt_name, epochs, p):
         model.eval(); with torch.no_grad(): 
             acc = model.val_loop(val_ldr, ep, p.wandb)
         if acc>best:
-            best=acc; torch.save({"state":model.state_dict()},
-                  os.path.join(p.checkpoint_dir,"best_model.tar"))
+            best=acc; torch.save({"state":model.state_dict()}, os.path.join(p.checkpoint_dir,"best_model.tar"))
         if ep%p.save_freq==0 or ep==epochs-1:
-            torch.save({"state":model.state_dict()},
-                  os.path.join(p.checkpoint_dir,f"{ep}.tar"))
+            torch.save({"state":model.state_dict()}, os.path.join(p.checkpoint_dir,f"{ep}.tar"))
     return model
 # ------------------------------------------------------------------ #
 def build_feature(backbone_key, p, flatten=True):
@@ -59,8 +54,7 @@ if __name__=="__main__":
         if p.train_aug: wname+="_aug"
         if p.FETI and 'ResNet' in p.backbone: wname+="_FETI"
         wname += "_"+p.datetime
-        wandb.init(project="Few-Shot_TransFormer", name=wname,
-                   config=p, id=p.datetime)
+        wandb.init(project="Few-Shot_TransFormer", name=wname, config=p, id=p.datetime)
 
     # --------------------- Data loaders ---------------------------- #
     if p.dataset=="cross":
@@ -103,18 +97,17 @@ if __name__=="__main__":
 
     # --------------------- Train ----------------------------------- #
     print("======== TRAIN ========")
-    model = train(base_ldr, val_ldr, model, p.optimization,
-                  p.num_epoch, p)
+    model = train(base_ldr, val_ldr, model, p.optimization, p.num_epoch, p)
 
     # --------------------- Test ------------------------------------ #
     print("\n======== TEST ========")
     split = p.split
     if p.dataset=="cross":
-        test_json = (configs.data_dir["miniImagenet"]+"all.json"
-                     if split=="base" else configs.data_dir["CUB"]+split+".json")
+        test_json = (configs.data_dir["miniImagenet"]+"all.json" 
+        if split=="base" else configs.data_dir["CUB"]+split+".json")
     elif p.dataset=="cross_char":
-        test_json = (configs.data_dir["Omniglot"]+"noLatin.json"
-                     if split=="base" else configs.data_dir["emnist"]+split+".json")
+        test_json = (configs.data_dir["Omniglot"]+"noLatin.json" 
+        if split=="base" else configs.data_dir["emnist"]+split+".json")
     else:
         test_json = configs.data_dir[p.dataset]+split+".json"
 
@@ -127,8 +120,7 @@ if __name__=="__main__":
     # OPTIONAL: pass real class names from the dataset object
     class_names = getattr(test_ldr.dataset, "class_labels", None)
 
-    metrics = evaluate(test_ldr, model, p.n_way,
-                       class_names=class_names, device=device)
+    metrics = evaluate(test_ldr, model, p.n_way, class_names=class_names, device=device)
     pretty_print(metrics)
 
     if p.wandb: wandb.log(metrics); wandb.finish()
