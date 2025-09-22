@@ -25,7 +25,9 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
             scores = model.set_forward(x.to(device)).cpu()
         torch.cuda.synchronize();  times.append(time.time() - t0)
 
-        y_pred.append(scores.argmax(1).numpy());  y_true.append(y.numpy())
+        y_pred.append(scores.argmax(1).numpy());  
+        true_labels = np.repeat(np.arange(n_way), scores.size(0) // n_way)
+        y_true.append(true_labels)
         del scores; gc.collect(); torch.cuda.empty_cache()
 
     y_true = np.concatenate(y_true); y_pred = np.concatenate(y_pred)
