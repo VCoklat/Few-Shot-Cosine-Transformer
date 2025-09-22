@@ -10,3 +10,5 @@ matplotlib
 pillow
 tqdm
 wandb
+gputil 
+psutil
