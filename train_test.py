@@ -119,8 +119,7 @@ if __name__=="__main__":
     print("======== TRAIN ========")
     model = train(base_loader, val_loader, model, p.optimization, p.num_epoch, p)
 
-    print("
-======== TEST ========")
+    print("======== TEST ========")
 
     split = p.split
     if p.dataset == "cross":
@@ -150,4 +149,3 @@ if __name__=="__main__":
     if p.wandb:
         wandb.log(metrics)
         wandb.finish()
-\

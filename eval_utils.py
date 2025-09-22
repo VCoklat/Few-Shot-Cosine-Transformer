@@ -71,4 +71,3 @@ def pretty_print(res):
           f"mem {res['gpu_mem_used_MB']}/{res['gpu_mem_total_MB']} MB")
     print(f"CPU util: {res['cpu_util']}% | "
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
-\
