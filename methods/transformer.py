@@ -107,17 +107,32 @@ class FewShotTransformer(MetaTemplate):
         return logits                                         # (batch, n_way)
 
     def set_forward_loss(self, x):
-        scores = self.set_forward(x)                          # (batch, n_way)
-        targets = torch.arange(self.n_way, device=scores.device)\
-                    .repeat_interleave(self.n_query)          # (batch,)
+        """
+        Compute CE loss + covariance regulariser and
+        return (episode-accuracy, total-loss).
 
-        loss = self.loss_fn(scores, targets)
+        The target vector is now derived from the *actual*
+        batch size seen by the loss, so it stays valid
+        even if the number of query images per class
+        changes in the dataloader.
+        """
+        # 1. logits for every query image
+        scores = self.set_forward(x)            # (B, n_way)
 
-        # prototype covariance regulariser
+        # 2. build ground-truth labels that exactly match B
+        B          = scores.size(0)             # real batch
+        repeats    = B // self.n_way            # queries per class
+        targets    = torch.arange(self.n_way, device=scores.device) \
+                        .repeat_interleave(repeats)   # (B,)
+
+        # 3. cross-entropy + optional covariance term
+        loss  = self.loss_fn(scores, targets)
+
         z_s, _ = self.parse_feature(x, is_feature=False)
-        z_s = z_s.reshape(self.n_way * self.k_shot, -1)
-        loss += self.λ_cov * gram_squared_loss(z_s)
+        z_s    = z_s.reshape(self.n_way * self.k_shot, -1)
+        loss  += self.λ_cov * gram_squared_loss(z_s)
 
+        # 4. episode accuracy
         acc = (scores.argmax(1) == targets).float().mean().item()
         return acc, loss
 
