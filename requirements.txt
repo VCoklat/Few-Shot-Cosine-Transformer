@@ -10,3 +10,6 @@ matplotlib
 pillow
 tqdm
 wandb
+GPUtil 
+psutil 
+scikit-learn
