@@ -75,8 +75,22 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             num_batches += 1
 
             # FIXED: Gradient clipping to prevent explosion
+            # Replace your gradient clipping section with:
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+            # Monitor gradient health
+            total_norm = sum(p.grad.data.norm(2).item() ** 2 
+                for p in model.parameters() if p.grad is not None) ** 0.5
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)  # Smaller clipping
+
+            # Add gradient noise if too small (prevents collapse)
+            if total_norm < 0.001:
+                for p in model.parameters():
+                    if p.grad is not None:
+                        noise = torch.randn_like(p.grad) * 0.0001
+                        p.grad.data.add_(noise)
+
             optimizer.step()
 
             # Clear cache periodically
@@ -486,12 +500,13 @@ if __name__ == '__main__':
 
     # Set stable parameters
     original_lr = params.learning_rate
-    params.learning_rate = max(0.0001, params.learning_rate * 0.1)  # Reduce learning rate
-    params.weight_decay = min(0.0001, params.weight_decay)  # Reduce weight decay
-
-    # Add new stable parameters
-    params.gamma = getattr(params, 'gamma', 0.5)  # Stable gamma
-    params.lambda_reg = getattr(params, 'lambda_reg', 0.1)  # Stable lambda
+    # TIER 3: AGGRESSIVE ATTACK ON MODEL COLLAPSE
+    params.learning_rate = 0.001         # 10x HIGHER
+    params.weight_decay = 0.00001        # 10x LOWER 
+    params.gamma = 0.01                  # 50x SMALLER (key fix!)
+    params.lambda_reg = 0.001            # 100x SMALLER (key fix!)
+    params.initial_cov_weight = 0.01     # Much smaller
+    params.initial_var_weight = 0.01     # Much smaller
 
     print(f"✅ Learning rate: {original_lr} → {params.learning_rate}")
     print(f"✅ Weight decay: {params.weight_decay}")
@@ -575,11 +590,11 @@ if __name__ == '__main__':
             model = FewShotTransformer(
                 feature_model, 
                 variant=variant, 
-                gamma=params.gamma,                    # Use fixed gamma
-                lambda_reg=params.lambda_reg,          # Use fixed lambda
-                initial_cov_weight=0.3,               # Stable covariance weight
-                initial_var_weight=0.2,               # Stable variance weight
-                dynamic_weight=False,                  # Start with fixed weights
+                gamma=params.gamma,                         # Now 0.01
+                lambda_reg=params.lambda_reg,               # Now 0.001
+                initial_cov_weight=params.initial_cov_weight,  # Now 0.01
+                initial_var_weight=params.initial_var_weight,  # Now 0.01
+                dynamic_weight=False,
                 **few_shot_params
             )
 
