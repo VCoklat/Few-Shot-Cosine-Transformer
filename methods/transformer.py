@@ -153,32 +153,48 @@ class FewShotTransformer(MetaTemplate):
         x = F.dropout(x, 0.1, training=self.training)
         return x
 
+    
+# SPECIFIC FIX: Replace your set_forward_loss method with this corrected version
+
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))
 
         scores = self.set_forward(x)
 
-        # KEEP your label smoothing but make it adaptive
+        # Base cross-entropy loss
         base_loss = self.loss_fn(scores, target)
 
-        # Adaptive label smoothing based on training progress
+        # FIXED: Simplified adaptive label smoothing
         if self.training:
-            score_confidence = torch.max(F.softmax(scores, dim=1), dim=1)[0].mean()
-            smooth_alpha = torch.clamp(0.2 - score_confidence * 0.1, 0.05, 0.2)
+            # Compute confidence
+            with torch.no_grad():
+                probs = F.softmax(scores, dim=1)
+                max_probs = torch.max(probs, dim=1)[0]
+                avg_confidence = max_probs.mean()
 
-            smooth_target = torch.zeros_like(scores).scatter_(1, target.unsqueeze(1), 1.0 - smooth_alpha)
-            smooth_target += smooth_alpha / self.n_way
-            smooth_loss = -torch.sum(F.log_softmax(scores, dim=1) * smooth_target, dim=1).mean()
+            # Adaptive smoothing factor
+            smooth_alpha = torch.clamp(0.15 - avg_confidence * 0.1, 0.05, 0.15)
 
-            total_loss = 0.7 * base_loss + 0.3 * smooth_loss
+            # Create smoothed targets - FIXED VERSION
+            num_classes = scores.size(1)
+            smooth_target = torch.full_like(scores, smooth_alpha / num_classes)
+
+            # Add the main target weight
+            batch_indices = torch.arange(target.size(0), device=target.device)
+            smooth_target[batch_indices, target] += (1.0 - smooth_alpha)
+
+            # Compute smooth loss
+            log_probs = F.log_softmax(scores, dim=1)
+            smooth_loss = -torch.sum(log_probs * smooth_target, dim=1).mean()
+
+            total_loss = 0.8 * base_loss + 0.2 * smooth_loss
         else:
             total_loss = base_loss
 
-        # ADVANCED FIX 10: Add diversity regularization
+        # Add diversity regularization
         if self.training:
             probs = F.softmax(scores, dim=1)
-            # Encourage uniform prediction distribution across classes
             class_probs = probs.mean(dim=0)
             uniform_target = torch.ones_like(class_probs) / self.n_way
             diversity_loss = F.kl_div(torch.log(class_probs + 1e-8), uniform_target, reduction='sum')
@@ -188,6 +204,7 @@ class FewShotTransformer(MetaTemplate):
         acc = (predict == target).sum().item() / target.size(0)
 
         return acc, total_loss
+
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.01, 
