@@ -1,47 +1,18 @@
-"""
-Few-Shot Transformer with attention-refined class prototypes
------------------------------------------------------------
-Fixes:
-1. per-class prototype computation
-2. correct (query, class) logits
-3. device-aware target tensor
-"""
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 from torch.autograd import Variable
-from einops import rearrange
-
+import numpy as np
+import torch.nn.functional as F
+from abc import abstractmethod
 from methods.meta_template import MetaTemplate
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
+import pdb
+import IPython
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-# ─────────────────────────────────────────────
-# Helpers / regularisers
-# ─────────────────────────────────────────────
-def gram_squared_loss(E: torch.Tensor) -> torch.Tensor:
-    G = E @ E.t()
-    off = G - torch.diag_embed(torch.diagonal(G))
-    return off.pow(2).sum() / (E.size(0) ** 2)
-
-def variance_term(E: torch.Tensor, γ: float = 1.0, ε: float = 1e-4) -> torch.Tensor:
-    flat = E.reshape(-1, E.size(-1))
-    std = torch.sqrt(flat.var(dim=0) + ε)
-    return torch.clamp(γ - std, min=0).mean()
-
-def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    dots  = torch.matmul(x1, x2)
-    scale = torch.einsum("bhi,bhj->bhij",
-                         torch.norm(x1, 2, -1),
-                         torch.norm(x2, 2, -2))
-    return dots / scale
-
-# ─────────────────────────────────────────────
-# Main model
-# ─────────────────────────────────────────────
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
@@ -62,89 +33,47 @@ class FewShotTransformer(MetaTemplate):
         
         self.sm = nn.Softmax(dim = -2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
-
+        
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, mlp_dim),
             nn.GELU(),
-            nn.Linear(mlp_dim, dim)
-        )
-
+            nn.Linear(mlp_dim, dim))
+        
         self.linear = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim_head),
             CosineDistLinear(dim_head, 1) if variant == "cosine"
-            else nn.Linear(dim_head, 1)
-        )
-        self.loss_fn = nn.CrossEntropyLoss()
-
-    # ----------------------------------------
-    # Forward pass
-    # ----------------------------------------
+            else nn.Linear(dim_head, 1))
+        
     def set_forward(self, x, is_feature=False):
-        z_s, z_q = self.parse_feature(x, is_feature)          # support, query
-        z_s = z_s.reshape(self.n_way, self.k_shot, -1)        # (n, k, d)
-        z_q = z_q.reshape(self.n_way * self.n_query, -1)      # (n·q, d)
 
-        # 1. weighted class prototypes  ----------------------
-        proto = (z_s * self.sm(self.proto_weight)).sum(1)     # (n, d)
+        z_support, z_query = self.parse_feature(x, is_feature)
+                
+        z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
+        z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+        
+        z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
 
-        # 2. attention / FFN refinement ----------------------
-        proto = proto.unsqueeze(0)                            # (1, n, d)
-        q     = z_q.unsqueeze(1)                              # (n·q, 1, d)
-
-        x_ref = proto
+        x, query = z_proto, z_query
+        
         for _ in range(self.depth):
-            x_ref = self.ATTN(q=x_ref, k=q, v=q) + x_ref
-            x_ref = self.FFN(x_ref) + x_ref
-        x_ref = x_ref.squeeze(0)                              # (n, d)
-
-        # 3. pairwise logits (all queries vs all classes) ----
-        q_exp     = z_q[:, None, :]                           # (n·q, 1, d)
-        proto_exp = x_ref[None, :, :]                         # (1, n, d)
-        logits    = -((q_exp - proto_exp) ** 2).sum(dim=2)    # (n·q, n)
-
-        return logits                                         # (batch, n_way)
-
-        def set_forward_loss(self, x):
-        """
-        Compute CE loss + covariance regulariser and
-        return (episode-accuracy, total-loss).
-
-        Targets are now built from the *actual* batch size,
-        so the loss stays consistent even if the number of
-        query images per class changes.
-        """
-        # 1. logits for every query image
-        scores = self.set_forward(x)            # (B, n_way)
-
-        # 2. derive ground-truth labels that match B
-        B = scores.size(0)                      # real batch
-
-        if B == 0:                              # safety guard
-            raise ValueError(
-                "Empty batch encountered in set_forward_loss"
-            )
-
-        repeats = B // self.n_way               # queries per class
-        targets = torch.arange(self.n_way, device=scores.device) \
-                     .repeat_interleave(repeats)       # (B,)
-
-        # 3. cross-entropy + optional covariance term
-        loss = self.loss_fn(scores, targets)
-
-        z_s, _ = self.parse_feature(x, is_feature=False)
-        z_s = z_s.reshape(self.n_way * self.k_shot, -1)
-        loss += self.λ_cov * gram_squared_loss(z_s)
-
-        # 4. episode accuracy
-        acc = (scores.argmax(1) == targets).float().mean().item()
+           x = self.ATTN(q = x, k = query, v = query) + x
+           x = self.FFN(x) + x
+        
+        # Output is the probabilistic prediction for each class
+        return self.linear(x).squeeze()                                                                # (q, n)
+    
+    def set_forward_loss(self, x):
+        target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
+        target = Variable(target.to(device))  # this is the target groundtruth
+        scores = self.set_forward(x)
+        
+        loss = self.loss_fn(scores, target)
+        predict = torch.argmax(scores, dim = 1)
+        acc = (predict == target).sum().item() / target.size(0)
         return acc, loss
 
-
-# ─────────────────────────────────────────────
-# Attention module (unchanged)
-# ─────────────────────────────────────────────
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, dynamic_weight=False):
         super().__init__()
@@ -182,11 +111,9 @@ class Attention(nn.Module):
         self.record_weights = False  # Toggle for weight recording
     
     def forward(self, q, k, v):
-        f_q, f_k, f_v = map(
-            lambda t: rearrange(self.in_proj(t), "q n (h d) -> h q n d", h=self.heads),
-            (q, k, v)
-        )
-
+        f_q, f_k, f_v = map(lambda t: rearrange(
+            self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
+        
         if self.variant == "cosine":
             # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
@@ -242,16 +169,17 @@ class Attention(nn.Module):
                        var_weight * var_component)
                 
             out = torch.matmul(dots, f_v)
-        else:  # softmax attention
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
-            out  = torch.matmul(self.sm(dots), f_v)
-
-        out = rearrange(out, "h q n d -> q n (h d)")
-        return self.out_proj(out)
-
-    # Optional helpers
+        
+        else: # self.variant == "softmax" 
+            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
+            out = torch.matmul(self.sm(dots), f_v)
+        
+        out = rearrange(out, 'h q n d -> q n (h d)')
+        return self.output_linear(out)
+    
     def get_weight_stats(self):
-        if not self.weight_hist:
+        """Returns statistics about the weights used"""
+        if not self.weight_history:
             return None
         
         weights = np.array(self.weight_history)
@@ -280,4 +208,16 @@ class Attention(nn.Module):
             }
     
     def clear_weight_history(self):
-        self.weight_hist = []
+        """Clear recorded weights"""
+        self.weight_history = []
+
+def cosine_distance(x1, x2):
+    '''
+    x1      =  [b, h, n, k]
+    x2      =  [b, h, k, m]
+    output  =  [b, h, n, m]
+    '''
+    dots = torch.matmul(x1, x2)
+    scale = torch.einsum('bhi, bhj -> bhij', 
+            (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
+    return (dots / scale)
