@@ -12,3 +12,4 @@ tqdm
 wandb
 gputil 
 psutil
+scikit-learn
