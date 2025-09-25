@@ -151,7 +151,7 @@ def update_model_regularization(model, reg_params):
                 model.intervention_tracker.intervention_cooldown = 0
 
 def train_with_progressive_regularization(base_loader, val_loader, model, optimization, num_epoch, params):
-    """Enhanced training with progressive regularization scheduler"""
+    """Enhanced training with progressive regularization scheduler - FIXED tensor comparison"""
 
     print("🎯 PROGRESSIVE REGULARIZATION TRAINING ACTIVATED!")
     print("="*60)
@@ -171,12 +171,15 @@ def train_with_progressive_regularization(base_loader, val_loader, model, optimi
     # Setup optimizer with initial minimal parameters
     initial_reg = scheduler.get_current_regularization(0)
 
-    # Separate dynamic and regular parameters
+    # FIXED: Better parameter separation using IDs instead of tensor comparison
+    dynamic_param_ids = set()
     dynamic_params = []
     other_params = []
+
     for name, param in model.named_parameters():
         if 'weight_predictor' in name or 'weight_temperature' in name:
             dynamic_params.append(param)
+            dynamic_param_ids.add(id(param))  # Use parameter ID for comparison
         else:
             other_params.append(param)
 
@@ -229,6 +232,7 @@ def train_with_progressive_regularization(base_loader, val_loader, model, optimi
     print(f"   Phase 2 (Epochs {scheduler.minimal_reg_epochs}-{num_epoch-1}): Gradual increase")
     print(f"   Initial dropout: {initial_reg['dropout_rate']:.4f}")
     print(f"   Initial weight decay: {initial_reg['weight_decay']:.6f}")
+    print(f"   Dynamic parameters: {len(dynamic_params)}")
     print("="*60)
 
     for epoch in range(num_epoch):
@@ -239,19 +243,23 @@ def train_with_progressive_regularization(base_loader, val_loader, model, optimi
         # Update model regularization settings
         update_model_regularization(model, reg_params)
 
-        # Update optimizer weight decay
-        for group in optimizer.param_groups:
-            if len(dynamic_params) > 0 and any(p in dynamic_params for p in group['params']):
+        # FIXED: Update optimizer weight decay using parameter IDs
+        for group_idx, group in enumerate(optimizer.param_groups):
+            # Check if this group contains dynamic parameters
+            group_has_dynamic = any(id(p) in dynamic_param_ids for p in group['params'])
+
+            if group_has_dynamic:
                 group['weight_decay'] = reg_params['weight_decay'] * 0.1  # Lower for dynamic params
             else:
                 group['weight_decay'] = reg_params['weight_decay']
 
         # Set epoch counter for model
-        model.training_epoch = epoch
+        if hasattr(model, 'training_epoch'):
+            model.training_epoch = epoch
         model.train()
 
         # Print phase information
-        if epoch == 0 or epoch == scheduler.minimal_reg_epochs or reg_params['phase'] != regularization_history[epoch-1]['phase']:
+        if epoch == 0 or epoch == scheduler.minimal_reg_epochs or (epoch > 0 and reg_params['phase'] != regularization_history[epoch-1]['phase']):
             print(f"\n🔄 ENTERING {reg_params['phase'].upper()} PHASE (Epoch {epoch})")
             print(f"   Dropout: {reg_params['dropout_rate']:.4f}")
             print(f"   Weight Decay: {reg_params['weight_decay']:.6f}")
@@ -360,7 +368,7 @@ def train_with_progressive_regularization(base_loader, val_loader, model, optimi
             }, outfile)
 
         # Update learning rate (not during emergency interventions)
-        if not (reg_params['phase'] == 'minimal' and perf_update['should_reduce_regularization']):
+        if not (reg_params['phase'] == 'minimal' and perf_update.get('should_reduce_regularization', False)):
             lr_scheduler_obj.step()
 
         # Wandb logging
