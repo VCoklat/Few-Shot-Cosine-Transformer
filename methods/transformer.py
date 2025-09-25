@@ -264,14 +264,14 @@ class FewShotTransformer(MetaTemplate):
                 if score_std < 0.01:  # Really critical
                     print(f"🆘 EMERGENCY SCORE DIVERSITY: std={score_std:.6f}, added_noise={noise_scale:.3f}")
 
-        # BREAKTHROUGH: Adaptive final temperature scaling
+        # BREAKTHROUGH: Adaptive final temperature scaling - TENSOR SAFE
         score_range = scores.max() - scores.min()
         if score_range < 0.1:  # Compressed scores
-            final_temp = 0.1  # Very sensitive
+            final_temp = torch.tensor(0.1, device=scores.device, dtype=scores.dtype)
         elif score_range > 8.0:  # Over-spread scores  
-            final_temp = 2.0   # Less sensitive
+            final_temp = torch.tensor(2.0, device=scores.device, dtype=scores.dtype)
         else:
-            final_temp = 1.0   # Normal
+            final_temp = torch.tensor(1.0, device=scores.device, dtype=scores.dtype)
 
         scores = scores / final_temp
         return scores
@@ -341,7 +341,7 @@ class FewShotTransformer(MetaTemplate):
             score_entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
             entropy_bonus = 0.15 * score_entropy  # Strong entropy encouragement
 
-            # 3. Variance preservation with adaptive strength - FIXED TENSOR VERSION
+            # 3. Variance preservation with adaptive strength - TENSOR SAFE VERSION
             variance_tensor = torch.var(scores)
             if variance_tensor.item() < 0.001:  # Very low variance
                 variance_loss = -3.0 * torch.log(variance_tensor + 1e-8)  # Strong penalty
@@ -612,16 +612,19 @@ class Attention(nn.Module):
                    cov_weight * cov_scaled +
                    var_weight * var_scaled)
 
-            # BREAKTHROUGH: Adaptive attention temperature with emergency handling
-            dots_diversity = torch.std(dots).item()
-            if dots_diversity < 1e-5:  # Attention completely collapsed
-                attention_temperature = 0.05  # Ultra-sensitive
-            elif dots_diversity < 1e-3:  # Attention weak
-                attention_temperature = 0.2   # Very sensitive
-            else:  # Attention healthy
-                attention_temperature = 0.5 + dots_diversity  # Adaptive
+            # BREAKTHROUGH: Adaptive attention temperature - FULLY TENSOR SAFE
+            dots_diversity = torch.std(dots)  # Keep as tensor
 
-            dots = dots / torch.clamp(attention_temperature, 0.05, 3.0)
+            if dots_diversity < 1e-5:  # Attention completely collapsed
+                attention_temperature = torch.tensor(0.05, device=dots.device, dtype=dots.dtype)
+            elif dots_diversity < 1e-3:  # Attention weak
+                attention_temperature = torch.tensor(0.2, device=dots.device, dtype=dots.dtype)
+            else:  # Attention healthy
+                attention_temperature = torch.tensor(0.5, device=dots.device, dtype=dots.dtype) + dots_diversity
+
+            # Tensor-safe clamping
+            attention_temperature = torch.clamp(attention_temperature, 0.05, 3.0)
+            dots = dots / attention_temperature
 
             out = torch.matmul(self.sm(dots), f_v)
         else:
@@ -680,8 +683,3 @@ def cosine_distance(x1, x2):
     scale = torch.matmul(norm1, norm2)
     result = torch.clamp(dots / scale, -0.98, 0.98)  # Safe numerical range
     return result
-
-print("✅ COMPLETE BREAKTHROUGH TRANSFORMER CREATED!")
-print("🎯 Class name: Attention (compatible with existing imports)")
-print("💪 All breakthrough features included!")
-print("🔧 Tensor-safe and numerically stable!")
