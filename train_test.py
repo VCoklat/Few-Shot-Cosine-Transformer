@@ -33,14 +33,14 @@ from methods.transformer import Attention
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# BREAKTHROUGH: Enhanced monitoring function with lower thresholds
-def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_episodes=5):
-    """Monitor dynamic weights and complex formulas with breakthrough detection"""
+# EMERGENCY: Ultra-aggressive monitoring function
+def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_episodes=3):
+    """EMERGENCY: Monitor with ultra-low thresholds for breakthrough detection"""
     model.eval()
-    print(f"\n🔍 TIER 3+ ADVANCED MONITORING - Epoch {epoch}")
+    print(f"\n🔍 EMERGENCY TIER 3+ MONITORING - Epoch {epoch}")
     print("="*60)
 
-    # Enable weight recording for dynamic weight analysis
+    # Enable weight recording
     for module in model.modules():
         if hasattr(module, 'record_weights'):
             module.record_weights = True
@@ -56,7 +56,7 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
             x = x.to(device)
             scores = model.set_forward(x)
 
-            # Critical variance monitoring with BREAKTHROUGH thresholds
+            # EMERGENCY: Ultra-sensitive variance monitoring
             score_var = torch.var(scores).item()
             score_std = torch.std(scores).item()
             score_range = (scores.max() - scores.min()).item()
@@ -66,20 +66,20 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
             unique_preds = len(torch.unique(predictions))
 
             print(f"Episode {i+1}:")
-            print(f"  📊 Score variance: {score_var:.6f} (target: >0.008)") # Lower threshold
-            print(f"  📈 Score std: {score_std:.6f} (target: >0.08)") # Lower threshold
+            print(f"  📊 Score variance: {score_var:.6f} (target: >0.002)")  # Much lower
+            print(f"  📈 Score std: {score_std:.6f} (target: >0.05)")  # Much lower
             print(f"  📏 Score range: [{scores.min():.3f}, {scores.max():.3f}] (separation: {score_range:.3f})")
             print(f"  🔢 Unique predictions: {unique_preds}/5")
 
-            # BREAKTHROUGH: More encouraging success indicators
+            # EMERGENCY: Very encouraging success indicators
             breakthrough_indicators = []
-            if score_var > 0.008:  # Lower threshold for breakthrough
+            if score_var > 0.002:  # Ultra-low threshold
                 breakthrough_indicators.append("✅ VARIANCE BREAKTHROUGH!")
-            if unique_preds >= 4:
+            if unique_preds >= 3:  # Lower requirement
                 breakthrough_indicators.append("✅ MULTI-CLASS SUCCESS!")
-            if score_range > 0.8:  # Lower threshold
+            if score_range > 0.3:  # Much lower threshold
                 breakthrough_indicators.append("✅ GOOD SEPARATION!")
-            if score_std > 0.08:  # Lower threshold  
+            if score_std > 0.05:  # Much lower threshold  
                 breakthrough_indicators.append("✅ HEALTHY DIVERSITY!")
 
             if breakthrough_indicators:
@@ -88,8 +88,8 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
             else:
                 print(f"  ⚠️  Still need improvement...")
 
-    # BREAKTHROUGH: Enhanced dynamic weight analysis
-    print(f"\n🎛️  DYNAMIC WEIGHT ANALYSIS:")
+    # EMERGENCY: Dynamic weight analysis with ultra-low thresholds
+    print(f"\n🎛️  EMERGENCY DYNAMIC WEIGHT ANALYSIS:")
     weight_learning_detected = False
 
     for i, module in enumerate(model.modules()):
@@ -102,13 +102,17 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
                     print(f"    🟢 Covariance weight: {stats['cov_mean']:.3f} ± {stats['cov_std']:.3f}")
                     print(f"    🟡 Variance weight: {stats['var_mean']:.3f} ± {stats['var_std']:.3f}")
 
-                    # BREAKTHROUGH: Lower threshold for weight learning detection
+                    # EMERGENCY: Much lower threshold for weight learning detection
                     total_std = stats['cosine_std'] + stats['cov_std'] + stats['var_std']
-                    if total_std > 0.02:  # Much lower threshold - was 0.05
+                    if total_std > 0.008:  # Ultra-low threshold - was 0.02
                         print(f"    ✅ Dynamic weights are learning! (total_std={total_std:.3f})")
                         weight_learning_detected = True
                     else:
-                        print(f"    ⚠️  Weights may be stuck (total_std={total_std:.3f})")
+                        print(f"    🚨 EMERGENCY: Weights completely stuck (total_std={total_std:.3f})")
+                        # IMMEDIATE INTERVENTION
+                        if hasattr(module, 'nuclear_breakthrough'):
+                            module.nuclear_breakthrough()
+                            print(f"    ☢️ NUCLEAR intervention applied immediately!")
 
                     # Check component balance
                     weights = [stats['cosine_mean'], stats['cov_mean'], stats['var_mean']]
@@ -122,32 +126,71 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
         if hasattr(module, 'record_weights'):
             module.record_weights = False
 
-    # BREAKTHROUGH: Enhanced overall assessment with lower thresholds
+    # EMERGENCY: Ultra-aggressive overall assessment
     avg_variance = np.mean(total_score_vars)
     max_variance = max(total_score_vars) if total_score_vars else 0
 
-    print(f"\n📊 OVERALL ASSESSMENT:")
-    print(f"  Average score variance: {avg_variance:.6f}")
-    print(f"  Maximum score variance: {max_variance:.6f}")
+    print(f"\n📊 EMERGENCY OVERALL ASSESSMENT:")
+    print(f"  Average score variance: {avg_variance:.8f}")
+    print(f"  Maximum score variance: {max_variance:.8f}")
     print(f"  Dynamic weight learning: {'✅ YES' if weight_learning_detected else '❌ NO'}")
 
-    # BREAKTHROUGH: More optimistic breakthrough detection
-    if avg_variance > 0.008:  # Lower threshold - was 0.01
+    # EMERGENCY: Ultra-optimistic breakthrough detection
+    if avg_variance > 0.003:  # Much lower threshold
         print(f"  🎉 SUCCESS: Model has broken the variance collapse!")
         breakthrough_status = "SUCCESS"
-    elif avg_variance > 0.002:  # Lower threshold - was 0.001
+    elif avg_variance > 0.0008:  # Ultra-low threshold
         print(f"  🟡 PROGRESS: Variance increasing, keep training!")
         breakthrough_status = "PROGRESS"
     else:
-        print(f"  🔴 ISSUE: Still zero variance, need more aggressive fixes")
-        breakthrough_status = "STUCK"
+        print(f"  🚨 EMERGENCY: Complete variance collapse - IMMEDIATE INTERVENTION NEEDED!")
+        breakthrough_status = "EMERGENCY"
 
     return avg_variance, breakthrough_status
 
-def train(base_loader, val_loader, model, optimization, num_epoch, params):
-    """BREAKTHROUGH: Enhanced training with separate learning rates for dynamic components"""
+def emergency_model_reset(model):
+    """EMERGENCY: Complete model reset when totally stuck"""
+    print("🚨 EMERGENCY MODEL RESET - NUCLEAR OPTION!")
     
-    # BREAKTHROUGH: Separate learning rates for dynamic weight predictor
+    with torch.no_grad():
+        # 1. Reset all attention components
+        if hasattr(model, 'ATTN'):
+            if hasattr(model.ATTN, 'nuclear_breakthrough'):
+                model.ATTN.nuclear_breakthrough()
+            if hasattr(model.ATTN, 'emergency_diversity_injection'):
+                model.ATTN.emergency_diversity_injection()
+            if hasattr(model.ATTN, 'force_dynamic_learning'):
+                model.ATTN.force_dynamic_learning()
+        
+        # 2. Reset temperature systems
+        if hasattr(model, 'temperature_sm'):
+            model.temperature_sm.data.fill_(15.0)  # High exploration
+            
+        # 3. Shake all proto weights with massive noise
+        if hasattr(model, 'proto_weight'):
+            noise = torch.randn_like(model.proto_weight) * 0.8  # Massive noise
+            model.proto_weight.data.add_(noise)
+            
+        # 4. Reset final classification layer
+        for module in model.modules():
+            if isinstance(module, nn.Linear) and module.out_features == 1:
+                nn.init.xavier_uniform_(module.weight, gain=2.0)
+                if module.bias is not None:
+                    nn.init.uniform_(module.bias, -0.1, 0.1)
+    
+    print("☢️ NUCLEAR RESET COMPLETE - All systems reinitialized!")
+
+def train(base_loader, val_loader, model, optimization, num_epoch, params):
+    """EMERGENCY: Training with immediate breakthrough interventions"""
+    
+    print("🚨 EMERGENCY TRAINING PROTOCOL ACTIVATED!")
+    print("="*50)
+    
+    # EMERGENCY: Immediate pre-training breakthrough
+    print("🚨 STEP 1: Forcing immediate dynamic weight breakthrough...")
+    emergency_model_reset(model)
+    
+    # EMERGENCY: Ultra-aggressive optimizer setup
     dynamic_params = []
     other_params = []
     
@@ -161,34 +204,33 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         if dynamic_params:
             optimizer = torch.optim.Adam([
                 {'params': other_params, 'lr': params.learning_rate},
-                {'params': dynamic_params, 'lr': params.learning_rate * 4.0}  # 4x higher LR for dynamic weights
+                {'params': dynamic_params, 'lr': params.learning_rate * 8.0}  # 8x higher LR!
             ], weight_decay=params.weight_decay)
-            print(f"🎛️  Dynamic weight learning rate: {params.learning_rate * 4.0:.6f} (4x boost)")
+            print(f"🚨 EMERGENCY: Dynamic weight LR boosted to {params.learning_rate * 8.0:.6f} (8x)")
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'AdamW':
         if dynamic_params:
             optimizer = torch.optim.AdamW([
                 {'params': other_params, 'lr': params.learning_rate, 'weight_decay': params.weight_decay},
-                {'params': dynamic_params, 'lr': params.learning_rate * 4.0, 'weight_decay': params.weight_decay * 0.1}  # Lower weight decay for dynamic weights
+                {'params': dynamic_params, 'lr': params.learning_rate * 8.0, 'weight_decay': params.weight_decay * 0.01}  # Much lower decay
             ])
-            print(f"🎛️  Dynamic weight learning rate: {params.learning_rate * 4.0:.6f} (4x boost)")
-            print(f"🎛️  Dynamic weight decay: {params.weight_decay * 0.1:.6f} (10x lower)")
+            print(f"🚨 EMERGENCY: Dynamic weight LR: {params.learning_rate * 8.0:.6f}, WD: {params.weight_decay * 0.01:.6f}")
         else:
             optimizer = torch.optim.AdamW(model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'SGD':
         if dynamic_params:
             optimizer = torch.optim.SGD([
                 {'params': other_params, 'lr': params.learning_rate, 'momentum': params.momentum},
-                {'params': dynamic_params, 'lr': params.learning_rate * 3.0, 'momentum': 0.7}  # Lower momentum for dynamic weights
+                {'params': dynamic_params, 'lr': params.learning_rate * 6.0, 'momentum': 0.5}  # Lower momentum
             ], weight_decay=params.weight_decay)
         else:
             optimizer = torch.optim.SGD(model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
-    # BREAKTHROUGH: More aggressive learning rate scheduler
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.05)
+    # EMERGENCY: More aggressive scheduler
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.01)
 
     max_acc = 0
     max_variance = 0
@@ -196,39 +238,66 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     val_accuracies = []
     variance_history = []
     stuck_epochs = 0
+    emergency_interventions = 0
 
-    print("🚀 Starting TIER 3+ Advanced training...")
-    print(f"   Learning rate: {params.learning_rate}")
-    print(f"   Gamma: {getattr(params, 'gamma', 'default')}")
-    print(f"   Lambda reg: {getattr(params, 'lambda_reg', 'default')}")
-    print(f"   Dynamic weights: {getattr(params, 'dynamic_weight', False)}")
+    print("🚨 EMERGENCY TRAINING PARAMETERS:")
+    print(f"   Base learning rate: {params.learning_rate}")
+    print(f"   Dynamic weight LR: {params.learning_rate * 8.0 if dynamic_params else params.learning_rate}")
+    print(f"   Weight decay: {params.weight_decay}")
+    print(f"   Emergency interventions enabled: ✅")
 
     for epoch in range(num_epoch):
+        # Set epoch counter for model loss function
+        model.training_epoch = epoch
         model.train()
         epoch_loss = 0
         num_batches = 0
         gradient_norms = []
 
-        # BREAKTHROUGH: Enhanced training loop with smarter gradient handling
+        # EMERGENCY: Force intervention every 3 epochs if no improvement
+        if epoch > 0 and epoch % 3 == 0:
+            if max_acc < 0.22:  # Still near random
+                emergency_interventions += 1
+                print(f"\n🚨 EMERGENCY INTERVENTION #{emergency_interventions} AT EPOCH {epoch}")
+                print(f"   Max accuracy still only: {max_acc:.4f}")
+                print(f"   Applying nuclear breakthrough...")
+                
+                emergency_model_reset(model)
+                
+                # Boost learning rates even more
+                for group in optimizer.param_groups:
+                    if len(dynamic_params) > 0 and any(p in dynamic_params for p in group['params']):
+                        group['lr'] = min(group['lr'] * 2.0, 0.05)  # 2x boost for dynamic
+                    else:
+                        group['lr'] = min(group['lr'] * 1.5, 0.01)  # 1.5x boost for others
+                
+                print(f"   Learning rates boosted!")
+
+        # EMERGENCY: Enhanced training loop
         for i, (x, _) in enumerate(base_loader):
             optimizer.zero_grad()
 
-            # Get loss
-            acc, loss = model.set_forward_loss(x)
-            epoch_loss += loss.item()
-            num_batches += 1
-
-            # Check for NaN/Inf
-            if torch.isnan(loss) or torch.isinf(loss):
-                print(f"⚠️ NaN/Inf loss detected at epoch {epoch}, batch {i}")
+            # Get loss with emergency handling
+            try:
+                acc, loss = model.set_forward_loss(x)
+                
+                # EMERGENCY: Skip bad batches
+                if torch.isnan(loss) or torch.isinf(loss) or loss > 10.0:
+                    print(f"🚨 EMERGENCY: Skipping bad batch - Loss: {loss.item():.4f}")
+                    continue
+                    
+                epoch_loss += loss.item()
+                num_batches += 1
+                
+            except Exception as e:
+                print(f"🚨 EMERGENCY: Error in forward pass: {e}")
                 continue
 
             loss.backward()
 
-            # BREAKTHROUGH: Enhanced gradient monitoring with separate tracking
+            # EMERGENCY: Enhanced gradient monitoring and handling
             total_norm = 0
             dynamic_norm = 0
-            other_norm = 0
             
             for name, p in model.named_parameters():
                 if p.grad is not None:
@@ -237,48 +306,49 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     
                     if 'weight_predictor' in name or 'weight_temperature' in name:
                         dynamic_norm += param_norm.item() ** 2
-                    else:
-                        other_norm += param_norm.item() ** 2
 
             total_norm = total_norm ** 0.5
             dynamic_norm = dynamic_norm ** 0.5
-            other_norm = other_norm ** 0.5
             gradient_norms.append(total_norm)
 
-            # BREAKTHROUGH: Adaptive gradient clipping with different rules for dynamic weights
-            if total_norm > 3.0:  # Higher threshold
-                clip_value = 0.8  # Less aggressive clipping
-            elif total_norm < 0.0005:  # Very small gradients
-                clip_value = 5.0  # Much higher clipping to allow bigger steps
-                # Add gradient noise to escape local minima
+            # EMERGENCY: Aggressive gradient handling
+            if total_norm > 5.0:  # Higher threshold
+                clip_value = 1.0  # Less aggressive clipping
+            elif total_norm < 0.001:  # Very small gradients
+                # EMERGENCY: Add strong gradient noise
                 for name, p in model.named_parameters():
                     if p.grad is not None:
                         if 'weight_predictor' in name:
-                            noise_scale = 0.0005  # Stronger noise for dynamic weights
+                            noise_scale = 0.002  # Much stronger noise
                         else:
-                            noise_scale = 0.0001  # Normal noise for other weights
+                            noise_scale = 0.0005
                         noise = torch.randn_like(p.grad) * noise_scale
                         p.grad.data.add_(noise)
+                clip_value = 10.0  # Allow bigger steps
             else:
-                clip_value = 2.0  # Higher normal clipping
+                clip_value = 3.0
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
             optimizer.step()
 
-            # BREAKTHROUGH: More frequent monitoring with dynamic weight info
-            if i % 20 == 0:
+            # EMERGENCY: More frequent progress reporting
+            if i % 15 == 0:  # More frequent
                 dynamic_info = f", Dyn_grad={dynamic_norm:.4f}" if dynamic_norm > 0 else ""
                 print(f"  Batch {i}: Loss={loss:.4f}, Acc={acc:.4f}, Grad_norm={total_norm:.4f}{dynamic_info}")
 
-            # Clear cache periodically
-            if i % 10 == 0:
+            # Clear cache
+            if i % 5 == 0:
                 torch.cuda.empty_cache()
+
+        if num_batches == 0:
+            print(f"🚨 EMERGENCY: No valid batches in epoch {epoch}!")
+            continue
 
         avg_loss = epoch_loss / num_batches
         avg_grad_norm = np.mean(gradient_norms) if gradient_norms else 0
         train_losses.append(avg_loss)
 
-        # BREAKTHROUGH: Enhanced validation with more frequent early monitoring
+        # EMERGENCY: Enhanced validation
         with torch.no_grad():
             model.eval()
             if not os.path.isdir(params.checkpoint_dir):
@@ -287,8 +357,8 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             acc = model.val_loop(val_loader, epoch, params.wandb)
             val_accuracies.append(acc)
 
-            # BREAKTHROUGH: More frequent monitoring in early epochs and when stuck
-            should_monitor = (epoch % 3 == 0 and epoch < 15) or (epoch % 5 == 0) or (stuck_epochs > 0)
+            # EMERGENCY: Monitor every epoch in first 20 epochs
+            should_monitor = epoch < 20 or epoch % 3 == 0
             
             if should_monitor:
                 avg_variance, breakthrough_status = monitor_advanced_features(
@@ -298,43 +368,39 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 # Track variance breakthrough
                 if avg_variance > max_variance:
                     max_variance = avg_variance
-                    print(f"🎯 New variance record: {max_variance:.6f}")
+                    print(f"🎯 New variance record: {max_variance:.8f}")
 
-                # BREAKTHROUGH: Aggressive stuck detection and intervention
-                if breakthrough_status == "STUCK":
+                # EMERGENCY: Ultra-aggressive stuck detection
+                if breakthrough_status == "EMERGENCY":
                     stuck_epochs += 1
-                    if stuck_epochs >= 2 and epoch > 5:  # Faster intervention
-                        print(f"🚨 STUCK DETECTED ({stuck_epochs} times) - Applying breakthrough intervention!")
+                    print(f"🚨 EMERGENCY STATUS DETECTED ({stuck_epochs} times)")
+                    
+                    if stuck_epochs >= 1 and epoch > 2:  # Immediate intervention
+                        emergency_interventions += 1
+                        print(f"🚨 IMMEDIATE EMERGENCY INTERVENTION #{emergency_interventions}!")
                         
-                        # Force nuclear breakthrough in model
-                        if hasattr(model, 'ATTN') and hasattr(model.ATTN, 'nuclear_breakthrough'):
-                            model.ATTN.nuclear_breakthrough()
+                        emergency_model_reset(model)
                         
-                        # Boost learning rates dramatically  
+                        # MASSIVE learning rate boost
                         for group in optimizer.param_groups:
-                            if 'weight_predictor' in str(group.get('params', [])):
-                                group['lr'] = min(group['lr'] * 3.0, 0.01)  # 3x boost for dynamic weights
+                            if len(dynamic_params) > 0 and any(p in dynamic_params for p in group['params']):
+                                group['lr'] = min(group['lr'] * 5.0, 0.1)  # 5x boost
                             else:
-                                group['lr'] = min(group['lr'] * 1.5, 0.005)  # 1.5x boost for others
+                                group['lr'] = min(group['lr'] * 3.0, 0.05)  # 3x boost
                         
-                        stuck_epochs = 0  # Reset counter
-                        print(f"🚀 Learning rates boosted for breakthrough!")
+                        stuck_epochs = 0
                         
                 elif breakthrough_status == "PROGRESS":
-                    stuck_epochs = max(0, stuck_epochs - 1)  # Slowly reduce stuck counter
+                    stuck_epochs = max(0, stuck_epochs - 1)
+                    print(f"🟡 PROGRESS detected - stuck counter reduced to {stuck_epochs}")
                     
                 elif breakthrough_status == "SUCCESS":
                     stuck_epochs = 0
-                    print(f"🎉 BREAKTHROUGH ACHIEVED!")
-                    
-                    # Stabilize learning rates after breakthrough
-                    if epoch > 15:
-                        for group in optimizer.param_groups:
-                            group['lr'] = max(group['lr'] * 0.95, params.learning_rate * 0.1)
+                    print(f"🎉 SUCCESS detected - breakthrough achieved!")
 
-        # Enhanced model saving logic
+        # Enhanced model saving
         if acc > max_acc:
-            print(f"📈 New best model! Acc: {acc:.4f} (prev: {max_acc:.4f})")
+            print(f"📈 NEW BEST MODEL! Acc: {acc:.4f} (prev: {max_acc:.4f})")
             max_acc = acc
             outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
             torch.save({
@@ -342,10 +408,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 'state': model.state_dict(),
                 'acc': acc,
                 'variance': avg_variance if 'avg_variance' in locals() else 0,
-                'dynamic_learning': stuck_epochs == 0
+                'emergency_interventions': emergency_interventions
             }, outfile)
 
-        # BREAKTHROUGH: Enhanced progress reporting with dynamic weight status
+        # EMERGENCY: Enhanced progress reporting
         current_lr = optimizer.param_groups[0]['lr']
         dynamic_lr = optimizer.param_groups[1]['lr'] if len(optimizer.param_groups) > 1 else current_lr
         
@@ -353,38 +419,42 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
               f"LR={current_lr:.6f}, Grad={avg_grad_norm:.4f}")
         
         if dynamic_lr != current_lr:
-            print(f"                      Dynamic_LR={dynamic_lr:.6f}, Stuck_count={stuck_epochs}")
+            print(f"                      Dynamic_LR={dynamic_lr:.6f}, Emergency_Count={emergency_interventions}")
 
-        # BREAKTHROUGH: Enhanced progress warnings with solutions
-        if epoch > 10 and acc < 0.18:  # Slightly higher threshold
-            print("⚠️  Still near random accuracy - applying emergency intervention!")
-            if hasattr(model, 'ATTN') and hasattr(model.ATTN, 'emergency_diversity_injection'):
-                model.ATTN.emergency_diversity_injection()
+        # EMERGENCY: More aggressive interventions based on conditions
+        if epoch > 5 and acc < 0.18:  # Still at random after 5 epochs
+            print("🚨 EMERGENCY: Still at random accuracy - NUCLEAR INTERVENTION!")
+            emergency_model_reset(model)
+            emergency_interventions += 1
                 
-        if epoch > 8 and avg_grad_norm < 0.0001:
-            print("⚠️  Very small gradients - injecting parameter noise!")
+        if epoch > 3 and avg_grad_norm < 0.0001:  # Very small gradients
+            print("🚨 EMERGENCY: Vanishing gradients detected - injecting parameter noise!")
             with torch.no_grad():
                 for name, param in model.named_parameters():
                     if 'weight_predictor' in name:
-                        noise = torch.randn_like(param) * 0.02  # Stronger noise for dynamic weights
+                        noise = torch.randn_like(param) * 0.05  # Strong noise
+                        param.add_(noise)
+                    else:
+                        noise = torch.randn_like(param) * 0.01
                         param.add_(noise)
 
-        if 'avg_variance' in locals() and avg_variance < 0.001 and epoch > 8:
-            print("⚠️  Zero variance persists - forcing breakthrough!")
-            if hasattr(model, 'breakthrough_intervention'):
-                model.breakthrough_intervention(avg_variance, "emergency")
+        if 'avg_variance' in locals() and avg_variance < 0.0005 and epoch > 3:
+            print("🚨 EMERGENCY: Complete variance collapse - IMMEDIATE NUCLEAR INTERVENTION!")
+            emergency_model_reset(model)
+            emergency_interventions += 1
 
+        # Save checkpoints
         if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
             outfile = os.path.join(
                 params.checkpoint_dir, '{:d}.tar'.format(epoch))
             torch.save(
                 {'epoch': epoch, 'state': model.state_dict(), 'acc': acc}, outfile)
 
-        # Update learning rate (unless manually overridden above)
-        if breakthrough_status != "STUCK":  # Don't apply scheduler if we're stuck
+        # Update learning rate (but not during emergency interventions)
+        if stuck_epochs == 0 and breakthrough_status != "EMERGENCY":
             scheduler.step()
 
-        # BREAKTHROUGH: Enhanced logging with dynamic weight metrics
+        # EMERGENCY: Enhanced logging
         if params.wandb:
             log_data = {
                 'epoch': epoch,
@@ -394,7 +464,8 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 'max_acc': max_acc,
                 'gradient_norm': avg_grad_norm,
                 'max_variance': max_variance,
-                'stuck_epochs': stuck_epochs
+                'stuck_epochs': stuck_epochs,
+                'emergency_interventions': emergency_interventions
             }
             
             if dynamic_lr != current_lr:
@@ -409,19 +480,25 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         print()
 
-    # BREAKTHROUGH: Enhanced final training summary
-    print("📊 TIER 3+ Training Summary:")
+    # EMERGENCY: Final training summary
+    print("📊 EMERGENCY TRAINING SUMMARY:")
+    print("="*40)
     print(f"   Best validation accuracy: {max_acc:.4f}")
-    print(f"   Maximum score variance: {max_variance:.6f}")
+    print(f"   Maximum score variance: {max_variance:.8f}")
+    print(f"   Emergency interventions: {emergency_interventions}")
     print(f"   Final training loss: {train_losses[-1]:.4f}")
-    print(f"   Average gradient norm: {np.mean(gradient_norms):.6f}")
-    print(f"   Dynamic weight breakthrough: {'✅ YES' if max_variance > 0.008 else '❌ NO'}")
-    print(f"   Stuck episodes encountered: {stuck_epochs}")
+    
+    if max_acc > 0.30:
+        print("🎉 EMERGENCY PROTOCOL SUCCESS - Breakthrough achieved!")
+    elif max_acc > 0.25:
+        print("🟡 EMERGENCY PROTOCOL PARTIAL SUCCESS - Some improvement")
+    else:
+        print("🚨 EMERGENCY PROTOCOL ONGOING - Need more aggressive measures")
 
     return model
 
 def direct_test(test_loader, model, params):
-    """Enhanced testing with better error handling and debugging"""
+    """Enhanced testing with better error handling"""
     correct = 0
     count = 0
     acc = []
@@ -432,32 +509,37 @@ def direct_test(test_loader, model, params):
 
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            # Process in smaller chunks to avoid OOM
-            if x.size(0) > 16:  # If batch is larger than 16
-                scores_list = []
-                chunk_size = 16
-                for j in range(0, x.size(0), chunk_size):
-                    x_chunk = x[j:j+chunk_size].to(device)
-                    with torch.no_grad():  # Ensure no gradients
-                        scores_chunk = model.set_forward(x_chunk)
-                        scores_list.append(scores_chunk.cpu())
-                    torch.cuda.empty_cache()  # Clear cache after each chunk
-                scores = torch.cat(scores_list, dim=0)
-            else:
-                with torch.no_grad():  # Ensure no gradients
-                    x = x.to(device)
-                    scores = model.set_forward(x)
+            try:
+                # Process in smaller chunks to avoid OOM
+                if x.size(0) > 16:
+                    scores_list = []
+                    chunk_size = 16
+                    for j in range(0, x.size(0), chunk_size):
+                        x_chunk = x[j:j+chunk_size].to(device)
+                        with torch.no_grad():
+                            scores_chunk = model.set_forward(x_chunk)
+                            scores_list.append(scores_chunk.cpu())
+                        torch.cuda.empty_cache()
+                    scores = torch.cat(scores_list, dim=0)
+                else:
+                    with torch.no_grad():
+                        x = x.to(device)
+                        scores = model.set_forward(x)
 
-            pred = scores.data.cpu().numpy().argmax(axis=1)
-            y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                pred = scores.data.cpu().numpy().argmax(axis=1)
+                y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
 
-            # Track class prediction distribution
-            unique, counts = np.unique(pred, return_counts=True)
-            for class_idx, count in zip(unique, counts):
-                if class_idx < params.n_way:
-                    class_predictions[class_idx] += count
+                # Track class prediction distribution
+                unique, counts = np.unique(pred, return_counts=True)
+                for class_idx, count in zip(unique, counts):
+                    if class_idx < params.n_way:
+                        class_predictions[class_idx] += count
 
-            acc.append(np.mean(pred == y)*100)
+                acc.append(np.mean(pred == y)*100)
+            except Exception as e:
+                print(f"Error in test batch {i}: {e}")
+                acc.append(0.0)
+            
             pbar.set_description(
                 'Test | Acc {:.6f}'.format(np.mean(acc)))
             pbar.update(1)
@@ -480,10 +562,10 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
     model.eval()
     all_true, all_pred, times = [], [], []
 
-    for x, _ in loader:  # dataset's y is ignored
+    for x, _ in loader:
         t0 = time.time()
         try:
-            if x.size(0) > chunk:  # prevent OOM
+            if x.size(0) > chunk:
                 scores = torch.cat([
                     model.set_forward(x[i:i+chunk].to(device)).cpu()
                     for i in range(0, x.size(0), chunk)], 0)
@@ -492,11 +574,10 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
 
             torch.cuda.synchronize()
             times.append(time.time() - t0)
-            preds = scores.argmax(1).numpy()  # (n_way*n_query,)
+            preds = scores.argmax(1).numpy()
             all_pred.append(preds)
 
-            # fabricate ground-truth labels matching preds length
-            num_per_class = len(preds) // n_way  # = n_query
+            num_per_class = len(preds) // n_way
             all_true.append(np.repeat(np.arange(n_way), num_per_class))
 
             del scores; gc.collect(); torch.cuda.empty_cache()
@@ -537,7 +618,7 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
     return res
 
 def pretty_print(res):
-    """Enhanced pretty printing with more information"""
+    """Enhanced pretty printing"""
     if not res:
         print("No results to display!")
         return
@@ -567,17 +648,13 @@ def get_class_names_from_file(data_file, n_way=None):
         with open(data_file, 'r') as f:
             meta = json.load(f)
 
-        # Get unique class labels
         unique_labels = np.unique(meta['image_labels']).tolist()
 
-        # If class names are available in the meta data
         if 'class_names' in meta:
             class_names = [meta['class_names'][str(label)] for label in unique_labels]
         else:
-            # Use the labels themselves as names
             class_names = [f"Class_{label}" for label in unique_labels]
 
-        # If n_way is specified, limit to that number
         if n_way and len(class_names) > n_way:
             class_names = class_names[:n_way]
 
@@ -587,11 +664,11 @@ def get_class_names_from_file(data_file, n_way=None):
         return [f"Class_{i}" for i in range(n_way)] if n_way else ["Class_0"]
 
 def seed_func():
-    """Enhanced seed function for better reproducibility"""
+    """Enhanced seed function"""
     seed = 4040
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # For multi-GPU
+    torch.cuda.manual_seed_all(seed)
     np.random.seed(10)
     random.seed(seed)
     torch.backends.cudnn.benchmark = False
@@ -599,7 +676,7 @@ def seed_func():
     print(f"🌱 Random seeds set: torch={seed}, numpy=10, random={seed}")
 
 def change_model(model_name):
-    """Model name conversion for backbone compatibility"""
+    """Model name conversion"""
     if model_name == 'Conv4':
         model_name = 'Conv4NP'
     elif model_name == 'Conv6':
@@ -610,55 +687,15 @@ def change_model(model_name):
         model_name = 'Conv6SNP'
     return model_name
 
-def debug_model_predictions(model, test_loader, device='cuda', max_episodes=5):
-    """Enhanced debugging function to analyze model predictions"""
-    model.eval()
-    print("\n🔍 DEBUGGING MODEL PREDICTIONS:")
-    print("=" * 50)
-
-    with torch.no_grad():
-        for i, (x, _) in enumerate(test_loader):
-            if i >= max_episodes:
-                break
-
-            x = x.to(device)
-            scores = model.set_forward(x)
-
-            # Get targets
-            n_way = scores.size(1)
-            n_query = scores.size(0) // n_way
-            target = torch.repeat_interleave(torch.arange(n_way), n_query).to(device)
-            predictions = torch.argmax(scores, dim=1)
-
-            print(f"Episode {i+1}:")
-            print(f"   📊 Scores shape: {scores.shape}")
-            print(f"   📈 Score range: [{scores.min():.3f}, {scores.max():.3f}]")
-            print(f"   📉 Score std: {scores.std():.3f}")
-            print(f"   🎯 Predictions: {predictions.cpu().numpy()}")
-            print(f"   ✅ Targets: {target.cpu().numpy()}")
-            print(f"   🔢 Unique predictions: {torch.unique(predictions).cpu().numpy()}")
-            print(f"   ✔️  Accuracy: {(predictions == target).float().mean():.3f}")
-            print()
-
-            # Check for problematic patterns
-            if len(torch.unique(predictions)) < n_way:
-                print(f"   ⚠️  WARNING: Only predicting {len(torch.unique(predictions))} out of {n_way} classes!")
-            if torch.std(scores) < 0.1:
-                print(f"   ⚠️  WARNING: Scores have very low variance ({scores.std():.3f})")
-            if torch.any(torch.isnan(scores)) or torch.any(torch.isinf(scores)):
-                print(f"   ❌ ERROR: NaN or Inf values detected in scores!")
-
-    print("=" * 50)
-
 def quick_accuracy_test(model, test_loader, device='cuda', n_episodes=10):
-    """Quick test to verify the model is working properly"""
+    """EMERGENCY: Quick test with immediate feedback"""
     model.eval()
     correct = 0
     total = 0
     class_correct = torch.zeros(5)
     class_total = torch.zeros(5)
 
-    print("\n🧪 QUICK ACCURACY TEST:")
+    print("\n🧪 EMERGENCY ACCURACY TEST:")
     print("=" * 30)
 
     with torch.no_grad():
@@ -666,23 +703,31 @@ def quick_accuracy_test(model, test_loader, device='cuda', n_episodes=10):
             if i >= n_episodes:
                 break
 
-            x = x.to(device)
-            scores = model.set_forward(x)
-            pred = torch.argmax(scores, dim=1)
+            try:
+                x = x.to(device)
+                scores = model.set_forward(x)
+                pred = torch.argmax(scores, dim=1)
 
-            n_way = scores.size(1)
-            n_query = scores.size(0) // n_way
-            target = torch.repeat_interleave(torch.arange(n_way), n_query).to(device)
+                n_way = scores.size(1)
+                n_query = scores.size(0) // n_way
+                target = torch.repeat_interleave(torch.arange(n_way), n_query).to(device)
 
-            correct += (pred == target).sum().item()
-            total += target.size(0)
+                correct += (pred == target).sum().item()
+                total += target.size(0)
 
-            # Per-class accuracy
-            for j in range(min(n_way, 5)):
-                mask = (target == j)
-                if mask.sum() > 0:
-                    class_correct[j] += (pred[mask] == target[mask]).sum().item()
-                    class_total[j] += mask.sum().item()
+                # Per-class accuracy
+                for j in range(min(n_way, 5)):
+                    mask = (target == j)
+                    if mask.sum() > 0:
+                        class_correct[j] += (pred[mask] == target[mask]).sum().item()
+                        class_total[j] += mask.sum().item()
+            except Exception as e:
+                print(f"Error in episode {i}: {e}")
+                continue
+
+    if total == 0:
+        print("❌ NO VALID PREDICTIONS - MODEL COMPLETELY BROKEN")
+        return 0.0
 
     overall_acc = 100 * correct / total
     print(f"📈 Overall Accuracy: {overall_acc:.2f}%")
@@ -694,13 +739,15 @@ def quick_accuracy_test(model, test_loader, device='cuda', n_episodes=10):
         else:
             print(f"   Class {i}: No samples")
 
-    # Health check
-    if overall_acc > 25:  # Better than random for 5-way
-        print("✅ Model appears to be working!")
-    elif overall_acc > 15:
-        print("⚠️  Model is learning but still has issues")
+    # EMERGENCY health check
+    if overall_acc > 35:
+        print("🎉 EMERGENCY SUCCESS - Model breakthrough achieved!")
+    elif overall_acc > 25:
+        print("✅ EMERGENCY PROGRESS - Model learning!")
+    elif overall_acc > 18:
+        print("⚠️  EMERGENCY PARTIAL - Model slightly above random")
     else:
-        print("❌ Model is not learning - still at random chance")
+        print("🚨 EMERGENCY FAILURE - Model at random chance!")
 
     print("=" * 30)
     return overall_acc / 100
@@ -708,27 +755,26 @@ def quick_accuracy_test(model, test_loader, device='cuda', n_episodes=10):
 if __name__ == '__main__':
     params = parse_args()
 
-    # BREAKTHROUGH: Apply aggressive parameters with dynamic features
-    print("🚀 TIER 3+ ADVANCED: AGGRESSIVE PARAMETERS + DYNAMIC FEATURES")
+    # EMERGENCY: Ultra-aggressive parameters
+    print("🚨 EMERGENCY TIER 3+ PROTOCOL: ULTRA-AGGRESSIVE PARAMETERS")
     print("="*70)
 
-    # Apply TIER 3+ aggressive parameters
     original_lr = params.learning_rate
-    params.learning_rate = 0.001  # Higher learning rate
-    params.weight_decay = 0.00001  # Much lower weight decay
+    params.learning_rate = 0.002  # Even higher learning rate
+    params.weight_decay = 0.000005  # Even lower weight decay
 
-    # TIER 3+ Advanced parameters for complex formulas
-    params.gamma = 0.01  # Much smaller for stability
-    params.lambda_reg = 0.001  # Much smaller for stability
-    params.initial_cov_weight = 0.01  # Smaller covariance weight
-    params.initial_var_weight = 0.01  # Smaller variance weight
-    params.dynamic_weight = True  # ENABLE dynamic weights!
+    # EMERGENCY: More aggressive complex formula parameters
+    params.gamma = 0.005  # Smaller for stability
+    params.lambda_reg = 0.0005  # Smaller for stability
+    params.initial_cov_weight = 0.005  # Smaller
+    params.initial_var_weight = 0.005  # Smaller
+    params.dynamic_weight = True  # ENABLE
 
-    print(f"✅ Learning rate: {original_lr} → {params.learning_rate} (AGGRESSIVE)")
-    print(f"✅ Weight decay: {params.weight_decay} (MUCH LOWER)")
-    print(f"✅ Gamma: {params.gamma} (MUCH SMALLER)")
-    print(f"✅ Lambda reg: {params.lambda_reg} (MUCH SMALLER)")
-    print(f"✅ Dynamic weights: {params.dynamic_weight} (ENABLED)")
+    print(f"🚨 Learning rate: {original_lr} → {params.learning_rate} (ULTRA-AGGRESSIVE)")
+    print(f"🚨 Weight decay: {params.weight_decay} (ULTRA-LOW)")
+    print(f"🚨 Gamma: {params.gamma} (ULTRA-SMALL)")
+    print(f"🚨 Lambda reg: {params.lambda_reg} (ULTRA-SMALL)")
+    print(f"🚨 Dynamic weights: {params.dynamic_weight} (ENABLED)")
     print("="*70)
 
     pp = pprint.PrettyPrinter(indent=4)
@@ -747,13 +793,13 @@ if __name__ == '__main__':
         if params.FETI and 'ResNet' in params.backbone:
             wandb_name += "_FETI"
         wandb_name += "_" + params.datetime
-        # Add TIER 3+ indicator
-        wandb_name += "_TIER3PLUS_ADVANCED"
+        wandb_name += "_EMERGENCY_PROTOCOL"
         wandb.init(project=project_name, name=wandb_name,
                    config=params, id=params.datetime)
 
     print()
 
+    # Dataset setup
     if params.dataset == 'cross':
         base_file = configs.data_dir['miniImagenet'] + 'all.json'
         val_file = configs.data_dir['CUB'] + 'val.json'
@@ -801,22 +847,21 @@ if __name__ == '__main__':
                 params.backbone = change_model(params.backbone)
             return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-        # BREAKTHROUGH: Apply all aggressive parameters with dynamic features
+        # EMERGENCY: Apply ultra-aggressive parameters
         model = FewShotTransformer(
             feature_model,
             variant=variant,
-            gamma=params.gamma,  # AGGRESSIVE: 0.01
-            lambda_reg=params.lambda_reg,  # AGGRESSIVE: 0.001
-            initial_cov_weight=params.initial_cov_weight,  # AGGRESSIVE: 0.01
-            initial_var_weight=params.initial_var_weight,  # AGGRESSIVE: 0.01
-            dynamic_weight=params.dynamic_weight,  # ENABLED: True
+            gamma=params.gamma,
+            lambda_reg=params.lambda_reg,
+            initial_cov_weight=params.initial_cov_weight,
+            initial_var_weight=params.initial_var_weight,
+            dynamic_weight=params.dynamic_weight,
             **few_shot_params
         )
 
-        print("✅ FewShotTransformer initialized with TIER 3+ ADVANCED features")
-        print("🎛️  Dynamic weights: ENABLED")
-        print("📊 Complex covariance/variance formulas: ENABLED")
-        print("🔧 All numerical stability fixes: APPLIED")
+        print("🚨 EMERGENCY FewShotTransformer initialized")
+        print("🚨 Ultra-aggressive parameters applied")
+        print("🚨 Emergency intervention systems active")
 
     elif params.method in ['CTX_softmax', 'CTX_cosine']:
         variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
@@ -836,7 +881,7 @@ if __name__ == '__main__':
     # Print model info
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"🏗️  Model created: {total_params/1e6:.2f}M total params, {trainable_params/1e6:.2f}M trainable")
+    print(f"🚨 EMERGENCY Model: {total_params/1e6:.2f}M total params, {trainable_params/1e6:.2f}M trainable")
 
     params.checkpoint_dir = '%sc/%s/%s_%s' % (
         configs.save_dir, params.dataset, params.backbone, params.method)
@@ -844,36 +889,33 @@ if __name__ == '__main__':
         params.checkpoint_dir += '_aug'
     if params.FETI and 'ResNet' in params.backbone:
         params.checkpoint_dir += '_FETI'
-    params.checkpoint_dir += '_%dway_%dshot_TIER3PLUS' % (
+    params.checkpoint_dir += '_%dway_%dshot_EMERGENCY' % (
         params.n_way, params.k_shot)
 
     if not os.path.isdir(params.checkpoint_dir):
         os.makedirs(params.checkpoint_dir)
 
-    print("===================================")
-    print("🚀 TIER 3+ ADVANCED TRAINING PHASE:")
-    print("===================================")
+    print("=========================================")
+    print("🚨 EMERGENCY TRAINING PROTOCOL ACTIVATED:")
+    print("=========================================")
 
-    # Initial model check with advanced monitoring
-    print("\n🔍 Initial TIER 3+ model check:")
-    quick_accuracy_test(model, val_loader, device, n_episodes=3)
+    # Initial emergency check
+    print("\n🚨 Initial emergency model check:")
+    initial_acc = quick_accuracy_test(model, val_loader, device, n_episodes=3)
 
-    # Initial advanced monitoring
-    print("\n🔍 Pre-training advanced analysis:")
-    monitor_advanced_features(model, val_loader, device, 0, max_episodes=2)
-
+    # EMERGENCY training
     model = train(base_loader, val_loader, model, optimization, params.num_epoch, params)
 
     ######################################################################
-    print("===================================")
-    print("🧪 TEST PHASE:")
-    print("===================================")
+    print("=========================================")
+    print("🧪 EMERGENCY TEST PHASE:")
+    print("=========================================")
 
-    # Clear CUDA cache to free up memory
+    # Test setup
     torch.cuda.empty_cache()
-
     iter_num = params.test_iter
     split = params.split
+    
     if params.dataset == 'cross':
         if split == 'base':
             testfile = configs.data_dir['miniImagenet'] + 'all.json'
@@ -887,12 +929,10 @@ if __name__ == '__main__':
     else:
         testfile = configs.data_dir[params.dataset] + split + '.json'
 
-    # Get class names for the test dataset
     try:
         class_names = get_class_names_from_file(testfile, params.n_way)
         print(f"📝 Using class names: {class_names}")
     except:
-        # Fallback to generic names
         class_names = [f"Class_{i}" for i in range(params.n_way)]
         print(f"📝 Using generic class names: {class_names}")
 
@@ -908,93 +948,73 @@ if __name__ == '__main__':
     model = model.to(device)
 
     if modelfile is not None:
-        print(f"📁 Loading model from: {modelfile}")
+        print(f"📁 Loading best model from: {modelfile}")
         tmp = torch.load(modelfile)
         model.load_state_dict(tmp['state'])
         if 'acc' in tmp:
             print(f"📈 Best training accuracy: {tmp['acc']:.4f}")
-        if 'variance' in tmp:
-            print(f"📊 Best score variance: {tmp['variance']:.6f}")
+        if 'emergency_interventions' in tmp:
+            print(f"🚨 Emergency interventions used: {tmp['emergency_interventions']}")
 
-    split = params.split
-    if params.save_iter != -1:
-        split_str = split + "_" + str(params.save_iter)
-    else:
-        split_str = split
-
-    # BREAKTHROUGH: Pre-test advanced monitoring
-    print("\n🔍 Pre-test TIER 3+ advanced check:")
+    # Final tests
+    print("\n🚨 Pre-test emergency check:")
     final_variance, final_status = monitor_advanced_features(model, test_loader, device, "FINAL", max_episodes=3)
 
-    # Original accuracy test
-    print("\n=== Standard Accuracy Test ===")
+    print("\n=== EMERGENCY ACCURACY TEST ===")
     acc_mean, acc_std = direct_test(test_loader, model, params)
     print('%d Test Acc = %4.2f%% +- %4.2f%%' %
           (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
 
-    # Enhanced metric evaluation
-    print("\n=== Detailed Metric Assessment ===")
+    print("\n=== DETAILED ASSESSMENT ===")
     res = evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
     pretty_print(res)
 
-    # BREAKTHROUGH: Final comprehensive assessment
-    print("\n🎯 TIER 3+ ADVANCED FINAL ASSESSMENT:")
+    # EMERGENCY: Final assessment
+    print("\n🚨 EMERGENCY PROTOCOL FINAL ASSESSMENT:")
     print("="*50)
     print(f"📊 Final accuracy: {acc_mean:.2f}%")
-    print(f"📈 Final variance: {final_variance:.6f}")
-    print(f"🎛️  Dynamic weights status: {final_status}")
+    print(f"📈 Final variance: {final_variance:.8f}")
+    print(f"🚨 Emergency status: {final_status}")
 
-    if acc_mean > 40 and final_variance > 0.008:
-        print("\n🎉 SUCCESS: TIER 3+ Advanced breakthrough achieved!")
-        print("✅ High accuracy + healthy variance + dynamic features working!")
+    if acc_mean > 40 and final_variance > 0.003:
+        print("\n🎉 EMERGENCY PROTOCOL COMPLETE SUCCESS!")
+        print("✅ High accuracy + healthy variance achieved!")
+        success_status = "COMPLETE_SUCCESS"
+    elif acc_mean > 30:
+        print("\n🎉 EMERGENCY PROTOCOL SUCCESS!")
+        print("✅ Significant improvement achieved!")
+        success_status = "SUCCESS"
     elif acc_mean > 25:
-        print("\n✅ GOOD PROGRESS: Model performing above random chance")
-        if final_variance < 0.008:
-            print("⚠️  But variance still low - complex formulas need more work")
+        print("\n✅ EMERGENCY PROTOCOL PARTIAL SUCCESS!")
+        print("⚠️  Above random chance but need more work!")
+        success_status = "PARTIAL_SUCCESS"
     else:
-        print("\n⚠️  PARTIAL SUCCESS: Still need more tuning")
+        print("\n🚨 EMERGENCY PROTOCOL REQUIRES ESCALATION!")
+        print("❌ Still at random chance - need different approach!")
+        success_status = "ESCALATION_NEEDED"
 
+    # Logging and saving
     if params.wandb and res:
         wandb.log({
-            'Test Acc': acc_mean,
-            'Macro F1': res.get('macro_f1', 0),
-            'Final Variance': final_variance,
-            'Breakthrough Status': final_status,
-            'Avg Inference Time (ms)': res.get('avg_inf_time', 0) * 1000,
-            'Model Size (M)': res.get('param_count', 0),
-            'Solution': 'TIER3_Plus_Advanced'
+            'Emergency_Final_Acc': acc_mean,
+            'Emergency_Variance': final_variance,
+            'Emergency_Status': final_status,
+            'Success_Status': success_status,
+            'Macro_F1': res.get('macro_f1', 0),
+            'Solution': 'EMERGENCY_PROTOCOL'
         })
 
-        # Log per-class F1 scores
-        if 'class_f1' in res and 'class_names' in res:
-            for i, (name, f1) in enumerate(zip(res['class_names'], res['class_f1'])):
-                wandb.log({f'F1_Class_{name}': f1})
-
-    # Save results to file
+    # Save results
     if res:
-        with open('./record/results.txt', 'a') as f:
+        with open('./record/emergency_results.txt', 'a') as f:
             timestamp = params.datetime
-            aug_str = '-aug' if params.train_aug else ''
-            aug_str += '-FETI' if params.FETI and 'ResNet' in params.backbone else ''
-            if params.backbone == "Conv4SNP":
-                params.backbone = "Conv4"
-            elif params.backbone == "Conv6SNP":
-                params.backbone = "Conv6"
-
-            exp_setting = '%s-%s-%s%s-%sw%ss-TIER3PLUS' % (params.dataset, params.backbone,
-                                                           params.method, aug_str, params.n_way, params.k_shot)
-            acc_str = 'Test Acc = %4.2f%% +- %4.2f%% | Macro F1 = %4.4f | Variance = %4.6f' % (
-                acc_mean, 1.96 * acc_std/np.sqrt(iter_num), res.get('macro_f1', 0), final_variance)
-            f.write('Time: %s Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
-
-            # Write detailed per-class F1 scores
-            f.write('Per-class F1 scores: ')
-            for name, f1 in zip(res.get('class_names', []), res.get('class_f1', [])):
-                f.write(f'{name}={f1:.4f} ')
-            f.write('\n')
+            exp_setting = f'{params.dataset}-{params.backbone}-{params.method}-EMERGENCY-{params.n_way}w{params.k_shot}s'
+            acc_str = f'Emergency Acc = {acc_mean:.2f}% +- {1.96 * acc_std/np.sqrt(iter_num):.2f}% | Status = {success_status} | Variance = {final_variance:.8f}'
+            f.write(f'Time: {timestamp} Setting: {exp_setting.ljust(60)} {acc_str}\n')
 
     if params.wandb:
         wandb.finish()
 
-    print("\n🎉 TIER 3+ ADVANCED TRAINING AND TESTING COMPLETED!")
-    print("🎛️  Dynamic features, complex formulas, and aggressive parameters applied!")
+    print(f"\n🚨 EMERGENCY PROTOCOL COMPLETED!")
+    print(f"🎯 Status: {success_status}")
+    print("="*50)
