@@ -252,7 +252,7 @@ class FewShotTransformer(MetaTemplate):
             entropy_bonus = 0.1 * score_entropy
 
             # 3. Variance preservation loss
-            variance_loss = -torch.log(current_variance + 1e-8)  # Negative log variance
+            variance_loss = -torch.log(torch.var(scores) + 1e-8)  # Use tensor directly  # Negative log variance
 
             total_loss = total_loss + 0.01 * diversity_loss + entropy_bonus + 0.001 * variance_loss
 
