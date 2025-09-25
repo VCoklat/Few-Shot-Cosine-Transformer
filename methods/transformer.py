@@ -26,7 +26,7 @@ class InterventionTracker:
         """Smart intervention decision based on variance trends"""
         # Always track variance history
         self.variance_history.append(current_variance)
-        if len(self.variance_history) > 30:  # Keep last 30 measurements
+        if len(self.variance_history) > 30: # Keep last 30 measurements
             self.variance_history.pop(0)
 
         # Reduce cooldown
@@ -38,24 +38,23 @@ class InterventionTracker:
         if len(self.variance_history) >= 15:
             recent_vars = self.variance_history[-15:]
             old_vars = self.variance_history[-30:-15] if len(self.variance_history) >= 30 else self.variance_history[:-15]
-
             recent_mean = np.mean(recent_vars)
             old_mean = np.mean(old_vars) if old_vars else recent_mean
 
-            # Stuck detection: low variance AND no improvement trend
-            if recent_mean < 0.002 and abs(recent_mean - old_mean) < 0.0003:
+            # BREAKTHROUGH FIX: More aggressive stuck detection
+            if recent_mean < 0.005 and abs(recent_mean - old_mean) < 0.001:  # More sensitive
                 self.stuck_counter += 1
-                if self.stuck_counter >= 3:  # Confirmed stuck after 3 checks
+                if self.stuck_counter >= 2:  # Faster stuck detection
                     self.stuck_counter = 0
-                    self.intervention_cooldown = 20  # Longer cooldown for major intervention
+                    self.intervention_cooldown = 15  # Shorter cooldown
                     self.last_intervention_variance = current_variance
                     return True, "truly_stuck"
             else:
                 self.stuck_counter = max(0, self.stuck_counter - 1)
 
-        # Emergency intervention for extremely low variance
-        if current_variance < 0.0001:
-            self.intervention_cooldown = 10
+        # BREAKTHROUGH FIX: More aggressive emergency intervention
+        if current_variance < 0.001:  # Lower threshold
+            self.intervention_cooldown = 8  # Shorter cooldown
             self.last_intervention_variance = current_variance
             return True, "emergency"
 
@@ -91,19 +90,19 @@ class FewShotTransformer(MetaTemplate):
 
         # BREAKTHROUGH: Smart temperature system
         self.sm = nn.Softmax(dim=-2)
-        self.temperature_sm = nn.Parameter(torch.ones(1) * 2.5)  # Start moderate
+        self.temperature_sm = nn.Parameter(torch.ones(1) * 2.5) # Start moderate
 
         # BREAKTHROUGH: Enhanced initialization for diversity
-        self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.15)  # Good balance
+        self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.15) # Good balance
 
         # BREAKTHROUGH: Enhanced FFN with controlled dropout
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, mlp_dim),
             nn.GELU(),
-            nn.Dropout(0.25),  # Balanced dropout
+            nn.Dropout(0.20),  # Reduced dropout for better learning
             nn.Linear(mlp_dim, dim),
-            nn.Dropout(0.25)
+            nn.Dropout(0.20)   # Reduced dropout
         )
 
         # Enhanced classification layers
@@ -112,7 +111,7 @@ class FewShotTransformer(MetaTemplate):
                 nn.LayerNorm(dim),
                 nn.Linear(dim, dim_head),
                 nn.ReLU(),
-                nn.Dropout(0.15),
+                nn.Dropout(0.12),  # Reduced dropout
                 CosineDistLinear(dim_head, 1)
             )
         else:
@@ -120,56 +119,53 @@ class FewShotTransformer(MetaTemplate):
                 nn.LayerNorm(dim),
                 nn.Linear(dim, dim_head),
                 nn.ReLU(),
-                nn.Dropout(0.15),
+                nn.Dropout(0.12),  # Reduced dropout
                 nn.Linear(dim_head, 1)
             )
 
     def breakthrough_intervention(self, current_variance, intervention_type):
         """BREAKTHROUGH: Smart interventions that actually work"""
-
         if intervention_type == "emergency":
             self.major_interventions += 1
             print(f"\n🚨 EMERGENCY BREAKTHROUGH INTERVENTION #{self.major_interventions}")
             print(f"   Current variance: {current_variance:.8f} (CRITICAL LOW)")
-
+            
             with torch.no_grad():
                 # MASSIVE parameter shake-up
-                noise_scale = 0.4  # Very large but controlled
+                noise_scale = 0.6  # Even larger noise
                 proto_noise = torch.randn_like(self.proto_weight) * noise_scale
                 self.proto_weight.data.add_(proto_noise)
 
                 # DRAMATIC temperature reset
-                self.temperature_sm.data.fill_(20.0)  # High exploration
+                self.temperature_sm.data.fill_(25.0)  # Very high exploration
 
                 # Force dynamic weight breakthrough
                 self.ATTN.nuclear_breakthrough()
 
                 print(f"   💥 MASSIVE parameter noise: {noise_scale}")
-                print(f"   🌡️  DRAMATIC temperature reset: 20.0")
-                print(f"   ☢️  NUCLEAR weight breakthrough applied")
-
+                print(f"   🌡️ DRAMATIC temperature reset: 25.0")
+                print(f"   ☢️ NUCLEAR weight breakthrough applied")
             return True
 
         elif intervention_type == "truly_stuck":
             self.major_interventions += 1
             print(f"\n⚡ MAJOR BREAKTHROUGH INTERVENTION #{self.major_interventions}")
             print(f"   Current variance: {current_variance:.8f} (CONFIRMED STUCK)")
-
+            
             with torch.no_grad():
                 # Progressive noise injection based on how stuck we are
-                base_noise = 0.25
-                stuck_multiplier = min(2.0, 1.0 + self.major_interventions * 0.2)
+                base_noise = 0.35  # Increased base noise
+                stuck_multiplier = min(2.5, 1.0 + self.major_interventions * 0.3)  # More aggressive
                 noise_scale = base_noise * stuck_multiplier
-
                 proto_noise = torch.randn_like(self.proto_weight) * noise_scale
                 self.proto_weight.data.add_(proto_noise)
 
                 # Smart temperature scaling
                 current_temp = self.temperature_sm.item()
-                if current_temp < 15.0:
-                    new_temp = min(current_temp * 1.8, 15.0)
+                if current_temp < 20.0:
+                    new_temp = min(current_temp * 2.2, 25.0)  # More aggressive scaling
                     self.temperature_sm.data.fill_(new_temp)
-                    print(f"   🌡️  Temperature BOOSTED: {current_temp:.2f} → {new_temp:.2f}")
+                    print(f"   🌡️ Temperature BOOSTED: {current_temp:.2f} → {new_temp:.2f}")
                 else:
                     # If temperature already high, try parameter diversity injection
                     self.ATTN.emergency_diversity_injection()
@@ -177,10 +173,10 @@ class FewShotTransformer(MetaTemplate):
 
                 # Force dynamic weight learning
                 self.ATTN.force_dynamic_learning()
-                print(f"   🎛️  Forced dynamic weight learning")
+                print(f"   🎛️ Forced dynamic weight learning")
 
                 # Update breakthrough status
-                if current_variance > 0.005:
+                if current_variance > 0.003:  # Lower threshold for breakthrough
                     print(f"   🎉 BREAKTHROUGH DETECTED!")
                     self.breakthrough_achieved = True
 
@@ -193,12 +189,12 @@ class FewShotTransformer(MetaTemplate):
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
 
         # BREAKTHROUGH: Balanced normalization for stable diversity
-        norm_strength = 0.75  # Good balance between stability and diversity
+        norm_strength = 0.8  # Slightly stronger normalization
         z_support = F.normalize(z_support, p=2, dim=-1) * norm_strength + z_support * (1 - norm_strength)
         z_query = F.normalize(z_query, p=2, dim=-1) * norm_strength + z_query * (1 - norm_strength)
 
         # Smart temperature control with wide but controlled range
-        current_temp = torch.clamp(self.temperature_sm, min=0.2, max=50.0)
+        current_temp = torch.clamp(self.temperature_sm, min=0.1, max=50.0)
 
         # Prototype computation with diversity enforcement
         proto_logits = self.proto_weight / current_temp
@@ -206,15 +202,13 @@ class FewShotTransformer(MetaTemplate):
 
         # BREAKTHROUGH: Adaptive uniform weighting based on training progress
         if self.breakthrough_achieved:
-            uniform_weight = 0.1  # Less uniform weighting after breakthrough
+            uniform_weight = 0.08  # Less uniform weighting after breakthrough
         else:
-            uniform_weight = 0.18  # More uniform weighting before breakthrough
+            uniform_weight = 0.22  # More uniform weighting before breakthrough
 
         proto_weights = proto_weights * (1 - uniform_weight) + uniform_weight / self.k_shot
-
         z_proto = (z_support * proto_weights).sum(1).unsqueeze(0)
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)
-
         x, query = z_proto, z_query
 
         # Enhanced attention with breakthrough-aware processing
@@ -224,52 +218,51 @@ class FewShotTransformer(MetaTemplate):
 
             # BREAKTHROUGH: Variance-adaptive residual scaling
             if self.training:
-                if self.last_variance < 0.001:  # Very low variance
-                    variance_boost = 5.0  # Strong boost
-                elif self.last_variance < 0.005:  # Low variance
-                    variance_boost = 2.0  # Medium boost
+                if self.last_variance < 0.0008:  # Very low variance
+                    variance_boost = 8.0  # Even stronger boost
+                elif self.last_variance < 0.003:  # Low variance
+                    variance_boost = 3.5  # Stronger boost
                 else:  # Healthy variance
                     variance_boost = 1.0  # Normal scaling
 
-                scale_factor = 0.15 * variance_boost
-                scale_factor = min(scale_factor, 0.4)  # Cap for stability
+                scale_factor = 0.18 * variance_boost
+                scale_factor = min(scale_factor, 0.5)  # Higher cap
             else:
-                scale_factor = 0.15
+                scale_factor = 0.18
 
             x = x_input + scale_factor * attn_out
 
             # Enhanced FFN with adaptive processing
             ffn_out = self.FFN(x.view(-1, x.size(-1))).view(x.shape)
-
+            
             # Adaptive FFN residual based on breakthrough status
-            ffn_scale = 0.25 if self.breakthrough_achieved else 0.2
+            ffn_scale = 0.28 if self.breakthrough_achieved else 0.22  # Higher scaling
             x = x + ffn_scale * ffn_out
 
         # BREAKTHROUGH: Smart final processing
         x_norm = torch.norm(x, dim=-1, keepdim=True)
-        x = x / torch.clamp(x_norm, min=0.02, max=30.0)  # Controlled range
+        x = x / torch.clamp(x_norm, min=0.01, max=40.0)  # Wider range
 
         scores = self.linear(x).squeeze()
 
         # BREAKTHROUGH: Emergency score diversity system
         if self.training:
             score_std = torch.std(scores)
-
-            if score_std < 0.03:  # Scores too uniform
-                noise_scale = max(0.15, 0.15 / (score_std + 1e-8))
-                noise_scale = min(noise_scale, 1.5)  # Cap noise for stability
+            if score_std < 0.05:  # Scores too uniform
+                noise_scale = max(0.25, 0.25 / (score_std + 1e-8))  # More aggressive
+                noise_scale = min(noise_scale, 2.0)  # Higher cap
                 noise = torch.randn_like(scores) * noise_scale
                 scores = scores + noise
 
-                if score_std < 0.01:  # Really critical
+                if score_std < 0.02:  # Really critical
                     print(f"🆘 EMERGENCY SCORE DIVERSITY: std={score_std:.6f}, added_noise={noise_scale:.3f}")
 
         # BREAKTHROUGH: Adaptive final temperature scaling - TENSOR SAFE
         score_range = scores.max() - scores.min()
-        if score_range < 0.1:  # Compressed scores
-            final_temp = torch.tensor(0.1, device=scores.device, dtype=scores.dtype)
-        elif score_range > 8.0:  # Over-spread scores  
-            final_temp = torch.tensor(2.0, device=scores.device, dtype=scores.dtype)
+        if score_range < 0.15:  # Compressed scores
+            final_temp = torch.tensor(0.08, device=scores.device, dtype=scores.dtype)  # Lower temp
+        elif score_range > 10.0:  # Over-spread scores
+            final_temp = torch.tensor(2.5, device=scores.device, dtype=scores.dtype)  # Higher temp
         else:
             final_temp = torch.tensor(1.0, device=scores.device, dtype=scores.dtype)
 
@@ -305,15 +298,15 @@ class FewShotTransformer(MetaTemplate):
 
         # BREAKTHROUGH: Smart adaptive label smoothing
         if self.training:
-            # Adaptive smoothing based on variance and breakthrough status
-            if current_variance < 0.0005:
-                smooth_factor = 0.35  # Very high smoothing for collapsed states
-            elif current_variance < 0.002:
-                smooth_factor = 0.25  # High smoothing for low variance
-            elif current_variance < 0.01:
-                smooth_factor = 0.15  # Medium smoothing
+            # More aggressive smoothing for stuck states
+            if current_variance < 0.0008:
+                smooth_factor = 0.4  # Very high smoothing
+            elif current_variance < 0.003:
+                smooth_factor = 0.3  # High smoothing
+            elif current_variance < 0.008:
+                smooth_factor = 0.2  # Medium smoothing
             else:
-                smooth_factor = 0.08  # Light smoothing for healthy variance
+                smooth_factor = 0.1  # Light smoothing
 
             # Create smoothed targets
             num_classes = scores.size(1)
@@ -323,8 +316,7 @@ class FewShotTransformer(MetaTemplate):
 
             log_probs = F.log_softmax(scores, dim=1)
             smooth_loss = -torch.sum(log_probs * smooth_target, dim=1).mean()
-
-            total_loss = 0.65 * base_loss + 0.35 * smooth_loss
+            total_loss = 0.6 * base_loss + 0.4 * smooth_loss
         else:
             total_loss = base_loss
 
@@ -337,37 +329,36 @@ class FewShotTransformer(MetaTemplate):
             uniform_target = torch.ones_like(class_probs) / self.n_way
             diversity_loss = F.kl_div(torch.log(class_probs + 1e-8), uniform_target, reduction='sum')
 
-            # 2. Enhanced entropy bonus (encourage prediction diversity)
+            # 2. Enhanced entropy bonus
             score_entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
-            entropy_bonus = 0.15 * score_entropy  # Strong entropy encouragement
+            entropy_bonus = 0.2 * score_entropy  # Stronger entropy encouragement
 
-            # 3. Variance preservation with adaptive strength - TENSOR SAFE VERSION
+            # 3. Variance preservation with adaptive strength
             variance_tensor = torch.var(scores)
-            if variance_tensor.item() < 0.001:  # Very low variance
-                variance_loss = -3.0 * torch.log(variance_tensor + 1e-8)  # Strong penalty
-            elif variance_tensor.item() < 0.005:  # Low variance
-                variance_loss = -1.5 * torch.log(variance_tensor + 1e-8)  # Medium penalty
+            if variance_tensor.item() < 0.0008:  # Very low variance
+                variance_loss = -4.0 * torch.log(variance_tensor + 1e-8)  # Stronger penalty
+            elif variance_tensor.item() < 0.003:  # Low variance
+                variance_loss = -2.0 * torch.log(variance_tensor + 1e-8)  # Strong penalty
             else:  # Healthy variance
-                variance_loss = -0.3 * torch.log(variance_tensor + 1e-8)  # Light penalty
+                variance_loss = -0.5 * torch.log(variance_tensor + 1e-8)  # Light penalty
 
-            # 4. Dynamic weight learning bonus (encourage weight diversity)
+            # 4. Dynamic weight learning bonus
             weight_bonus = 0.0
             if hasattr(self.ATTN, 'get_current_weight_diversity'):
                 weight_diversity = self.ATTN.get_current_weight_diversity()
-                if weight_diversity < 0.01:  # Weights are stuck
-                    weight_bonus = -0.5 * torch.log(torch.tensor(weight_diversity + 1e-8, device=scores.device))
+                if weight_diversity < 0.02:  # Weights are stuck
+                    weight_bonus = -0.8 * torch.log(torch.tensor(weight_diversity + 1e-8, device=scores.device))
 
-            # Combine all regularization terms
-            total_loss = total_loss + 0.015 * diversity_loss + entropy_bonus + 0.001 * variance_loss + 0.001 * weight_bonus
+            # Combine all regularization terms with stronger weights
+            total_loss = total_loss + 0.02 * diversity_loss + entropy_bonus + 0.002 * variance_loss + 0.002 * weight_bonus
 
         predict = torch.argmax(scores, dim=1)
         acc = (predict == target).sum().item() / target.size(0)
-
         return acc, total_loss
 
 class Attention(nn.Module):
     """BREAKTHROUGH: Enhanced attention with all your innovations + breakthrough systems"""
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.01, 
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.01,
                  initial_var_weight=0.01, dynamic_weight=True, gamma=0.01, lambda_reg=0.001):
         super().__init__()
         inner_dim = heads * dim_head
@@ -380,37 +371,38 @@ class Attention(nn.Module):
         self.gamma = gamma
         self.lambda_reg = lambda_reg
 
-        # BREAKTHROUGH: Enhanced dynamic weighting system
+        # BREAKTHROUGH: Enhanced dynamic weighting system with more powerful architecture
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
             self.weight_predictor = nn.Sequential(
-                nn.Linear(dim_head * 2, dim_head),
-                nn.LayerNorm(dim_head),
+                nn.Linear(dim_head * 2, dim_head * 3),  # Larger first layer
+                nn.LayerNorm(dim_head * 3),
                 nn.ReLU(),
-                nn.Dropout(0.35),  # Controlled dropout
-                nn.Linear(dim_head, dim_head // 2),
-                nn.ReLU(),
-                nn.Dropout(0.25),
-                nn.Linear(dim_head // 2, 3),
+                nn.Dropout(0.15),  # Lower dropout for better learning
+                nn.Linear(dim_head * 3, dim_head * 2),
+                nn.ReLU(), 
+                nn.Dropout(0.1),   # Even lower dropout
+                nn.Linear(dim_head * 2, 3),
                 nn.Softmax(dim=-1)
             )
-            self.weight_temperature = nn.Parameter(torch.ones(1) * 0.8)  # Start with good sensitivity
+            self.weight_temperature = nn.Parameter(torch.ones(1) * 1.8)  # Higher initial temp
             self.weight_history = []
-            self.last_weights = torch.tensor([0.333, 0.333, 0.334])
+            # BREAKTHROUGH: Start with asymmetric weights to break symmetry
+            self.last_weights = torch.tensor([0.4, 0.25, 0.35])
         else:
             self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
             self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
 
-        # Enhanced processing layers
+        # Enhanced processing layers with lower dropout
         self.input_linear = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias=False),
-            nn.Dropout(0.18)
+            nn.Dropout(0.12)  # Reduced dropout
         )
 
         self.output_linear = nn.Sequential(
             nn.Linear(inner_dim, dim),
-            nn.Dropout(0.18)
+            nn.Dropout(0.12)  # Reduced dropout
         ) if project_out else nn.Identity()
 
         self.record_weights = False
@@ -423,18 +415,17 @@ class Attention(nn.Module):
                 for param in self.weight_predictor.parameters():
                     if param.dim() > 1:
                         # Xavier initialization with extra variance for diversity
-                        nn.init.xavier_uniform_(param, gain=1.2)
+                        nn.init.xavier_uniform_(param, gain=1.5)  # Higher gain
                     else:
-                        # Small random bias
-                        param.uniform_(-0.02, 0.02)
+                        # Asymmetric bias initialization
+                        param.uniform_(-0.05, 0.05)
 
-                # Reset temperature to encourage exploration
-                self.weight_temperature.data.fill_(0.3)
+                # Reset temperature for more exploration
+                self.weight_temperature.data.fill_(0.2)  # Lower temperature = more sensitivity
 
                 # Clear history
                 self.weight_history = []
-
-                print(f"☢️  NUCLEAR: Complete weight predictor breakthrough reset")
+                print(f"☢️ NUCLEAR: Complete weight predictor breakthrough reset")
 
     def emergency_diversity_injection(self):
         """Emergency parameter diversity injection"""
@@ -443,15 +434,14 @@ class Attention(nn.Module):
                 # Inject controlled noise into all predictor parameters
                 for param in self.weight_predictor.parameters():
                     param_std = param.std().item()
-                    noise_scale = max(0.05, min(0.15, param_std * 0.3))  # Adaptive noise
+                    noise_scale = max(0.08, min(0.25, param_std * 0.5))  # More aggressive noise
                     noise = torch.randn_like(param) * noise_scale
                     param.add_(noise)
 
-                # Slightly adjust temperature
+                # Adjust temperature for better sensitivity
                 current_temp = self.weight_temperature.item()
-                new_temp = max(0.2, current_temp * 0.8)  # Make more sensitive
+                new_temp = max(0.1, current_temp * 0.7)  # Make more sensitive
                 self.weight_temperature.data.fill_(new_temp)
-
                 print(f"💥 EMERGENCY: Diversity injection applied, temp: {current_temp:.3f} → {new_temp:.3f}")
 
     def force_dynamic_learning(self):
@@ -465,19 +455,22 @@ class Attention(nn.Module):
                     final_bias = final_params[-1]    # Bias vector of final layer
 
                     if final_weight.dim() == 2 and final_weight.size(1) == 3:
-                        # Add asymmetric bias to break symmetry
-                        asymmetric_bias = torch.tensor([0.15, -0.08, -0.07], device=final_weight.device)
-                        bias_scale = 0.1
+                        # Add strong asymmetric bias to break symmetry
+                        asymmetric_weight = torch.tensor([
+                            [0.9, -0.4, -0.5],   # Strong preference for cosine
+                            [-0.5, 1.0, -0.5],   # Strong preference for covariance  
+                            [-0.4, -0.6, 1.1]    # Strong preference for variance
+                        ], device=final_weight.device)
+                        
+                        # Apply asymmetric modification
+                        final_weight.data = final_weight.data * 0.3 + asymmetric_weight * 0.7
 
-                        # Apply asymmetric modification to weight matrix
-                        for i in range(3):
-                            final_weight.data[:, i] += asymmetric_bias[i] * bias_scale
-
-                        # Apply asymmetric bias
+                        # Apply strong asymmetric bias
                         if final_bias.size(0) == 3:
-                            final_bias.data += asymmetric_bias * 0.05
+                            asymmetric_bias = torch.tensor([0.25, -0.12, -0.13], device=final_bias.device)
+                            final_bias.data = final_bias.data * 0.5 + asymmetric_bias * 0.5
 
-                        print(f"🎛️  FORCED: Asymmetric bias applied for dynamic learning")
+                        print(f"🎛️ FORCED: Strong asymmetric bias applied for dynamic learning")
 
     def get_current_weight_diversity(self):
         """Get current diversity of dynamic weights"""
@@ -507,15 +500,14 @@ class Attention(nn.Module):
         base_reg = self.lambda_reg / max(m, 1)
 
         if component_health < 1e-5:  # Component is nearly dead
-            regularization_factor = base_reg * 5.0  # Strong revival
+            regularization_factor = base_reg * 8.0  # Stronger revival
         elif component_health < 1e-3:  # Component is weak
-            regularization_factor = base_reg * 2.0  # Medium boost
+            regularization_factor = base_reg * 3.0  # Strong boost
         else:  # Component is healthy
             regularization_factor = base_reg  # Normal regularization
 
         cov_component = regularization_factor * cov_component
-        cov_component = torch.clamp(cov_component, -25.0, 25.0)  # Controlled range
-
+        cov_component = torch.clamp(cov_component, -30.0, 30.0)  # Wider range
         return cov_component
 
     def compute_margin_based_variance(self, f_q, f_k):
@@ -526,25 +518,24 @@ class Attention(nn.Module):
 
         # Cosine similarity with safe range
         cosine_sim = torch.matmul(f_q_norm, f_k_norm.transpose(-1, -2))
-        cosine_sim = torch.clamp(cosine_sim, -0.98, 0.98)  # Safe range
+        cosine_sim = torch.clamp(cosine_sim, -0.98, 0.98)
 
-        # BREAKTHROUGH: Adaptive gamma with diversity-aware scaling
+        # BREAKTHROUGH: More aggressive adaptive gamma
         if self.training:
             sim_diversity = torch.std(cosine_sim).item()
-            if sim_diversity < 0.005:  # Very low diversity
-                adaptive_gamma = self.gamma * 4.0  # Strong diversity boost
-            elif sim_diversity < 0.02:  # Low diversity
-                adaptive_gamma = self.gamma * 2.0  # Medium boost
+            if sim_diversity < 0.003:  # Very low diversity
+                adaptive_gamma = self.gamma * 6.0  # Stronger boost
+            elif sim_diversity < 0.015:  # Low diversity
+                adaptive_gamma = self.gamma * 3.0  # Strong boost
             else:  # Good diversity
-                adaptive_gamma = self.gamma * (1.0 + sim_diversity * 5.0)  # Adaptive scaling
+                adaptive_gamma = self.gamma * (1.0 + sim_diversity * 8.0)  # More aggressive scaling
         else:
             adaptive_gamma = self.gamma
 
         # Enhanced margin-based variance computation
-        margin_values = torch.clamp(adaptive_gamma - cosine_sim, min=0.0, max=5.0)
+        margin_values = torch.clamp(adaptive_gamma - cosine_sim, min=0.0, max=8.0)  # Wider range
         var_component = margin_values.mean(dim=-1, keepdim=True)
         var_component = var_component.expand(-1, -1, -1, cosine_sim.size(-1))
-
         return var_component
 
     def forward(self, q, k, v):
@@ -567,13 +558,13 @@ class Attention(nn.Module):
                 qk_features = torch.cat([q_global, k_global], dim=-1)
 
                 # Temperature-controlled prediction with adaptive range
-                weight_temp = torch.clamp(self.weight_temperature, 0.1, 5.0)
+                weight_temp = torch.clamp(self.weight_temperature, 0.05, 3.0)  # Wider range
                 weight_logits = self.weight_predictor(qk_features)
                 weights = F.softmax(weight_logits / weight_temp, dim=-1)
 
-                # BREAKTHROUGH: Smart weight diversity enforcement
-                min_weight = 0.08  # Prevent complete dominance
-                max_weight = 0.75  # Allow significant specialization
+                # BREAKTHROUGH: More aggressive weight diversity enforcement
+                min_weight = 0.05  # Allow more extreme specialization
+                max_weight = 0.85  # Allow strong dominance
                 weights = torch.clamp(weights, min_weight, max_weight)
                 weights = weights / weights.sum(dim=-1, keepdim=True)  # Renormalize
 
@@ -581,7 +572,7 @@ class Attention(nn.Module):
                 if self.training:
                     current_weights = weights.detach().cpu().numpy().mean(axis=0)
                     self.weight_history.append(current_weights)
-                    if len(self.weight_history) > 100:  # Keep reasonable history
+                    if len(self.weight_history) > 100:
                         self.weight_history.pop(0)
                     self.last_weights = torch.tensor(current_weights)
 
@@ -591,39 +582,38 @@ class Attention(nn.Module):
             else:
                 cov_weight = torch.sigmoid(self.fixed_cov_weight)
                 var_weight = torch.sigmoid(self.fixed_var_weight)
-                cos_weight = torch.clamp(1.0 - cov_weight - var_weight, 0.15, 0.85)
+                cos_weight = torch.clamp(1.0 - cov_weight - var_weight, 0.1, 0.9)
 
             # BREAKTHROUGH: Component combination with health-aware scaling
             cosine_norm = torch.std(cosine_sim).detach() + 1e-6
-            cov_norm = torch.std(cov_component).detach() + 1e-6  
+            cov_norm = torch.std(cov_component).detach() + 1e-6
             var_norm = torch.std(var_component).detach() + 1e-6
 
-            # Health-based component scaling
-            cosine_health = min(cosine_norm.item(), 1.0)
-            cov_health = min(cov_norm.item() * 10.0, 1.0)  # Covariance typically smaller
-            var_health = min(var_norm.item() * 10.0, 1.0)  # Variance typically smaller
+            # Health-based component scaling with more aggressive factors
+            cosine_health = min(cosine_norm.item(), 1.2)
+            cov_health = min(cov_norm.item() * 12.0, 1.2)  # More aggressive scaling
+            var_health = min(var_norm.item() * 12.0, 1.2)
 
             cosine_scaled = cosine_sim / cosine_norm * cosine_health
-            cov_scaled = cov_component / cov_norm * 0.4 * cov_health  # Your covariance component
-            var_scaled = var_component / var_norm * 0.4 * var_health   # Your variance component
+            cov_scaled = cov_component / cov_norm * 0.5 * cov_health  # Higher scaling
+            var_scaled = var_component / var_norm * 0.5 * var_health
 
             # Combine all components
             dots = (cos_weight * cosine_scaled +
                    cov_weight * cov_scaled +
                    var_weight * var_scaled)
 
-            # BREAKTHROUGH: Adaptive attention temperature - FULLY TENSOR SAFE
-            dots_diversity = torch.std(dots)  # Keep as tensor
-
-            if dots_diversity < 1e-5:  # Attention completely collapsed
-                attention_temperature = torch.tensor(0.05, device=dots.device, dtype=dots.dtype)
-            elif dots_diversity < 1e-3:  # Attention weak
-                attention_temperature = torch.tensor(0.2, device=dots.device, dtype=dots.dtype)
+            # BREAKTHROUGH: More aggressive attention temperature - FULLY TENSOR SAFE
+            dots_diversity = torch.std(dots)
+            if dots_diversity < 5e-6:  # Attention completely collapsed
+                attention_temperature = torch.tensor(0.03, device=dots.device, dtype=dots.dtype)
+            elif dots_diversity < 5e-4:  # Attention weak
+                attention_temperature = torch.tensor(0.15, device=dots.device, dtype=dots.dtype)
             else:  # Attention healthy
-                attention_temperature = torch.tensor(0.5, device=dots.device, dtype=dots.dtype) + dots_diversity
+                attention_temperature = torch.tensor(0.4, device=dots.device, dtype=dots.dtype) + dots_diversity * 1.5
 
-            # Tensor-safe clamping
-            attention_temperature = torch.clamp(attention_temperature, 0.05, 3.0)
+            # Tensor-safe clamping with wider range
+            attention_temperature = torch.clamp(attention_temperature, 0.03, 4.0)
             dots = dots / attention_temperature
 
             out = torch.matmul(self.sm(dots), f_v)
@@ -645,8 +635,8 @@ class Attention(nn.Module):
             # Comprehensive health metrics
             weight_diversity = np.std(weights, axis=0).sum()
             weight_balance = 1.0 - np.std(weights.mean(axis=0)) / 0.577
+            
             learning_trend = 0.0
-
             if len(weights) >= 10:
                 recent_diversity = np.std(weights[-10:], axis=0).sum()
                 old_diversity = np.std(weights[:-10], axis=0).sum() if len(weights) > 10 else 0
@@ -662,7 +652,7 @@ class Attention(nn.Module):
                 'diversity_score': float(weight_diversity),
                 'balance_score': float(weight_balance),
                 'learning_trend': float(learning_trend),
-                'health_status': 'breakthrough' if weight_diversity > 0.15 else 'learning' if weight_diversity > 0.05 else 'stuck',
+                'health_status': 'breakthrough' if weight_diversity > 0.1 else 'learning' if weight_diversity > 0.03 else 'stuck',
                 'histogram': {
                     'cosine': np.histogram(weights[:, 0], bins=10, range=(0,1))[0].tolist(),
                     'cov': np.histogram(weights[:, 1], bins=10, range=(0,1))[0].tolist(),

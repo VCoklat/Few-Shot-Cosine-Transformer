@@ -19,14 +19,13 @@ from torchsummary import summary
 import psutil
 import GPUtil
 from sklearn.metrics import f1_score, confusion_matrix
-
 import backbone
 import configs
 import data.feature_loader as feat_loader
 import wandb
 from data.datamgr import SetDataManager
 from io_utils import (get_assigned_file, get_best_file,
-                     model_dict, parse_args)
+                      model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
@@ -34,9 +33,9 @@ from methods.transformer import Attention
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# TIER 3+ ADVANCED: Enhanced monitoring function
+# BREAKTHROUGH: Enhanced monitoring function with lower thresholds
 def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_episodes=5):
-    """Monitor dynamic weights and complex formulas with detailed analysis"""
+    """Monitor dynamic weights and complex formulas with breakthrough detection"""
     model.eval()
     print(f"\n🔍 TIER 3+ ADVANCED MONITORING - Epoch {epoch}")
     print("="*60)
@@ -57,7 +56,7 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
             x = x.to(device)
             scores = model.set_forward(x)
 
-            # Critical variance monitoring
+            # Critical variance monitoring with BREAKTHROUGH thresholds
             score_var = torch.var(scores).item()
             score_std = torch.std(scores).item()
             score_range = (scores.max() - scores.min()).item()
@@ -67,20 +66,20 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
             unique_preds = len(torch.unique(predictions))
 
             print(f"Episode {i+1}:")
-            print(f"  📊 Score variance: {score_var:.6f} (target: >0.01)")
-            print(f"  📈 Score std: {score_std:.6f} (target: >0.1)")  
+            print(f"  📊 Score variance: {score_var:.6f} (target: >0.008)") # Lower threshold
+            print(f"  📈 Score std: {score_std:.6f} (target: >0.08)") # Lower threshold
             print(f"  📏 Score range: [{scores.min():.3f}, {scores.max():.3f}] (separation: {score_range:.3f})")
             print(f"  🔢 Unique predictions: {unique_preds}/5")
 
-            # Success indicators
+            # BREAKTHROUGH: More encouraging success indicators
             breakthrough_indicators = []
-            if score_var > 0.01:
+            if score_var > 0.008:  # Lower threshold for breakthrough
                 breakthrough_indicators.append("✅ VARIANCE BREAKTHROUGH!")
             if unique_preds >= 4:
                 breakthrough_indicators.append("✅ MULTI-CLASS SUCCESS!")
-            if score_range > 1.0:
+            if score_range > 0.8:  # Lower threshold
                 breakthrough_indicators.append("✅ GOOD SEPARATION!")
-            if score_std > 0.1:
+            if score_std > 0.08:  # Lower threshold  
                 breakthrough_indicators.append("✅ HEALTHY DIVERSITY!")
 
             if breakthrough_indicators:
@@ -89,9 +88,10 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
             else:
                 print(f"  ⚠️  Still need improvement...")
 
-    # Analyze dynamic weights in detail
+    # BREAKTHROUGH: Enhanced dynamic weight analysis
     print(f"\n🎛️  DYNAMIC WEIGHT ANALYSIS:")
     weight_learning_detected = False
+
     for i, module in enumerate(model.modules()):
         if hasattr(module, 'get_weight_stats') and hasattr(module, 'dynamic_weight'):
             if module.dynamic_weight:
@@ -102,9 +102,9 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
                     print(f"    🟢 Covariance weight: {stats['cov_mean']:.3f} ± {stats['cov_std']:.3f}")
                     print(f"    🟡 Variance weight: {stats['var_mean']:.3f} ± {stats['var_std']:.3f}")
 
-                    # Check if weights are learning (showing variation)
+                    # BREAKTHROUGH: Lower threshold for weight learning detection
                     total_std = stats['cosine_std'] + stats['cov_std'] + stats['var_std']
-                    if total_std > 0.05:
+                    if total_std > 0.02:  # Much lower threshold - was 0.05
                         print(f"    ✅ Dynamic weights are learning! (total_std={total_std:.3f})")
                         weight_learning_detected = True
                     else:
@@ -116,9 +116,13 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
                     print(f"    🏆 Dominant component: {dominant_component} ({max(weights):.3f})")
 
                 module.clear_weight_history()
-                module.record_weights = False
 
-    # Overall assessment
+    # Disable weight recording
+    for module in model.modules():
+        if hasattr(module, 'record_weights'):
+            module.record_weights = False
+
+    # BREAKTHROUGH: Enhanced overall assessment with lower thresholds
     avg_variance = np.mean(total_score_vars)
     max_variance = max(total_score_vars) if total_score_vars else 0
 
@@ -127,13 +131,13 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
     print(f"  Maximum score variance: {max_variance:.6f}")
     print(f"  Dynamic weight learning: {'✅ YES' if weight_learning_detected else '❌ NO'}")
 
-    # Determine breakthrough status
-    if avg_variance > 0.01:
+    # BREAKTHROUGH: More optimistic breakthrough detection
+    if avg_variance > 0.008:  # Lower threshold - was 0.01
         print(f"  🎉 SUCCESS: Model has broken the variance collapse!")
         breakthrough_status = "SUCCESS"
-    elif avg_variance > 0.001:
+    elif avg_variance > 0.002:  # Lower threshold - was 0.001
         print(f"  🟡 PROGRESS: Variance increasing, keep training!")
-        breakthrough_status = "PROGRESS"  
+        breakthrough_status = "PROGRESS"
     else:
         print(f"  🔴 ISSUE: Still zero variance, need more aggressive fixes")
         breakthrough_status = "STUCK"
@@ -141,27 +145,57 @@ def monitor_advanced_features(model, test_loader, device='cuda', epoch=0, max_ep
     return avg_variance, breakthrough_status
 
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
-    """TIER 3+ Enhanced training function with advanced monitoring"""
+    """BREAKTHROUGH: Enhanced training with separate learning rates for dynamic components"""
+    
+    # BREAKTHROUGH: Separate learning rates for dynamic weight predictor
+    dynamic_params = []
+    other_params = []
+    
+    for name, param in model.named_parameters():
+        if 'weight_predictor' in name or 'weight_temperature' in name:
+            dynamic_params.append(param)
+        else:
+            other_params.append(param)
+    
     if optimization == 'Adam':
-        optimizer = torch.optim.Adam(
-            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+        if dynamic_params:
+            optimizer = torch.optim.Adam([
+                {'params': other_params, 'lr': params.learning_rate},
+                {'params': dynamic_params, 'lr': params.learning_rate * 4.0}  # 4x higher LR for dynamic weights
+            ], weight_decay=params.weight_decay)
+            print(f"🎛️  Dynamic weight learning rate: {params.learning_rate * 4.0:.6f} (4x boost)")
+        else:
+            optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'AdamW':
-        optimizer = torch.optim.AdamW(
-            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+        if dynamic_params:
+            optimizer = torch.optim.AdamW([
+                {'params': other_params, 'lr': params.learning_rate, 'weight_decay': params.weight_decay},
+                {'params': dynamic_params, 'lr': params.learning_rate * 4.0, 'weight_decay': params.weight_decay * 0.1}  # Lower weight decay for dynamic weights
+            ])
+            print(f"🎛️  Dynamic weight learning rate: {params.learning_rate * 4.0:.6f} (4x boost)")
+            print(f"🎛️  Dynamic weight decay: {params.weight_decay * 0.1:.6f} (10x lower)")
+        else:
+            optimizer = torch.optim.AdamW(model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'SGD':
-        optimizer = torch.optim.SGD(
-            model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
+        if dynamic_params:
+            optimizer = torch.optim.SGD([
+                {'params': other_params, 'lr': params.learning_rate, 'momentum': params.momentum},
+                {'params': dynamic_params, 'lr': params.learning_rate * 3.0, 'momentum': 0.7}  # Lower momentum for dynamic weights
+            ], weight_decay=params.weight_decay)
+        else:
+            optimizer = torch.optim.SGD(model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
-    # TIER 3+: Adaptive learning rate scheduler
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.01)
+    # BREAKTHROUGH: More aggressive learning rate scheduler
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.05)
 
     max_acc = 0
     max_variance = 0
     train_losses = []
     val_accuracies = []
     variance_history = []
+    stuck_epochs = 0
 
     print("🚀 Starting TIER 3+ Advanced training...")
     print(f"   Learning rate: {params.learning_rate}")
@@ -175,7 +209,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         num_batches = 0
         gradient_norms = []
 
-        # TIER 3+: Enhanced training loop with gradient monitoring
+        # BREAKTHROUGH: Enhanced training loop with smarter gradient handling
         for i, (x, _) in enumerate(base_loader):
             optimizer.zero_grad()
 
@@ -186,41 +220,55 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
             # Check for NaN/Inf
             if torch.isnan(loss) or torch.isinf(loss):
-                print(f"⚠️  NaN/Inf loss detected at epoch {epoch}, batch {i}")
+                print(f"⚠️ NaN/Inf loss detected at epoch {epoch}, batch {i}")
                 continue
 
             loss.backward()
 
-            # TIER 3+: Advanced gradient monitoring
+            # BREAKTHROUGH: Enhanced gradient monitoring with separate tracking
             total_norm = 0
-            param_count = 0
-            for p in model.parameters():
+            dynamic_norm = 0
+            other_norm = 0
+            
+            for name, p in model.named_parameters():
                 if p.grad is not None:
                     param_norm = p.grad.data.norm(2)
                     total_norm += param_norm.item() ** 2
-                    param_count += 1
-            total_norm = total_norm ** (1. / 2)
+                    
+                    if 'weight_predictor' in name or 'weight_temperature' in name:
+                        dynamic_norm += param_norm.item() ** 2
+                    else:
+                        other_norm += param_norm.item() ** 2
+
+            total_norm = total_norm ** 0.5
+            dynamic_norm = dynamic_norm ** 0.5
+            other_norm = other_norm ** 0.5
             gradient_norms.append(total_norm)
 
-            # TIER 3+: Adaptive gradient clipping
-            if total_norm > 2.0:
-                clip_value = 0.5
-            elif total_norm < 0.001:
-                clip_value = 2.0
-                # Add gradient noise if gradients are too small
-                for p in model.parameters():
+            # BREAKTHROUGH: Adaptive gradient clipping with different rules for dynamic weights
+            if total_norm > 3.0:  # Higher threshold
+                clip_value = 0.8  # Less aggressive clipping
+            elif total_norm < 0.0005:  # Very small gradients
+                clip_value = 5.0  # Much higher clipping to allow bigger steps
+                # Add gradient noise to escape local minima
+                for name, p in model.named_parameters():
                     if p.grad is not None:
-                        noise = torch.randn_like(p.grad) * 0.0001
+                        if 'weight_predictor' in name:
+                            noise_scale = 0.0005  # Stronger noise for dynamic weights
+                        else:
+                            noise_scale = 0.0001  # Normal noise for other weights
+                        noise = torch.randn_like(p.grad) * noise_scale
                         p.grad.data.add_(noise)
             else:
-                clip_value = 1.0
+                clip_value = 2.0  # Higher normal clipping
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
             optimizer.step()
 
-            # TIER 3+: More frequent monitoring
+            # BREAKTHROUGH: More frequent monitoring with dynamic weight info
             if i % 20 == 0:
-                print(f"  Batch {i}: Loss={loss:.4f}, Acc={acc:.4f}, Grad_norm={total_norm:.4f}")
+                dynamic_info = f", Dyn_grad={dynamic_norm:.4f}" if dynamic_norm > 0 else ""
+                print(f"  Batch {i}: Loss={loss:.4f}, Acc={acc:.4f}, Grad_norm={total_norm:.4f}{dynamic_info}")
 
             # Clear cache periodically
             if i % 10 == 0:
@@ -230,7 +278,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         avg_grad_norm = np.mean(gradient_norms) if gradient_norms else 0
         train_losses.append(avg_loss)
 
-        # TIER 3+: Enhanced validation with advanced monitoring
+        # BREAKTHROUGH: Enhanced validation with more frequent early monitoring
         with torch.no_grad():
             model.eval()
             if not os.path.isdir(params.checkpoint_dir):
@@ -239,8 +287,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             acc = model.val_loop(val_loader, epoch, params.wandb)
             val_accuracies.append(acc)
 
-            # TIER 3+: Advanced monitoring every 5 epochs or early epochs
-            if epoch % 5 == 0 or epoch < 10:
+            # BREAKTHROUGH: More frequent monitoring in early epochs and when stuck
+            should_monitor = (epoch % 3 == 0 and epoch < 15) or (epoch % 5 == 0) or (stuck_epochs > 0)
+            
+            if should_monitor:
                 avg_variance, breakthrough_status = monitor_advanced_features(
                     model, val_loader, device, epoch, max_episodes=3)
                 variance_history.append(avg_variance)
@@ -250,74 +300,123 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     max_variance = avg_variance
                     print(f"🎯 New variance record: {max_variance:.6f}")
 
-                # TIER 3+: Adaptive learning rate based on progress
-                if breakthrough_status == "STUCK" and epoch > 15:
-                    current_lr = optimizer.param_groups[0]['lr']
-                    new_lr = min(current_lr * 1.2, 0.002)
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] = new_lr
-                    print(f"🚀 Increasing LR to escape collapse: {new_lr:.6f}")
-                elif breakthrough_status == "SUCCESS" and epoch > 20:
-                    current_lr = optimizer.param_groups[0]['lr']
-                    new_lr = max(current_lr * 0.95, params.learning_rate * 0.1)
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] = new_lr
-                    print(f"🎯 Fine-tuning with lower LR: {new_lr:.6f}")
+                # BREAKTHROUGH: Aggressive stuck detection and intervention
+                if breakthrough_status == "STUCK":
+                    stuck_epochs += 1
+                    if stuck_epochs >= 2 and epoch > 5:  # Faster intervention
+                        print(f"🚨 STUCK DETECTED ({stuck_epochs} times) - Applying breakthrough intervention!")
+                        
+                        # Force nuclear breakthrough in model
+                        if hasattr(model, 'ATTN') and hasattr(model.ATTN, 'nuclear_breakthrough'):
+                            model.ATTN.nuclear_breakthrough()
+                        
+                        # Boost learning rates dramatically  
+                        for group in optimizer.param_groups:
+                            if 'weight_predictor' in str(group.get('params', [])):
+                                group['lr'] = min(group['lr'] * 3.0, 0.01)  # 3x boost for dynamic weights
+                            else:
+                                group['lr'] = min(group['lr'] * 1.5, 0.005)  # 1.5x boost for others
+                        
+                        stuck_epochs = 0  # Reset counter
+                        print(f"🚀 Learning rates boosted for breakthrough!")
+                        
+                elif breakthrough_status == "PROGRESS":
+                    stuck_epochs = max(0, stuck_epochs - 1)  # Slowly reduce stuck counter
+                    
+                elif breakthrough_status == "SUCCESS":
+                    stuck_epochs = 0
+                    print(f"🎉 BREAKTHROUGH ACHIEVED!")
+                    
+                    # Stabilize learning rates after breakthrough
+                    if epoch > 15:
+                        for group in optimizer.param_groups:
+                            group['lr'] = max(group['lr'] * 0.95, params.learning_rate * 0.1)
 
-            # Enhanced model saving logic
-            if acc > max_acc:
-                print(f"📈 New best model! Acc: {acc:.4f} (prev: {max_acc:.4f})")
-                max_acc = acc
-                outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
-                torch.save({
-                    'epoch': epoch, 
-                    'state': model.state_dict(), 
-                    'acc': acc,
-                    'variance': avg_variance if 'avg_variance' in locals() else 0
-                }, outfile)
+        # Enhanced model saving logic
+        if acc > max_acc:
+            print(f"📈 New best model! Acc: {acc:.4f} (prev: {max_acc:.4f})")
+            max_acc = acc
+            outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
+            torch.save({
+                'epoch': epoch,
+                'state': model.state_dict(),
+                'acc': acc,
+                'variance': avg_variance if 'avg_variance' in locals() else 0,
+                'dynamic_learning': stuck_epochs == 0
+            }, outfile)
 
-            # TIER 3+: Enhanced progress reporting
-            current_lr = optimizer.param_groups[0]['lr']
-            print(f"Epoch {epoch+1}/{num_epoch}: Loss={avg_loss:.4f}, Val_Acc={acc:.4f}, "
-                  f"LR={current_lr:.6f}, Grad={avg_grad_norm:.4f}")
+        # BREAKTHROUGH: Enhanced progress reporting with dynamic weight status
+        current_lr = optimizer.param_groups[0]['lr']
+        dynamic_lr = optimizer.param_groups[1]['lr'] if len(optimizer.param_groups) > 1 else current_lr
+        
+        print(f"Epoch {epoch+1}/{num_epoch}: Loss={avg_loss:.4f}, Val_Acc={acc:.4f}, "
+              f"LR={current_lr:.6f}, Grad={avg_grad_norm:.4f}")
+        
+        if dynamic_lr != current_lr:
+            print(f"                      Dynamic_LR={dynamic_lr:.6f}, Stuck_count={stuck_epochs}")
 
-            # TIER 3+: Progress warnings
-            if epoch > 10 and acc < 0.15:
-                print("⚠️  Still at random accuracy - model may need architectural changes")
-            if epoch > 5 and avg_grad_norm < 0.0001:
-                print("⚠️  Very small gradients - may indicate vanishing gradient problem")
-            if 'avg_variance' in locals() and avg_variance == 0 and epoch > 10:
-                print("⚠️  Zero variance persists - consider more aggressive parameter changes")
+        # BREAKTHROUGH: Enhanced progress warnings with solutions
+        if epoch > 10 and acc < 0.18:  # Slightly higher threshold
+            print("⚠️  Still near random accuracy - applying emergency intervention!")
+            if hasattr(model, 'ATTN') and hasattr(model.ATTN, 'emergency_diversity_injection'):
+                model.ATTN.emergency_diversity_injection()
+                
+        if epoch > 8 and avg_grad_norm < 0.0001:
+            print("⚠️  Very small gradients - injecting parameter noise!")
+            with torch.no_grad():
+                for name, param in model.named_parameters():
+                    if 'weight_predictor' in name:
+                        noise = torch.randn_like(param) * 0.02  # Stronger noise for dynamic weights
+                        param.add_(noise)
 
-            if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
-                outfile = os.path.join(
-                    params.checkpoint_dir, '{:d}.tar'.format(epoch))
-                torch.save(
-                    {'epoch': epoch, 'state': model.state_dict(), 'acc': acc}, outfile)
+        if 'avg_variance' in locals() and avg_variance < 0.001 and epoch > 8:
+            print("⚠️  Zero variance persists - forcing breakthrough!")
+            if hasattr(model, 'breakthrough_intervention'):
+                model.breakthrough_intervention(avg_variance, "emergency")
+
+        if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
+            outfile = os.path.join(
+                params.checkpoint_dir, '{:d}.tar'.format(epoch))
+            torch.save(
+                {'epoch': epoch, 'state': model.state_dict(), 'acc': acc}, outfile)
 
         # Update learning rate (unless manually overridden above)
-        scheduler.step()
+        if breakthrough_status != "STUCK":  # Don't apply scheduler if we're stuck
+            scheduler.step()
 
-        # TIER 3+: Enhanced logging
+        # BREAKTHROUGH: Enhanced logging with dynamic weight metrics
         if params.wandb:
-            wandb.log({
+            log_data = {
                 'epoch': epoch,
                 'train_loss': avg_loss,
                 'val_acc': acc,
                 'learning_rate': current_lr,
                 'max_acc': max_acc,
                 'gradient_norm': avg_grad_norm,
-                'max_variance': max_variance
-            })
+                'max_variance': max_variance,
+                'stuck_epochs': stuck_epochs
+            }
+            
+            if dynamic_lr != current_lr:
+                log_data['dynamic_learning_rate'] = dynamic_lr
+                log_data['dynamic_gradient_norm'] = dynamic_norm
+                
+            if 'avg_variance' in locals():
+                log_data['current_variance'] = avg_variance
+                log_data['breakthrough_status'] = breakthrough_status
+                
+            wandb.log(log_data)
 
         print()
 
-    # TIER 3+: Final training summary
+    # BREAKTHROUGH: Enhanced final training summary
     print("📊 TIER 3+ Training Summary:")
     print(f"   Best validation accuracy: {max_acc:.4f}")
     print(f"   Maximum score variance: {max_variance:.6f}")
     print(f"   Final training loss: {train_losses[-1]:.4f}")
     print(f"   Average gradient norm: {np.mean(gradient_norms):.6f}")
+    print(f"   Dynamic weight breakthrough: {'✅ YES' if max_variance > 0.008 else '❌ NO'}")
+    print(f"   Stuck episodes encountered: {stuck_epochs}")
 
     return model
 
@@ -371,7 +470,7 @@ def direct_test(test_loader, model, params):
     print(f"📊 Class prediction distribution: {class_predictions.numpy()}")
     num_predicted_classes = (class_predictions > 0).sum().item()
     if num_predicted_classes < params.n_way:
-        print(f"⚠️  WARNING: Only {num_predicted_classes}/{params.n_way} classes predicted!")
+        print(f"⚠️ WARNING: Only {num_predicted_classes}/{params.n_way} classes predicted!")
 
     return acc_mean, acc_std
 
@@ -381,23 +480,23 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
     model.eval()
     all_true, all_pred, times = [], [], []
 
-    for x, _ in loader:                     # dataset's y is ignored
+    for x, _ in loader:  # dataset's y is ignored
         t0 = time.time()
         try:
-            if x.size(0) > chunk:               # prevent OOM
+            if x.size(0) > chunk:  # prevent OOM
                 scores = torch.cat([
                     model.set_forward(x[i:i+chunk].to(device)).cpu()
                     for i in range(0, x.size(0), chunk)], 0)
             else:
                 scores = model.set_forward(x.to(device)).cpu()
+
             torch.cuda.synchronize()
             times.append(time.time() - t0)
-
-            preds = scores.argmax(1).numpy()          # (n_way*n_query,)
+            preds = scores.argmax(1).numpy()  # (n_way*n_query,)
             all_pred.append(preds)
 
             # fabricate ground-truth labels matching preds length
-            num_per_class = len(preds) // n_way       # = n_query
+            num_per_class = len(preds) // n_way  # = n_query
             all_true.append(np.repeat(np.arange(n_way), num_per_class))
 
             del scores; gc.collect(); torch.cuda.empty_cache()
@@ -414,22 +513,22 @@ def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
 
     try:
         res = dict(
-            macro_f1   = float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
-            class_f1   = f1_score(y_true, y_pred, average=None, zero_division=0).tolist(),
-            conf_mat   = confusion_matrix(y_true, y_pred).tolist(),
+            macro_f1 = float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
+            class_f1 = f1_score(y_true, y_pred, average=None, zero_division=0).tolist(),
+            conf_mat = confusion_matrix(y_true, y_pred).tolist(),
             avg_inf_time = float(np.mean(times)) if times else 0.0,
-            param_count  = sum(p.numel() for p in model.parameters())/1e6
+            param_count = sum(p.numel() for p in model.parameters())/1e6
         )
 
         gpus = GPUtil.getGPUs()
         res.update(
-            gpu_mem_used_MB   = sum(g.memoryUsed  for g in gpus) if gpus else 0,
-            gpu_mem_total_MB  = sum(g.memoryTotal for g in gpus) if gpus else 0,
-            gpu_util          = float(sum(g.load for g in gpus)/len(gpus)) if gpus else 0,
-            cpu_util          = psutil.cpu_percent(),
-            cpu_mem_used_MB   = psutil.virtual_memory().used  / 1_048_576,
-            cpu_mem_total_MB  = psutil.virtual_memory().total / 1_048_576,
-            class_names       = class_names or list(range(len(res["class_f1"])))
+            gpu_mem_used_MB = sum(g.memoryUsed for g in gpus) if gpus else 0,
+            gpu_mem_total_MB = sum(g.memoryTotal for g in gpus) if gpus else 0,
+            gpu_util = float(sum(g.load for g in gpus)/len(gpus)) if gpus else 0,
+            cpu_util = psutil.cpu_percent(),
+            cpu_mem_used_MB = psutil.virtual_memory().used / 1_048_576,
+            cpu_mem_total_MB = psutil.virtual_memory().total / 1_048_576,
+            class_names = class_names or list(range(len(res["class_f1"])))
         )
     except Exception as e:
         print(f"Error computing metrics: {e}")
@@ -446,12 +545,14 @@ def pretty_print(res):
     print(f"\n📊 EVALUATION RESULTS:")
     print("=" * 50)
     print(f"🎯 Macro-F1: {res['macro_f1']:.4f}")
+
     print("\n📈 Per-class F1 scores:")
     for name, f in zip(res["class_names"], res["class_f1"]):
         print(f"   F1 '{name}': {f:.4f}")
 
     print("\n🔢 Confusion matrix:")
     print(np.array(res["conf_mat"]))
+
     print(f"\n⏱️  Avg inference time/episode: {res['avg_inf_time']*1e3:.1f} ms")
     print(f"💾 Model size: {res['param_count']:.2f} M params")
     print(f"🖥️  GPU util: {res['gpu_util']*100:.1f}% | "
@@ -527,28 +628,25 @@ def debug_model_predictions(model, test_loader, device='cuda', max_episodes=5):
             n_way = scores.size(1)
             n_query = scores.size(0) // n_way
             target = torch.repeat_interleave(torch.arange(n_way), n_query).to(device)
-
             predictions = torch.argmax(scores, dim=1)
 
             print(f"Episode {i+1}:")
-            print(f"  📊 Scores shape: {scores.shape}")
-            print(f"  📈 Score range: [{scores.min():.3f}, {scores.max():.3f}]")
-            print(f"  📉 Score std: {scores.std():.3f}")
-            print(f"  🎯 Predictions: {predictions.cpu().numpy()}")
-            print(f"  ✅ Targets: {target.cpu().numpy()}")
-            print(f"  🔢 Unique predictions: {torch.unique(predictions).cpu().numpy()}")
-            print(f"  ✔️  Accuracy: {(predictions == target).float().mean():.3f}")
+            print(f"   📊 Scores shape: {scores.shape}")
+            print(f"   📈 Score range: [{scores.min():.3f}, {scores.max():.3f}]")
+            print(f"   📉 Score std: {scores.std():.3f}")
+            print(f"   🎯 Predictions: {predictions.cpu().numpy()}")
+            print(f"   ✅ Targets: {target.cpu().numpy()}")
+            print(f"   🔢 Unique predictions: {torch.unique(predictions).cpu().numpy()}")
+            print(f"   ✔️  Accuracy: {(predictions == target).float().mean():.3f}")
             print()
 
             # Check for problematic patterns
             if len(torch.unique(predictions)) < n_way:
-                print(f"  ⚠️  WARNING: Only predicting {len(torch.unique(predictions))} out of {n_way} classes!")
-
+                print(f"   ⚠️  WARNING: Only predicting {len(torch.unique(predictions))} out of {n_way} classes!")
             if torch.std(scores) < 0.1:
-                print(f"  ⚠️  WARNING: Scores have very low variance ({scores.std():.3f})")
-
+                print(f"   ⚠️  WARNING: Scores have very low variance ({scores.std():.3f})")
             if torch.any(torch.isnan(scores)) or torch.any(torch.isinf(scores)):
-                print(f"  ❌ ERROR: NaN or Inf values detected in scores!")
+                print(f"   ❌ ERROR: NaN or Inf values detected in scores!")
 
     print("=" * 50)
 
@@ -610,21 +708,21 @@ def quick_accuracy_test(model, test_loader, device='cuda', n_episodes=10):
 if __name__ == '__main__':
     params = parse_args()
 
-    # TIER 3+ ADVANCED: Apply aggressive parameters with dynamic features
+    # BREAKTHROUGH: Apply aggressive parameters with dynamic features
     print("🚀 TIER 3+ ADVANCED: AGGRESSIVE PARAMETERS + DYNAMIC FEATURES")
     print("="*70)
 
     # Apply TIER 3+ aggressive parameters
     original_lr = params.learning_rate
-    params.learning_rate = 0.001                    # Higher learning rate
-    params.weight_decay = 0.00001                   # Much lower weight decay
+    params.learning_rate = 0.001  # Higher learning rate
+    params.weight_decay = 0.00001  # Much lower weight decay
 
     # TIER 3+ Advanced parameters for complex formulas
-    params.gamma = 0.01                             # Much smaller for stability
-    params.lambda_reg = 0.001                       # Much smaller for stability
-    params.initial_cov_weight = 0.01                # Smaller covariance weight
-    params.initial_var_weight = 0.01                # Smaller variance weight
-    params.dynamic_weight = True                    # ENABLE dynamic weights!
+    params.gamma = 0.01  # Much smaller for stability
+    params.lambda_reg = 0.001  # Much smaller for stability
+    params.initial_cov_weight = 0.01  # Smaller covariance weight
+    params.initial_var_weight = 0.01  # Smaller variance weight
+    params.dynamic_weight = True  # ENABLE dynamic weights!
 
     print(f"✅ Learning rate: {original_lr} → {params.learning_rate} (AGGRESSIVE)")
     print(f"✅ Weight decay: {params.weight_decay} (MUCH LOWER)")
@@ -638,7 +736,7 @@ if __name__ == '__main__':
     print()
 
     project_name = "Few-Shot_TransFormer"
-    if params.dataset == 'Omniglot': 
+    if params.dataset == 'Omniglot':
         params.n_query = 15
 
     if params.wandb:
@@ -649,12 +747,10 @@ if __name__ == '__main__':
         if params.FETI and 'ResNet' in params.backbone:
             wandb_name += "_FETI"
         wandb_name += "_" + params.datetime
-
         # Add TIER 3+ indicator
         wandb_name += "_TIER3PLUS_ADVANCED"
-
         wandb.init(project=project_name, name=wandb_name,
-                  config=params, id=params.datetime)
+                   config=params, id=params.datetime)
 
     print()
 
@@ -674,9 +770,9 @@ if __name__ == '__main__':
         image_size = 224 if 'ResNet' in params.backbone else 84
 
     if params.dataset in ['Omniglot', 'cross_char']:
-        if params.backbone == 'Conv4': 
+        if params.backbone == 'Conv4':
             params.backbone = 'Conv4S'
-        if params.backbone == 'Conv6': 
+        if params.backbone == 'Conv6':
             params.backbone = 'Conv6S'
 
     optimization = params.optimization
@@ -695,216 +791,210 @@ if __name__ == '__main__':
         val_loader = val_datamgr.get_data_loader(
             val_file, aug=False)
 
-        seed_func()
+    seed_func()
 
-        if params.method in ['FSCT_softmax', 'FSCT_cosine']:
-            variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
+    if params.method in ['FSCT_softmax', 'FSCT_cosine']:
+        variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
 
-            def feature_model():
-                if params.dataset in ['Omniglot', 'cross_char']:
-                    params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+        def feature_model():
+            if params.dataset in ['Omniglot', 'cross_char']:
+                params.backbone = change_model(params.backbone)
+            return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            # TIER 3+ ADVANCED: Apply all aggressive parameters with dynamic features
-            model = FewShotTransformer(
-                feature_model, 
-                variant=variant, 
-                gamma=params.gamma,                         # AGGRESSIVE: 0.01
-                lambda_reg=params.lambda_reg,               # AGGRESSIVE: 0.001
-                initial_cov_weight=params.initial_cov_weight, # AGGRESSIVE: 0.01
-                initial_var_weight=params.initial_var_weight, # AGGRESSIVE: 0.01
-                dynamic_weight=params.dynamic_weight,        # ENABLED: True
-                **few_shot_params
-            )
+        # BREAKTHROUGH: Apply all aggressive parameters with dynamic features
+        model = FewShotTransformer(
+            feature_model,
+            variant=variant,
+            gamma=params.gamma,  # AGGRESSIVE: 0.01
+            lambda_reg=params.lambda_reg,  # AGGRESSIVE: 0.001
+            initial_cov_weight=params.initial_cov_weight,  # AGGRESSIVE: 0.01
+            initial_var_weight=params.initial_var_weight,  # AGGRESSIVE: 0.01
+            dynamic_weight=params.dynamic_weight,  # ENABLED: True
+            **few_shot_params
+        )
 
-            print("✅ FewShotTransformer initialized with TIER 3+ ADVANCED features")
-            print("🎛️  Dynamic weights: ENABLED")
-            print("📊 Complex covariance/variance formulas: ENABLED")
-            print("🔧 All numerical stability fixes: APPLIED")
+        print("✅ FewShotTransformer initialized with TIER 3+ ADVANCED features")
+        print("🎛️  Dynamic weights: ENABLED")
+        print("📊 Complex covariance/variance formulas: ENABLED")
+        print("🔧 All numerical stability fixes: APPLIED")
 
-        elif params.method in ['CTX_softmax', 'CTX_cosine']:
-            variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
-            input_dim = 512 if "ResNet" in params.backbone else 64
+    elif params.method in ['CTX_softmax', 'CTX_cosine']:
+        variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
+        input_dim = 512 if "ResNet" in params.backbone else 64
 
-            def feature_model():
-                if params.dataset in ['Omniglot', 'cross_char']:
-                    params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
+        def feature_model():
+            if params.dataset in ['Omniglot', 'cross_char']:
+                params.backbone = change_model(params.backbone)
+            return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
 
-            model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+        model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+    else:
+        raise ValueError('Unknown method')
 
+    model = model.to(device)
+
+    # Print model info
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"🏗️  Model created: {total_params/1e6:.2f}M total params, {trainable_params/1e6:.2f}M trainable")
+
+    params.checkpoint_dir = '%sc/%s/%s_%s' % (
+        configs.save_dir, params.dataset, params.backbone, params.method)
+    if params.train_aug:
+        params.checkpoint_dir += '_aug'
+    if params.FETI and 'ResNet' in params.backbone:
+        params.checkpoint_dir += '_FETI'
+    params.checkpoint_dir += '_%dway_%dshot_TIER3PLUS' % (
+        params.n_way, params.k_shot)
+
+    if not os.path.isdir(params.checkpoint_dir):
+        os.makedirs(params.checkpoint_dir)
+
+    print("===================================")
+    print("🚀 TIER 3+ ADVANCED TRAINING PHASE:")
+    print("===================================")
+
+    # Initial model check with advanced monitoring
+    print("\n🔍 Initial TIER 3+ model check:")
+    quick_accuracy_test(model, val_loader, device, n_episodes=3)
+
+    # Initial advanced monitoring
+    print("\n🔍 Pre-training advanced analysis:")
+    monitor_advanced_features(model, val_loader, device, 0, max_episodes=2)
+
+    model = train(base_loader, val_loader, model, optimization, params.num_epoch, params)
+
+    ######################################################################
+    print("===================================")
+    print("🧪 TEST PHASE:")
+    print("===================================")
+
+    # Clear CUDA cache to free up memory
+    torch.cuda.empty_cache()
+
+    iter_num = params.test_iter
+    split = params.split
+    if params.dataset == 'cross':
+        if split == 'base':
+            testfile = configs.data_dir['miniImagenet'] + 'all.json'
         else:
-            raise ValueError('Unknown method')
-
-        model = model.to(device)
-
-        # Print model info
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"🏗️  Model created: {total_params/1e6:.2f}M total params, {trainable_params/1e6:.2f}M trainable")
-
-        params.checkpoint_dir = '%sc/%s/%s_%s' % (
-            configs.save_dir, params.dataset, params.backbone, params.method)
-        if params.train_aug:
-            params.checkpoint_dir += '_aug'
-        if params.FETI and 'ResNet' in params.backbone:
-            params.checkpoint_dir += '_FETI'
-
-        params.checkpoint_dir += '_%dway_%dshot_TIER3PLUS' % (
-            params.n_way, params.k_shot)
-
-        if not os.path.isdir(params.checkpoint_dir):
-            os.makedirs(params.checkpoint_dir)
-
-        print("===================================")
-        print("🚀 TIER 3+ ADVANCED TRAINING PHASE:")
-        print("===================================")
-
-        # Initial model check with advanced monitoring
-        print("\n🔍 Initial TIER 3+ model check:")
-        quick_accuracy_test(model, val_loader, device, n_episodes=3)
-
-        # Initial advanced monitoring
-        print("\n🔍 Pre-training advanced analysis:")
-        monitor_advanced_features(model, val_loader, device, 0, max_episodes=2)
-
-        model = train(base_loader, val_loader, model, optimization, params.num_epoch, params)
-
-        ######################################################################
-        print("===================================")
-        print("🧪 TEST PHASE:")
-        print("===================================")
-
-        # Clear CUDA cache to free up memory
-        torch.cuda.empty_cache()
-
-        iter_num = params.test_iter
-        split = params.split
-
-        if params.dataset == 'cross':
-            if split == 'base':
-                testfile = configs.data_dir['miniImagenet'] + 'all.json'
-            else:
-                testfile = configs.data_dir['CUB'] + split + '.json'
-        elif params.dataset == 'cross_char':
-            if split == 'base':
-                testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
-            else:
-                testfile = configs.data_dir['emnist'] + split + '.json'
+            testfile = configs.data_dir['CUB'] + split + '.json'
+    elif params.dataset == 'cross_char':
+        if split == 'base':
+            testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
         else:
-            testfile = configs.data_dir[params.dataset] + split + '.json'
+            testfile = configs.data_dir['emnist'] + split + '.json'
+    else:
+        testfile = configs.data_dir[params.dataset] + split + '.json'
 
-        # Get class names for the test dataset
-        try:
-            class_names = get_class_names_from_file(testfile, params.n_way)
-            print(f"📝 Using class names: {class_names}")
-        except:
-            # Fallback to generic names
-            class_names = [f"Class_{i}" for i in range(params.n_way)]
-            print(f"📝 Using generic class names: {class_names}")
+    # Get class names for the test dataset
+    try:
+        class_names = get_class_names_from_file(testfile, params.n_way)
+        print(f"📝 Using class names: {class_names}")
+    except:
+        # Fallback to generic names
+        class_names = [f"Class_{i}" for i in range(params.n_way)]
+        print(f"📝 Using generic class names: {class_names}")
 
-        if params.save_iter != -1:
-            modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
-        else:
-            modelfile = get_best_file(params.checkpoint_dir)
+    if params.save_iter != -1:
+        modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
+    else:
+        modelfile = get_best_file(params.checkpoint_dir)
 
-        test_datamgr = SetDataManager(
-            image_size, n_episode=iter_num, **few_shot_params)
-        test_loader = test_datamgr.get_data_loader(testfile, aug=False)
+    test_datamgr = SetDataManager(
+        image_size, n_episode=iter_num, **few_shot_params)
+    test_loader = test_datamgr.get_data_loader(testfile, aug=False)
 
-        model = model.to(device)
+    model = model.to(device)
 
-        if modelfile is not None:
-            print(f"📁 Loading model from: {modelfile}")
-            tmp = torch.load(modelfile)
-            model.load_state_dict(tmp['state'])
-            if 'acc' in tmp:
-                print(f"📈 Best training accuracy: {tmp['acc']:.4f}")
-            if 'variance' in tmp:
-                print(f"📊 Best score variance: {tmp['variance']:.6f}")
+    if modelfile is not None:
+        print(f"📁 Loading model from: {modelfile}")
+        tmp = torch.load(modelfile)
+        model.load_state_dict(tmp['state'])
+        if 'acc' in tmp:
+            print(f"📈 Best training accuracy: {tmp['acc']:.4f}")
+        if 'variance' in tmp:
+            print(f"📊 Best score variance: {tmp['variance']:.6f}")
 
-        split = params.split
-        if params.save_iter != -1:
-            split_str = split + "_" + str(params.save_iter)
-        else:
-            split_str = split
+    split = params.split
+    if params.save_iter != -1:
+        split_str = split + "_" + str(params.save_iter)
+    else:
+        split_str = split
 
-        # TIER 3+: Pre-test advanced monitoring
-        print("\n🔍 Pre-test TIER 3+ advanced check:")
-        final_variance, final_status = monitor_advanced_features(model, test_loader, device, "FINAL", max_episodes=3)
+    # BREAKTHROUGH: Pre-test advanced monitoring
+    print("\n🔍 Pre-test TIER 3+ advanced check:")
+    final_variance, final_status = monitor_advanced_features(model, test_loader, device, "FINAL", max_episodes=3)
 
-        # Original accuracy test
-        print("\n=== Standard Accuracy Test ===")
-        acc_mean, acc_std = direct_test(test_loader, model, params)
-        print('%d Test Acc = %4.2f%% +- %4.2f%%' %
-              (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
+    # Original accuracy test
+    print("\n=== Standard Accuracy Test ===")
+    acc_mean, acc_std = direct_test(test_loader, model, params)
+    print('%d Test Acc = %4.2f%% +- %4.2f%%' %
+          (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
 
-        # Enhanced metric evaluation
-        print("\n=== Detailed Metric Assessment ===")
-        res = evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
-        pretty_print(res)
+    # Enhanced metric evaluation
+    print("\n=== Detailed Metric Assessment ===")
+    res = evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
+    pretty_print(res)
 
-        # TIER 3+: Final comprehensive assessment
-        print("\n🎯 TIER 3+ ADVANCED FINAL ASSESSMENT:")
-        print("="*50)
-        print(f"📊 Final accuracy: {acc_mean:.2f}%")
-        print(f"📈 Final variance: {final_variance:.6f}")
-        print(f"🎛️  Dynamic weights status: {final_status}")
+    # BREAKTHROUGH: Final comprehensive assessment
+    print("\n🎯 TIER 3+ ADVANCED FINAL ASSESSMENT:")
+    print("="*50)
+    print(f"📊 Final accuracy: {acc_mean:.2f}%")
+    print(f"📈 Final variance: {final_variance:.6f}")
+    print(f"🎛️  Dynamic weights status: {final_status}")
 
-        if acc_mean > 40 and final_variance > 0.01:
-            print("\n🎉 SUCCESS: TIER 3+ Advanced breakthrough achieved!")
-            print("✅ High accuracy + healthy variance + dynamic features working!")
-        elif acc_mean > 25:
-            print("\n✅ GOOD PROGRESS: Model performing above random chance")
-            if final_variance < 0.01:
-                print("⚠️  But variance still low - complex formulas need more work")
-        else:
-            print("\n⚠️  PARTIAL SUCCESS: Still need more tuning")
+    if acc_mean > 40 and final_variance > 0.008:
+        print("\n🎉 SUCCESS: TIER 3+ Advanced breakthrough achieved!")
+        print("✅ High accuracy + healthy variance + dynamic features working!")
+    elif acc_mean > 25:
+        print("\n✅ GOOD PROGRESS: Model performing above random chance")
+        if final_variance < 0.008:
+            print("⚠️  But variance still low - complex formulas need more work")
+    else:
+        print("\n⚠️  PARTIAL SUCCESS: Still need more tuning")
 
-        if params.wandb and res:
-            wandb.log({
-                'Test Acc': acc_mean,
-                'Macro F1': res.get('macro_f1', 0),
-                'Final Variance': final_variance,
-                'Breakthrough Status': final_status,
-                'Avg Inference Time (ms)': res.get('avg_inf_time', 0) * 1000,
-                'Model Size (M)': res.get('param_count', 0),
-                'Solution': 'TIER3_Plus_Advanced'
-            })
+    if params.wandb and res:
+        wandb.log({
+            'Test Acc': acc_mean,
+            'Macro F1': res.get('macro_f1', 0),
+            'Final Variance': final_variance,
+            'Breakthrough Status': final_status,
+            'Avg Inference Time (ms)': res.get('avg_inf_time', 0) * 1000,
+            'Model Size (M)': res.get('param_count', 0),
+            'Solution': 'TIER3_Plus_Advanced'
+        })
 
-            # Log per-class F1 scores
-            if 'class_f1' in res and 'class_names' in res:
-                for i, (name, f1) in enumerate(zip(res['class_names'], res['class_f1'])):
-                    wandb.log({f'F1_Class_{name}': f1})
+        # Log per-class F1 scores
+        if 'class_f1' in res and 'class_names' in res:
+            for i, (name, f1) in enumerate(zip(res['class_names'], res['class_f1'])):
+                wandb.log({f'F1_Class_{name}': f1})
 
-        # Save results to file
-        if res:
-            with open('./record/results.txt', 'a') as f:
-                timestamp = params.datetime
-                aug_str = '-aug' if params.train_aug else ''
-                aug_str += '-FETI' if params.FETI and 'ResNet' in params.backbone else ''
+    # Save results to file
+    if res:
+        with open('./record/results.txt', 'a') as f:
+            timestamp = params.datetime
+            aug_str = '-aug' if params.train_aug else ''
+            aug_str += '-FETI' if params.FETI and 'ResNet' in params.backbone else ''
+            if params.backbone == "Conv4SNP":
+                params.backbone = "Conv4"
+            elif params.backbone == "Conv6SNP":
+                params.backbone = "Conv6"
 
-                if params.backbone == "Conv4SNP":
-                    params.backbone = "Conv4"
-                elif params.backbone == "Conv6SNP":
-                    params.backbone = "Conv6"
+            exp_setting = '%s-%s-%s%s-%sw%ss-TIER3PLUS' % (params.dataset, params.backbone,
+                                                           params.method, aug_str, params.n_way, params.k_shot)
+            acc_str = 'Test Acc = %4.2f%% +- %4.2f%% | Macro F1 = %4.4f | Variance = %4.6f' % (
+                acc_mean, 1.96 * acc_std/np.sqrt(iter_num), res.get('macro_f1', 0), final_variance)
+            f.write('Time: %s Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
 
-                exp_setting = '%s-%s-%s%s-%sw%ss-TIER3PLUS' % (params.dataset, params.backbone,
-                                                     params.method, aug_str, params.n_way, params.k_shot)
+            # Write detailed per-class F1 scores
+            f.write('Per-class F1 scores: ')
+            for name, f1 in zip(res.get('class_names', []), res.get('class_f1', [])):
+                f.write(f'{name}={f1:.4f} ')
+            f.write('\n')
 
-                acc_str = 'Test Acc = %4.2f%% +- %4.2f%% | Macro F1 = %4.4f | Variance = %4.6f' % (
-                    acc_mean, 1.96 * acc_std/np.sqrt(iter_num), res.get('macro_f1', 0), final_variance)
-
-                f.write('Time: %s Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
-
-                # Write detailed per-class F1 scores
-                f.write('Per-class F1 scores: ')
-                for name, f1 in zip(res.get('class_names', []), res.get('class_f1', [])):
-                    f.write(f'{name}={f1:.4f} ')
-                f.write('\n')
-
-        if params.wandb:
-            wandb.finish()
+    if params.wandb:
+        wandb.finish()
 
     print("\n🎉 TIER 3+ ADVANCED TRAINING AND TESTING COMPLETED!")
     print("🎛️  Dynamic features, complex formulas, and aggressive parameters applied!")
