@@ -1,34 +1,38 @@
-# train_test.py
-
-# Main script for episodic few-shot training / testing
-
-# ----------------------------------------------------
-
-import os, random, time, pprint, gc, json
-import numpy as np, torch, tqdm, wandb
-import psutil, GPUtil
-from torch.cuda.amp import autocast, GradScaler
+import glob
+import json
+import os
+import pdb
+import pprint
+import random
+import time
+import gc
+import h5py
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim
+import torch.optim.lr_scheduler as lr_scheduler
+import torch.utils.data.sampler
+import tqdm
+from torch.autograd import Variable
+from torchsummary import summary
 from sklearn.metrics import f1_score, confusion_matrix
+import GPUtil
+import psutil
 
-import backbone, configs
+import backbone
+import configs
+import data.feature_loader as feat_loader
+import wandb
 from data.datamgr import SetDataManager
-from io_utils import model_dict, parse_args, get_best_file
-from methods.transformer import FewShotTransformer
+from io_utils import (get_assigned_file, get_best_file,
+                      model_dict, parse_args)
 from methods.CTX import CTX
+from methods.transformer import FewShotTransformer
+from methods.transformer import Attention
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# ──────────────────────────────────────────────────────────────
-def change_model(name: str) -> str:
-    """Swap vanilla Conv backbones for their 'NP' (no-pool) variants."""
-    mapping = {"Conv4": "Conv4NP", "Conv6": "Conv6NP", "Conv4S": "Conv4SNP", "Conv6S": "Conv6SNP"}
-    return mapping.get(name, name)
-
-def seed_everything(seed=4040):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed); torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+global device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 @torch.no_grad()
 def evaluate(loader, model, n_way, class_names=None, chunk=16, device="cuda"):
@@ -139,90 +143,90 @@ def get_class_names_from_file(data_file, n_way=None):
         print(f"Error extracting class names: {e}")
         return [f"Class_{i}" for i in range(n_way)] if n_way else ["Class_0"]
 
-def train_epoch(base_loader, model, optimizer, scaler, tqdm_bar):
-    model.train()
-    total_loss = 0
+def train(base_loader, val_loader, model, optimization, num_epoch, params):
+    if optimization == 'Adam':
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+    elif optimization == 'AdamW':
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+    elif optimization == 'SGD':
+        optimizer = torch.optim.SGD(
+            model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
+    else:
+        raise ValueError('Unknown optimization, please define by yourself')
 
-    for i, (x, _) in enumerate(base_loader):
-        x = x.to(device)
-        
-        with autocast():
-            loss = model.set_forward_loss(x)
-        
-        optimizer.zero_grad()
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
-        
-        total_loss += loss.item()
-        tqdm_bar.set_description(f'Loss: {loss.item():.4f}')
-        tqdm_bar.update()
-    
-    return total_loss / len(base_loader)
+    max_acc = 0
+    for epoch in range(num_epoch):
+        model.train()
+        model.train_loop(epoch, num_epoch, base_loader,
+                         params.wandb, optimizer)
 
-def analyze_dynamic_weights(model):
-    """Analyze the learned dynamic weights"""
-    # Add to train.py after training loop
-    for module in model.modules():
-        if hasattr(module, 'record_weights'):
-            module.record_weights = True  # Enable weight recording
-    
-    print("Collecting dynamic weight statistics...")
-    with torch.no_grad():
-        model.eval()
-        with tqdm.tqdm(total=len(val_loader)) as pbar:
-            for i, (x, _) in enumerate(val_loader):
-                x = x.to(device)
-                model.set_forward(x)
-                pbar.update(1)
-    
-    # Run validation to collect weights
-    for i, module in enumerate(model.modules()):
-        if hasattr(module, 'get_weight_stats'):
-            stats = module.get_weight_stats()
-            if stats:
-                print(f"Attention Block {i} weight stats:")
-                if 'cosine_mean' in stats:  # 3-component format
-                    print(f"  📊 Cosine weight stats: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
-                    print(f"  📊 Covariance weight stats: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
-                    print(f"  📊 Variance weight stats: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
-                    print("  📊 Distribution:")
-                    for comp in ['cosine', 'cov', 'var']:
-                        print(f"    {comp.capitalize()}:")
-                        for bin_idx, count in enumerate(stats[f'histogram_{comp}']):
-                            bin_start = bin_idx * 10
-                            bin_end = (bin_idx + 1) * 10
-                            print(f"      {bin_start:.1f}-{bin_end:.1f}: {count}")
-                else:  # Legacy format
-                    print(f"  📊 Mean: {stats['mean']:.4f}")
-                    print(f"  📊 Std: {stats['std']:.4f}")
-                    print(f"  📊 Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
-                    print("  📊 Distribution:")
-                    for bin_idx, count in enumerate(stats['histogram']):
-                        bin_start = bin_idx * 10
-                        bin_end = (bin_idx + 1) * 10
-                        print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
-            
-            if hasattr(module, 'clear_weight_history'):
-                module.clear_weight_history()
-            if hasattr(module, 'record_weights'):
-                module.record_weights = False
+        with torch.no_grad():
+            model.eval()
+            if not os.path.isdir(params.checkpoint_dir):
+                os.makedirs(params.checkpoint_dir)
+
+            acc = model.val_loop(val_loader, epoch, params.wandb)
+
+            if acc > max_acc:
+                print("best model! save...")
+                max_acc = acc
+                outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
+                torch.save(
+                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
+
+        if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
+            outfile = os.path.join(
+                params.checkpoint_dir, '{:d}.tar'.format(epoch))
+            torch.save(
+                {'epoch': epoch, 'state': model.state_dict()}, outfile)
+
+    print()
+    return model
+
+def enhanced_test(test_loader, model, params, testfile=None):
+    """Enhanced test function using the new evaluation method"""
+    print("Running enhanced evaluation...")
+
+    # Extract class names if testfile is provided
+    class_names = None
+    if testfile:
+        class_names = get_class_names_from_file(testfile, params.n_way)
+
+    # Run enhanced evaluation
+    results = evaluate(test_loader, model, params.n_way, class_names, device=device)
+
+    if results:
+        # Print detailed results
+        pretty_print(results)
+
+        # Calculate traditional accuracy for compatibility
+        acc_mean = results['macro_f1'] * 100  # Convert to percentage
+        # Estimate std from F1 variance (approximation)
+        class_f1_array = np.array(results['class_f1'])
+        acc_std = np.std(class_f1_array) * 100
+
+        return acc_mean, acc_std, results
+    else:
+        print("Enhanced evaluation failed, falling back to basic evaluation")
+        return direct_test(test_loader, model, params) + ({},)
 
 def direct_test(test_loader, model, params):
+    """Original test function - kept for compatibility"""
     acc = []
     iter_num = len(test_loader)
-    
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            # Process batches in smaller chunks
+            # Process in smaller chunks to avoid OOM
             if x.size(0) > 16:  # If batch is larger than 16
                 scores_list = []
                 chunk_size = 16
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size].to(device)
                     with torch.no_grad():  # Ensure no gradients
-                        score_chunk = model.set_forward(x_chunk)
-                    scores_list.append(score_chunk.cpu())
+                        scores_chunk = model.set_forward(x_chunk)
+                        scores_list.append(scores_chunk.cpu())
                     torch.cuda.empty_cache()  # Clear cache after each chunk
                 scores = torch.cat(scores_list, dim=0)
             else:
@@ -233,41 +237,100 @@ def direct_test(test_loader, model, params):
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
             acc.append(np.mean(pred == y)*100)
-            
-            pbar.set_description('Test Acc: {:.6f}'.format(np.mean(acc)))
+
+            pbar.set_description(
+                'Test | Acc {:.6f}'.format(np.mean(acc)))
             pbar.update(1)
-    
+
     acc_all = np.asarray(acc)
     acc_mean = np.mean(acc_all)
     acc_std = np.std(acc_all)
     return acc_mean, acc_std
 
+def seed_func():
+    seed = 4040
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(10)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+def change_model(model_name):
+    if model_name == 'Conv4':
+        model_name = 'Conv4NP'
+    elif model_name == 'Conv6':
+        model_name = 'Conv6NP'
+    elif model_name == 'Conv4S':
+        model_name = 'Conv4SNP'
+    elif model_name == 'Conv6S':
+        model_name = 'Conv6SNP'
+    return model_name
+
+def analyze_dynamic_weights(model):
+    """Analyze the learned dynamic weights"""
+    # Enable weight recording
+    for module in model.modules():
+        if isinstance(module, Attention):
+            module.record_weights = True
+
+    # Run validation to collect weights
+    print("Collecting dynamic weight statistics...")
+    with torch.no_grad():
+        model.eval()
+        # Analyze weights
+        for i, module in enumerate(model.modules()):
+            if isinstance(module, Attention):
+                stats = module.get_weight_stats()
+                if stats:
+                    print(f"Attention Block {i} weight stats:")
+                    if 'cosine_mean' in stats:  # 3-component format
+                        print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
+                        print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
+                        print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
+                        print("  Distribution:")
+                        for comp in ['cosine', 'cov', 'var']:
+                            print(f"  {comp.capitalize()}:")
+                            for bin_idx, count in enumerate(stats['histogram'][comp]):
+                                bin_start = bin_idx/10
+                                bin_end = (bin_idx+1)/10
+                                print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                    else:  # Legacy format
+                        print(f"  Mean: {stats['mean']:.4f}")
+                        print(f"  Std: {stats['std']:.4f}")
+                        print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
+                        print("  Distribution:")
+                        for bin_idx, count in enumerate(stats['histogram']):
+                            bin_start = bin_idx/10
+                            bin_end = (bin_idx+1)/10
+                            print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                module.clear_weight_history()
+                module.record_weights = False
+
 if __name__ == '__main__':
     params = parse_args()
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(vars(params))
-    
-    print('╭─' + '─'*50 + '─╮')
-    print('│' + ' '*16 + 'Few-Shot-TransFormer' + ' '*15 + '│')
-    print('╰─' + '─'*50 + '─╯')
-    
-    if params.dataset == 'Omniglot':
+    print()
+
+    project_name = "Few-Shot_TransFormer"
+    if params.dataset == 'Omniglot': 
         params.n_query = 15
-    
+
     if params.wandb:
-        wandb_name = f"{params.method}_{params.backbone}_{params.dataset}_{params.n_way}w_{params.k_shot}s"
+        wandb_name = params.method + "_" + params.backbone + "_" + params.dataset + \
+                     "_" + str(params.n_way) + "w" + str(params.k_shot) + "s"
         if params.train_aug:
             wandb_name += "_aug"
-        if params.FETI and "ResNet" in params.backbone:
+        if params.FETI and 'ResNet' in params.backbone:
             wandb_name += "_FETI"
-        wandb_name += f"_{params.datetime}"
-        
-        wandb.init(project="Few-Shot-TransFormer", name=wandb_name, config=params, id=params.datetime)
-    
-    print('╭─' + '─'*50 + '─╮')
-    print('│' + ' '*18 + 'DATASET LOADERS' + ' '*17 + '│')
-    print('╰─' + '─'*50 + '─╯')
-    
+        wandb_name += "_" + params.datetime
+
+        wandb.init(project=project_name, name=wandb_name,
+                   config=params, id=params.datetime)
+    print()
+
     if params.dataset == 'cross':
         base_file = configs.data_dir['miniImagenet'] + 'all.json'
         val_file = configs.data_dir['CUB'] + 'val.json'
@@ -277,106 +340,170 @@ if __name__ == '__main__':
     else:
         base_file = configs.data_dir[params.dataset] + 'base.json'
         val_file = configs.data_dir[params.dataset] + 'val.json'
-    
-    image_size = 224 if "ResNet" in params.backbone else 84
-    
+
+    if params.dataset == "CIFAR":
+        image_size = 112 if 'ResNet' in params.backbone else 64
+    else:
+        image_size = 224 if 'ResNet' in params.backbone else 84
+
     if params.dataset in ['Omniglot', 'cross_char']:
-        if params.backbone == 'Conv4':
+        if params.backbone == 'Conv4': 
             params.backbone = 'Conv4S'
-        if params.backbone == 'Conv6':
+        if params.backbone == 'Conv6': 
             params.backbone = 'Conv6S'
-    
+
     optimization = params.optimization
-    
-    if params.method in ['FSCT-softmax', 'FSCT-cosine', 'CTX-softmax', 'CTX-cosine']:
-        few_shot_params = dict(n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
-        
-        base_datamgr = SetDataManager(image_size, n_episode=params.n_episode, **few_shot_params)
-        base_loader = base_datamgr.get_data_loader(base_file, aug=params.train_aug)
-        
-        val_datamgr = SetDataManager(image_size, n_episode=params.n_episode, **few_shot_params)
-        val_loader = val_datamgr.get_data_loader(val_file, aug=False)
-        
-        seed_func = seed_everything
-        
-        print('╭─' + '─'*50 + '─╮')
-        print('│' + ' '*20 + 'BUILD MODEL' + ' '*19 + '│')
-        print('╰─' + '─'*50 + '─╯')
-        
-        if params.method in ['FSCT-softmax', 'FSCT-cosine']:
-            variant = "cosine" if params.method == "FSCT-cosine" else "softmax"
-            
+
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+        few_shot_params = dict(
+            n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
+
+        base_datamgr = SetDataManager(
+            image_size, n_episode=params.n_episode, **few_shot_params)
+        base_loader = base_datamgr.get_data_loader(
+            base_file, aug=params.train_aug)
+
+        val_datamgr = SetDataManager(
+            image_size, n_episode=params.n_episode, **few_shot_params)
+        val_loader = val_datamgr.get_data_loader(
+            val_file, aug=False)
+
+        seed_func()
+
+        if params.method in ['FSCT_softmax', 'FSCT_cosine']:
+            variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
+
             def feature_model():
                 if params.dataset in ['Omniglot', 'cross_char']:
                     params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](flatten=True) if "ResNet" in params.backbone else model_dict[params.backbone](flatten=True)
-            
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+
             model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
-            
-        elif params.method in ['CTX-softmax', 'CTX-cosine']:
-            variant = "cosine" if params.method == "CTX-cosine" else "softmax"
+
+        elif params.method in ['CTX_softmax', 'CTX_cosine']:
+            variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
             input_dim = 512 if "ResNet" in params.backbone else 64
-            
+
             def feature_model():
                 if params.dataset in ['Omniglot', 'cross_char']:
                     params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](flatten=False) if "ResNet" in params.backbone else model_dict[params.backbone](flatten=False)
-            
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
+
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+
         else:
-            raise ValueError("Unknown method")
-        
+            raise ValueError('Unknown method')
+
         model = model.to(device)
-        
-        params.checkpoint_dir = '%s/%s/%s/%s' % (configs.save_dir, params.dataset, params.backbone, params.method)
+
+        params.checkpoint_dir = '%sc/%s/%s_%s' % (
+            configs.save_dir, params.dataset, params.backbone, params.method)
         if params.train_aug:
             params.checkpoint_dir += '_aug'
-        if params.FETI and "ResNet" in params.backbone:
+        if params.FETI and 'ResNet' in params.backbone:
             params.checkpoint_dir += '_FETI'
-        
-        params.checkpoint_dir += '_%dway_%dshot' % (params.n_way, params.k_shot)
-        
+        params.checkpoint_dir += '_%dway_%dshot' % (
+            params.n_way, params.k_shot)
+
         if not os.path.isdir(params.checkpoint_dir):
             os.makedirs(params.checkpoint_dir)
-        
-        print('╭─' + '─'*50 + '─╮')
-        print('│' + ' '*18 + 'TRAINING PHASE' + ' '*17 + '│')
-        print('╰─' + '─'*50 + '─╯')
-        
-        # Training logic would go here
-        # train(base_loader, val_loader, model, optimization, params.num_epoch, params)
-        
-        # Analyze weights
+
+        print("===================================")
+        print("Train phase: ")
+        model = train(base_loader, val_loader, model, optimization, params.num_epoch, params)
+
+        # Optional: Analyze dynamic weights after training
         # analyze_dynamic_weights(model)
-        
-        print('╭─' + '─'*50 + '─╮')
-        print('│' + ' '*18 + 'TESTING PHASE' + ' '*18 + '│')
-        print('╰─' + '─'*50 + '─╯')
-        
+
+        ######################################################################
+        print("===================================")
+        print("Test phase: ")
+
+        # Clear CUDA cache to free up memory
         torch.cuda.empty_cache()
-        
+
+        # Implement memory optimization
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
+        ######################################################################
+        iter_num = params.test_iter
         split = params.split
+
         if params.dataset == 'cross':
-            test_file = configs.data_dir['miniImagenet'] + 'all.json' if split == 'base' else configs.data_dir['CUB'] + f'{split}.json'
+            if split == 'base':
+                testfile = configs.data_dir['miniImagenet'] + 'all.json'
+            else:
+                testfile = configs.data_dir['CUB'] + split + '.json'
         elif params.dataset == 'cross_char':
-            test_file = configs.data_dir['Omniglot'] + 'noLatin.json' if split == 'base' else configs.data_dir['emnist'] + f'{split}.json'
+            if split == 'base':
+                testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
+            else:
+                testfile = configs.data_dir['emnist'] + split + '.json'
         else:
-            test_file = configs.data_dir[params.dataset] + f'{split}.json'
-        
-        test_loader = SetDataManager(
-            image_size,
-            n_episode=params.test_iter,
-            **dict(n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
-        ).get_data_loader(test_file, aug=False)
-        
-        best = get_best_file(params.checkpoint_dir)
-        if best:
-            model.load_state_dict(torch.load(best)['state'])
-        
-        class_names = getattr(test_loader.dataset, "class_labels", None)
-        metrics = evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
-        pretty_print(metrics)
-        
+            testfile = configs.data_dir[params.dataset] + split + '.json'
+
+        if params.save_iter != -1:
+            modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
+        else:
+            modelfile = get_best_file(params.checkpoint_dir)
+
+        test_datamgr = SetDataManager(
+            image_size, n_episode=iter_num, **few_shot_params)
+        test_loader = test_datamgr.get_data_loader(testfile, aug=False)
+
+        model = model.to(device)
+
+        if modelfile is not None:
+            tmp = torch.load(modelfile)
+            model.load_state_dict(tmp['state'])
+
+        split = params.split
+        if params.save_iter != -1:
+            split_str = split + "_" + str(params.save_iter)
+        else:
+            split_str = split
+
+        # Use enhanced test function instead of direct_test
+        try:
+            acc_mean, acc_std, detailed_results = enhanced_test(test_loader, model, params, testfile)
+
+            # Log detailed results to wandb if available
+            if params.wandb and detailed_results:
+                wandb.log({
+                    'Test Acc': acc_mean,
+                    'Test Macro F1': detailed_results.get('macro_f1', 0) * 100,
+                    'Model Size (M params)': detailed_results.get('param_count', 0),
+                    'Avg Inference Time (ms)': detailed_results.get('avg_inf_time', 0) * 1000,
+                    'GPU Memory Used (MB)': detailed_results.get('gpu_mem_used_MB', 0),
+                    'CPU Utilization (%)': detailed_results.get('cpu_util', 0)
+                })
+
+        except Exception as e:
+            print(f"Enhanced test failed: {e}")
+            print("Falling back to original test method...")
+            acc_mean, acc_std = direct_test(test_loader, model, params)
+            detailed_results = {}
+
+        print('%d Test Acc = %4.2f%% +- %4.2f%%' %
+              (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
+
         if params.wandb:
-            wandb.log(metrics)
+            wandb.log({'Test Acc': acc_mean})
+
+        with open('./record/results.txt', 'a') as f:
+            timestamp = params.datetime
+            aug_str = '-aug' if params.train_aug else ''
+            aug_str += '-FETI' if params.FETI and 'ResNet' in params.backbone else ''
+
+            if params.backbone == "Conv4SNP":
+                params.backbone = "Conv4"
+            elif params.backbone == "Conv6SNP":
+                params.backbone = "Conv6"
+
+            exp_setting = '%s-%s-%s%s-%sw%ss' % (params.dataset, params.backbone,
+                                                 params.method, aug_str, params.n_way, params.k_shot)
+            acc_str = 'Test Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std/np.sqrt(iter_num))
+            f.write('Time: %s Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
+
+        if params.wandb:
             wandb.finish()
