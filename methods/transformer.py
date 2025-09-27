@@ -113,9 +113,9 @@ class FewShotTransformer(MetaTemplate):
         return accuracy, total_loss
     
     def train_loop(self, epoch, num_epoch, train_loader, wandb_log, optimizer, 
-                   accumulate_grad_steps=8, use_mixed_precision=True):
+                   accumulate_grad_steps=16, use_mixed_precision=True):  # Increased accumulation steps
         """
-        Enhanced training loop with gradient accumulation and mixed precision
+        Even more optimized training loop with additional memory-saving techniques
         """
         self.train()
         avg_loss = 0
@@ -124,50 +124,65 @@ class FewShotTransformer(MetaTemplate):
         # Setup mixed precision training
         scaler = torch.cuda.amp.GradScaler() if use_mixed_precision else None
         
-        # Free up memory
+        # More aggressive memory cleanup
         torch.cuda.empty_cache()
         gc.collect()
         
         for i, (x, _) in enumerate(train_loader):
-            # Process in smaller batches if needed
+            # Move data to CPU until needed to save GPU memory
+            x = [item.to('cpu') for item in x]
+            
+            # Process in smaller batches
             if i % accumulate_grad_steps == 0:
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)  # More efficient than zero_grad()
+            
+            # Move data to GPU just before computation
+            x = [item.to(device) for item in x]
             
             # Mixed precision training
             with torch.cuda.amp.autocast() if use_mixed_precision else nullcontext():
                 acc, loss = self.set_forward_loss(x)
-                # Scale loss for gradient accumulation
                 loss = loss / accumulate_grad_steps
-            
+        
             # Mixed precision backward
             if use_mixed_precision:
                 scaler.scale(loss).backward()
             else:
                 loss.backward()
             
+            # Immediately move data back to CPU or delete
+            del x
+            torch.cuda.empty_cache()
+            
             # Update only after accumulating gradients
             if (i + 1) % accumulate_grad_steps == 0:
                 if use_mixed_precision:
-                    # Unscales gradients and calls optimizer.step()
+                    # Unscale and clip gradients to prevent spikes
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=10.0)
+                    
                     scaler.step(optimizer)
                     scaler.update()
                 else:
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=10.0)
                     optimizer.step()
                 
                 # Free up memory again
                 torch.cuda.empty_cache()
             
             avg_acc += acc
-            avg_loss += loss.item() * accumulate_grad_steps  # Adjust for scaling
+            avg_loss += loss.item() * accumulate_grad_steps
             
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 50 == 0:  # Report more frequently
                 print(f'Epoch {epoch+1}/{num_epoch} | Batch {i+1}/{len(train_loader)} | '
-                      f'Loss: {avg_loss/100:.4f} | Acc: {avg_acc/100:.4f} | '
+                      f'Loss: {avg_loss/(i%50+1):.4f} | Acc: {avg_acc/(i%50+1):.4f} | '
                       f'Mode: {"Advanced" if self.use_advanced_method else "Standard"}')
                 if wandb_log:
-                    wandb.log({'loss': avg_loss/100, 'acc': avg_acc/100, 'epoch': epoch})
-                avg_loss = 0
-                avg_acc = 0
+                    wandb.log({'loss': avg_loss/(i%50+1), 'acc': avg_acc/(i%50+1), 
+                               'epoch': epoch, 'batch': i, 'memory': torch.cuda.max_memory_allocated()/1e9})
+                if (i + 1) % 100 == 0:
+                    avg_loss = 0
+                    avg_acc = 0
 
 
 class Attention(nn.Module):
