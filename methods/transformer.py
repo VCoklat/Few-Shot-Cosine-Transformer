@@ -176,7 +176,7 @@ class Attention(nn.Module):
         batch_size, seq_len, dim = E.shape
         
         # Process in chunks to avoid OOM
-        chunk_size = min(32, batch_size)
+        chunk_size = min(16, batch_size)  # Smaller chunks for memory efficiency
         cov_results = []
         
         for i in range(0, batch_size, chunk_size):
@@ -190,7 +190,10 @@ class Attention(nn.Module):
             # Compute covariance matrix for each sample in chunk
             for j in range(E_chunk.shape[0]):
                 centered_sample = centered[j]  # (seq, dim)
-                cov = torch.matmul(centered_sample.T, centered_sample) / (seq_len - 1)  # (dim, dim)
+                if seq_len > 1:
+                    cov = torch.matmul(centered_sample.T, centered_sample) / (seq_len - 1)  # (dim, dim)
+                else:
+                    cov = torch.matmul(centered_sample.T, centered_sample)  # Handle single sequence case
                 
                 # Sum of squares of off-diagonal elements
                 off_diag_mask = ~torch.eye(dim, dtype=torch.bool, device=cov.device)
@@ -228,23 +231,24 @@ class Attention(nn.Module):
 
     def advanced_attention_components(self, f_q, f_k, gamma=1.0, epsilon=1e-8):
         """Advanced attention mechanism for accuracy >= 40%"""
-        batch_size, heads, seq_q, dim = f_q.shape
+        # f_q and f_k have shape [h, q, n, d] from rearrange operation
+        heads, batch_size, seq_q, dim = f_q.shape
         _, _, seq_k, _ = f_k.shape
         
-        # Process embeddings for variance and covariance components
-        # Reshape for processing: (batch*heads, seq, dim)
-        f_q_reshaped = f_q.view(batch_size * heads, seq_q, dim)
-        f_k_reshaped = f_k.view(batch_size * heads, seq_k, dim)
+        # Reshape for processing: (heads*batch, seq, dim)
+        f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
+        f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
         
         # Compute components with memory optimization
         var_component_list = []
         cov_component_list = []
         
         # Process in smaller chunks to avoid OOM
-        chunk_size = min(8, batch_size * heads)
+        total_samples = batch_size * heads
+        chunk_size = min(4, total_samples)  # Smaller chunks for better memory management
         
-        for i in range(0, batch_size * heads, chunk_size):
-            end_idx = min(i + chunk_size, batch_size * heads)
+        for i in range(0, total_samples, chunk_size):
+            end_idx = min(i + chunk_size, total_samples)
             
             # Get chunks
             q_chunk = f_q_reshaped[i:end_idx]  # (chunk, seq_q, dim)
@@ -267,9 +271,13 @@ class Attention(nn.Module):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         
-        # Combine results
+        # Combine results and reshape back to original format
         var_component = torch.cat(var_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
         cov_component = torch.cat(cov_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
+        
+        # Permute back to match f_q/f_k format [h, q, n, d] -> [h, q, n, m]
+        var_component = var_component.permute(1, 0, 2, 3)
+        cov_component = cov_component.permute(1, 0, 2, 3)
         
         return cov_component, var_component
 
