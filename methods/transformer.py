@@ -7,6 +7,7 @@ from methods.meta_template import MetaTemplate
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
+import gc
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -111,20 +112,58 @@ class FewShotTransformer(MetaTemplate):
         
         return accuracy, total_loss
     
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_log, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_log, optimizer, 
+                   accumulate_grad_steps=8, use_mixed_precision=True):
+        """
+        Enhanced training loop with gradient accumulation and mixed precision
+        """
+        self.train()
         avg_loss = 0
         avg_acc = 0
+        
+        # Setup mixed precision training
+        scaler = torch.cuda.amp.GradScaler() if use_mixed_precision else None
+        
+        # Free up memory
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         for i, (x, _) in enumerate(train_loader):
-            optimizer.zero_grad()
-            acc, loss = self.set_forward_loss(x)
-            loss.backward()
-            optimizer.step()
+            # Process in smaller batches if needed
+            if i % accumulate_grad_steps == 0:
+                optimizer.zero_grad()
+            
+            # Mixed precision training
+            with torch.cuda.amp.autocast() if use_mixed_precision else nullcontext():
+                acc, loss = self.set_forward_loss(x)
+                # Scale loss for gradient accumulation
+                loss = loss / accumulate_grad_steps
+            
+            # Mixed precision backward
+            if use_mixed_precision:
+                scaler.scale(loss).backward()
+            else:
+                loss.backward()
+            
+            # Update only after accumulating gradients
+            if (i + 1) % accumulate_grad_steps == 0:
+                if use_mixed_precision:
+                    # Unscales gradients and calls optimizer.step()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                
+                # Free up memory again
+                torch.cuda.empty_cache()
             
             avg_acc += acc
-            avg_loss += loss.item()
+            avg_loss += loss.item() * accumulate_grad_steps  # Adjust for scaling
             
             if (i + 1) % 100 == 0:
-                print(f'Epoch {epoch+1}/{num_epoch} | Batch {i+1}/{len(train_loader)} | Loss: {avg_loss/100:.4f} | Acc: {avg_acc/100:.4f} | Mode: {"Advanced" if self.use_advanced_method else "Standard"}')
+                print(f'Epoch {epoch+1}/{num_epoch} | Batch {i+1}/{len(train_loader)} | '
+                      f'Loss: {avg_loss/100:.4f} | Acc: {avg_acc/100:.4f} | '
+                      f'Mode: {"Advanced" if self.use_advanced_method else "Standard"}')
                 if wandb_log:
                     wandb.log({'loss': avg_loss/100, 'acc': avg_acc/100, 'epoch': epoch})
                 avg_loss = 0
@@ -248,3 +287,8 @@ def get_weight_stats(self):
 
 def clear_weight_history(self):
     self.weight_history = []
+
+# Add nullcontext for Python < 3.7 compatibility
+class nullcontext:
+    def __enter__(self): return None
+    def __exit__(self, *args): return None
