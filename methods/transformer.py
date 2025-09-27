@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
-from einops import rearrange
+import torch.nn.functional as F
+from methods.meta_template import MetaTemplate
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
+from backbone import CosineDistLinear
+
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def covariance_regularization(E):
     # Flatten E from (batch, seq_len, feature_dim) to (samples, feature_dim)
