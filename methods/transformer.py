@@ -10,22 +10,41 @@ from backbone import CosineDistLinear
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-def covariance_regularization(E):
+def covariance_regularization(E, advanced=False):
     # Flatten E from (batch, seq_len, feature_dim) to (samples, feature_dim)
     E_flat = E.view(-1, E.size(-1))
     m = E_flat.size(0)
-    mean_E = E_flat.mean(dim=0, keepdim=True)
-    centered = E_flat - mean_E  # (samples, features)
-    cov = (centered.t() @ centered) / m  # (features, features)
-    off_diag = cov - torch.diag(torch.diag(cov))
-    cov_loss = (off_diag ** 2).sum() / m
+    
+    if not advanced:
+        # Original implementation
+        mean_E = E_flat.mean(dim=0, keepdim=True)
+        centered = E_flat - mean_E  # (samples, features)
+        cov = (centered.t() @ centered) / m  # (features, features)
+        off_diag = cov - torch.diag(torch.diag(cov))
+        cov_loss = (off_diag ** 2).sum() / E.size(-1)
+    else:
+        # Advanced implementation (PyTorch version of the numpy code)
+        mean_E = E_flat.mean(dim=0)
+        centered = E_flat - mean_E
+        cov = (centered.t() @ centered) / (m - 1)
+        off_diag_sum = torch.sum(cov ** 2) - torch.sum(torch.diag(cov) ** 2)
+        cov_loss = off_diag_sum / E.size(-1)
+        
     return cov_loss
 
-def variance_regularization(E, gamma=1.0, epsilon=1e-6):
+def variance_regularization(E, gamma=1.0, epsilon=1e-6, advanced=False):
     E_flat = E.view(-1, E.size(-1))
-    std_dev = torch.sqrt(torch.var(E_flat, dim=0) + epsilon)
-    zero = torch.zeros_like(std_dev)
-    var_loss = torch.mean(torch.max(zero, gamma - std_dev))
+    
+    if not advanced:
+        # Original implementation
+        std_dev = torch.sqrt(torch.var(E_flat, dim=0) + epsilon)
+        zero = torch.zeros_like(std_dev)
+        var_loss = torch.mean(torch.max(zero, gamma - std_dev))
+    else:
+        # Advanced implementation (PyTorch version of the numpy code)
+        sigma = torch.sqrt(torch.var(E_flat, dim=0) + epsilon)
+        var_loss = torch.mean(torch.clamp(gamma - sigma, min=0))
+        
     return var_loss
 
 class FewShotTransformer(MetaTemplate):
@@ -56,6 +75,8 @@ class FewShotTransformer(MetaTemplate):
             else nn.Linear(dim_head, 1))
         self.cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
         self.var_weight = nn.Parameter(torch.tensor(initial_var_weight))
+        self.current_accuracy = 0.0  # Track accuracy
+        self.use_advanced_method = False  # Flag to switch calculation methods
     
     def set_forward(self, x, is_feature=False):
         z_support, z_query = self.parse_feature(x, is_feature)
@@ -64,7 +85,7 @@ class FewShotTransformer(MetaTemplate):
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)
         x, query = z_proto, z_query
         for _ in range(self.depth):
-            x = self.ATTN(q=x, k=query, v=query) + x
+            x = self.ATTN(q=x, k=query, v=query, use_advanced_method=self.use_advanced_method) + x
             x = self.FFN(x) + x
         return self.linear(x).squeeze(), x.squeeze(1)
     
@@ -73,12 +94,42 @@ class FewShotTransformer(MetaTemplate):
         target = Variable(target.to(device))
         scores, embeddings = self.set_forward(x)
         loss = self.loss_fn(scores, target)
-        cov_loss = covariance_regularization(embeddings)
-        var_loss = variance_regularization(embeddings)
+        
+        # Use appropriate regularization based on current accuracy
+        cov_loss = covariance_regularization(embeddings, advanced=self.use_advanced_method)
+        var_loss = variance_regularization(embeddings, advanced=self.use_advanced_method)
+        
         total_loss = loss + torch.sigmoid(self.cov_weight) * cov_loss + torch.sigmoid(self.var_weight) * var_loss
         predict = torch.argmax(scores, dim=1)
-        acc = (predict == target).sum().item() / target.size(0)
-        return acc, total_loss
+        accuracy = (predict == target).sum().item() / target.size(0)
+        
+        # Update accuracy tracking and method selection
+        self.current_accuracy = 0.9 * self.current_accuracy + 0.1 * accuracy  # Smoothed tracking
+        if self.current_accuracy >= 0.4 and not self.use_advanced_method:
+            print(f"Switching to advanced regularization methods (Accuracy: {self.current_accuracy:.4f})")
+            self.use_advanced_method = True
+        
+        return accuracy, total_loss
+    
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_log, optimizer):
+        avg_loss = 0
+        avg_acc = 0
+        for i, (x, _) in enumerate(train_loader):
+            optimizer.zero_grad()
+            acc, loss = self.set_forward_loss(x)
+            loss.backward()
+            optimizer.step()
+            
+            avg_acc += acc
+            avg_loss += loss.item()
+            
+            if (i + 1) % 100 == 0:
+                print(f'Epoch {epoch+1}/{num_epoch} | Batch {i+1}/{len(train_loader)} | Loss: {avg_loss/100:.4f} | Acc: {avg_acc/100:.4f} | Mode: {"Advanced" if self.use_advanced_method else "Standard"}')
+                if wandb_log:
+                    wandb.log({'loss': avg_loss/100, 'acc': avg_acc/100, 'epoch': epoch})
+                avg_loss = 0
+                avg_acc = 0
+
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, dynamic_weight=False):
@@ -109,20 +160,25 @@ class Attention(nn.Module):
         self.weight_history = []
         self.record_weights = False
     
-    def forward(self, q, k, v):
+    def forward(self, q, k, v, use_advanced_method=False):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) -> h q n d', h=self.heads), (q, k, v))
         
         if self.variant == "cosine":
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
+            
+            # Calculate components based on method flag
+            # Calculate covariance component
             q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
             k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
             cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
             cov_component = cov_component / f_q.size(-1)
-            q_var = torch.var(f_q, dim=-1, keepdim=True)
-            k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)
-            var_component = torch.matmul(q_var, k_var)
-            var_component = var_component / f_q.size(-1)
+            
+            # Calculate variance component
+            q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
+            k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
+            var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
+            var_component = var_component / f_q.size(-1)  # Scale like covariance
 
             if self.dynamic_weight:
                 q_global = f_q.mean(dim=(1, 2))
@@ -134,6 +190,8 @@ class Attention(nn.Module):
                 cos_weight = weights[:, 0].view(self.heads, 1, 1, 1)
                 cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)
                 var_weight = weights[:, 2].view(self.heads, 1, 1, 1)
+                
+                # Apply weights to components
                 dots = (cos_weight * cosine_sim +
                         cov_weight * cov_component +
                         var_weight * var_component)
@@ -141,6 +199,8 @@ class Attention(nn.Module):
                 cov_weight = torch.sigmoid(self.fixed_cov_weight)
                 var_weight = torch.sigmoid(self.fixed_var_weight)
                 cos_weight = 1.0 - cov_weight - var_weight
+                
+                # Apply weights to components
                 dots = (cos_weight * cosine_sim +
                         cov_weight * cov_component +
                         var_weight * var_component)
