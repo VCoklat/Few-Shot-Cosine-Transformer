@@ -24,7 +24,7 @@ class FewShotTransformer(MetaTemplate):
         self.depth = depth
         dim = self.feat_dim
         
-        # Initialize accuracy tracking
+        # Initialize accuracy tracking - these are simple attributes, not parameters
         self.current_accuracy = 0.0
         self.accuracy_threshold = 40.0
         self.use_advanced_attention = False
@@ -33,26 +33,39 @@ class FewShotTransformer(MetaTemplate):
         self.gamma = 1.0
         self.epsilon = 1e-8
         
+        # Create attention without circular reference
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
                             initial_cov_weight=initial_cov_weight,
                             initial_var_weight=initial_var_weight,
-                            dynamic_weight=dynamic_weight,
-                            parent_model=self)  # Pass reference to parent
+                            dynamic_weight=dynamic_weight)
         
         self.sm = nn.Softmax(dim=-2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
         
-        self.FFN = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, mlp_dim),
-            nn.GELU(),
-            nn.Linear(mlp_dim, dim))
+        # Fixed FFN to avoid lambda functions
+        self.layer_norm_ffn = nn.LayerNorm(dim)
+        self.ffn_linear1 = nn.Linear(dim, mlp_dim)
+        self.gelu = nn.GELU()
+        self.ffn_linear2 = nn.Linear(mlp_dim, dim)
         
-        self.linear = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim_head),
-            CosineDistLinear(dim_head, 1) if variant == "cosine" 
-            else nn.Linear(dim_head, 1))
+        # Fixed linear layers to avoid lambda functions
+        self.final_layer_norm = nn.LayerNorm(dim)
+        self.final_linear1 = nn.Linear(dim, dim_head)
+        
+        if variant == "cosine":
+            self.final_classifier = CosineDistLinear(dim_head, 1)
+        else:
+            self.final_classifier = nn.Linear(dim_head, 1)
+
+    def FFN(self, x):
+        """Separate FFN method to avoid lambda functions"""
+        return self.ffn_linear2(self.gelu(self.ffn_linear1(self.layer_norm_ffn(x))))
+
+    def final_projection(self, x):
+        """Separate final projection to avoid lambda functions"""
+        x = self.final_layer_norm(x)
+        x = self.final_linear1(x)
+        return self.final_classifier(x)
 
     def update_accuracy(self, accuracy):
         """Update current accuracy and switch attention mechanism if needed"""
@@ -73,21 +86,17 @@ class FewShotTransformer(MetaTemplate):
         
         # Process through transformer layers with memory optimization
         for layer_idx in range(self.depth):
-            # Use gradient checkpointing for memory efficiency
-            if self.training:
-                x = torch.utils.checkpoint.checkpoint(
-                    lambda inp, q: self.ATTN(q=inp, k=q, v=q) + inp,
-                    x, query
-                )
-                x = torch.utils.checkpoint.checkpoint(
-                    lambda inp: self.FFN(inp) + inp,
-                    x
-                )
-            else:
-                x = self.ATTN(q=x, k=query, v=query) + x
-                x = self.FFN(x) + x
+            # Pass attention parameters directly to avoid circular reference
+            attn_output = self.ATTN(
+                q=x, k=query, v=query, 
+                use_advanced=self.use_advanced_attention,
+                gamma=self.gamma,
+                epsilon=self.epsilon
+            )
+            x = attn_output + x
+            x = self.FFN(x) + x
         
-        return self.linear(x).squeeze()
+        return self.final_projection(x).squeeze()
 
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
@@ -106,7 +115,7 @@ class FewShotTransformer(MetaTemplate):
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, 
-                 initial_var_weight=0.2, dynamic_weight=False, parent_model=None):
+                 initial_var_weight=0.2, dynamic_weight=False):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -115,29 +124,38 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim=-1)
         self.variant = variant
-        self.parent_model = parent_model
         
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
-            self.weight_predictor = nn.Sequential(
-                nn.Linear(dim_head * 2, dim_head),
-                nn.LayerNorm(dim_head),
-                nn.ReLU(),
-                nn.Linear(dim_head, 3),
-                nn.Softmax(dim=-1)
-            )
+            self.weight_linear1 = nn.Linear(dim_head * 2, dim_head)
+            self.weight_layernorm = nn.LayerNorm(dim_head)
+            self.weight_relu = nn.ReLU()
+            self.weight_linear2 = nn.Linear(dim_head, 3)
+            self.weight_softmax = nn.Softmax(dim=-1)
         else:
             self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
             self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
         
-        self.input_linear = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, inner_dim, bias=False))
+        # Separate components for input transformation
+        self.input_layernorm = nn.LayerNorm(dim)
+        self.input_linear = nn.Linear(dim, inner_dim, bias=False)
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         self.weight_history = []
         self.record_weights = False
+
+    def weight_predictor(self, x):
+        """Separate weight predictor to avoid lambda functions"""
+        x = self.weight_linear1(x)
+        x = self.weight_layernorm(x)
+        x = self.weight_relu(x)
+        x = self.weight_linear2(x)
+        return self.weight_softmax(x)
+
+    def input_transform(self, x):
+        """Separate input transformation to avoid lambda functions"""
+        return self.input_linear(self.input_layernorm(x))
 
     def variance_component_torch(self, E, gamma=1.0, epsilon=1e-8):
         """PyTorch implementation of variance component for seamless integration"""
@@ -156,14 +174,14 @@ class Attention(nn.Module):
         cov_results = []
         
         for i in range(0, batch_size, chunk_size):
-            E_chunk = E[i:i+chunk_size]  # (chunk, seq, dim)
+            end_idx = min(i + chunk_size, batch_size)
+            E_chunk = E[i:end_idx]  # (chunk, seq, dim)
             
             # Compute mean and center the data
             E_mean = torch.mean(E_chunk, dim=1, keepdim=True)  # (chunk, 1, dim)
             centered = E_chunk - E_mean  # (chunk, seq, dim)
             
             # Compute covariance matrix for each sample in chunk
-            cov_list = []
             for j in range(E_chunk.shape[0]):
                 centered_sample = centered[j]  # (seq, dim)
                 cov = torch.matmul(centered_sample.T, centered_sample) / (seq_len - 1)  # (dim, dim)
@@ -174,12 +192,10 @@ class Attention(nn.Module):
                 
                 # Normalize by dimension
                 C = off_diag_sum / dim
-                cov_list.append(C)
-            
-            cov_results.extend(cov_list)
+                cov_results.append(C)
             
             # Clear intermediate tensors
-            del E_chunk, E_mean, centered, cov_list
+            del E_chunk, E_mean, centered
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         
@@ -201,7 +217,7 @@ class Attention(nn.Module):
         
         return cov_component, var_component
 
-    def advanced_attention_components(self, f_q, f_k):
+    def advanced_attention_components(self, f_q, f_k, gamma=1.0, epsilon=1e-8):
         """Advanced attention mechanism for accuracy >= 40%"""
         batch_size, heads, seq_q, dim = f_q.shape
         _, _, seq_k, _ = f_k.shape
@@ -226,12 +242,6 @@ class Attention(nn.Module):
             k_chunk = f_k_reshaped[i:end_idx]  # (chunk, seq_k, dim)
             
             # Compute variance component for this chunk
-            if self.parent_model:
-                gamma = self.parent_model.gamma
-                epsilon = self.parent_model.epsilon
-            else:
-                gamma, epsilon = 1.0, 1e-8
-                
             var_q = self.variance_component_torch(q_chunk, gamma, epsilon)
             var_k = self.variance_component_torch(k_chunk, gamma, epsilon)
             var_comp = var_q * var_k
@@ -254,22 +264,19 @@ class Attention(nn.Module):
         
         return cov_component, var_component
 
-    def forward(self, q, k, v):
+    def forward(self, q, k, v, use_advanced=False, gamma=1.0, epsilon=1e-8):
         # Apply input transformation with memory optimization
-        f_q, f_k, f_v = map(lambda t: rearrange(
-            self.input_linear(t), 'q n (h d) -> h q n d', h=self.heads), (q, k, v))
+        f_q = rearrange(self.input_transform(q), 'q n (h d) -> h q n d', h=self.heads)
+        f_k = rearrange(self.input_transform(k), 'q n (h d) -> h q n d', h=self.heads)
+        f_v = rearrange(self.input_transform(v), 'q n (h d) -> h q n d', h=self.heads)
         
         if self.variant == "cosine":
             # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
             
-            # Choose attention mechanism based on parent model's accuracy
-            use_advanced = (self.parent_model and 
-                          hasattr(self.parent_model, 'use_advanced_attention') and 
-                          self.parent_model.use_advanced_attention)
-            
+            # Choose attention mechanism based on accuracy
             if use_advanced:
-                cov_component, var_component = self.advanced_attention_components(f_q, f_k)
+                cov_component, var_component = self.advanced_attention_components(f_q, f_k, gamma, epsilon)
             else:
                 cov_component, var_component = self.basic_attention_components(f_q, f_k)
             
