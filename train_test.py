@@ -58,6 +58,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         
         with tqdm.tqdm(total=len(base_loader)) as pbar:
             for i, (x, _) in enumerate(base_loader):
+                # Clear cache before processing
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
                 # Process in smaller chunks if batch is too large
                 if x.size(0) > 32:
                     chunk_size = 16
@@ -79,7 +83,8 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                         chunk_accs.append(acc)
                         
                         # Clear cache after each chunk
-                        torch.cuda.empty_cache()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                     
                     avg_loss = np.mean(chunk_losses)
                     avg_acc = np.mean(chunk_accs)
@@ -136,6 +141,10 @@ def validate_model(val_loader, model):
     
     with tqdm.tqdm(total=len(val_loader)) as pbar:
         for i, (x, _) in enumerate(val_loader):
+            # Clear cache before processing
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
             # Process in chunks to avoid OOM
             if x.size(0) > 16:
                 chunk_size = 8
@@ -145,7 +154,8 @@ def validate_model(val_loader, model):
                     x_chunk = x[j:j+chunk_size].to(device)
                     acc, _ = model.set_forward_loss(x_chunk)
                     chunk_accs.append(acc)
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 
                 avg_acc = np.mean(chunk_accs)
             else:
@@ -164,6 +174,10 @@ def direct_test(test_loader, model, params):
     
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
+            # Clear cache before processing
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
             # Process in smaller chunks to avoid OOM
             if x.size(0) > 16:
                 scores_list = []
@@ -174,7 +188,8 @@ def direct_test(test_loader, model, params):
                     with torch.no_grad():
                         scores_chunk = model.set_forward(x_chunk)
                         scores_list.append(scores_chunk.cpu())
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 
                 scores = torch.cat(scores_list, dim=0)
             else:
@@ -195,7 +210,77 @@ def direct_test(test_loader, model, params):
     acc_std = np.std(acc_all)
     return acc_mean, acc_std
 
-# Rest of the train_test.py remains the same...
+def analyze_dynamic_weights(model, val_loader):
+    """Analyze the learned dynamic weights"""
+    # Enable weight recording
+    for module in model.modules():
+        if isinstance(module, Attention):
+            module.record_weights = True
+
+    # Run validation to collect weights
+    print("Collecting dynamic weight statistics...")
+    with torch.no_grad():
+        model.eval()
+        with tqdm.tqdm(total=min(50, len(val_loader))) as pbar:  # Limit to 50 batches for analysis
+            for i, (x, _) in enumerate(val_loader):
+                if i >= 50:  # Limit analysis to save time
+                    break
+                # Process in small chunks for memory efficiency
+                if x.size(0) > 8:
+                    chunk_size = 4
+                    for j in range(0, x.size(0), chunk_size):
+                        x_chunk = x[j:j+chunk_size].to(device)
+                        model.set_forward(x_chunk)
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                else:
+                    x = x.to(device)
+                    model.set_forward(x)
+                pbar.update(1)
+
+    # Analyze weights
+    print("\n" + "="*60)
+    print("DYNAMIC WEIGHT ANALYSIS")
+    print("="*60)
+    
+    for i, module in enumerate(model.modules()):
+        if isinstance(module, Attention):
+            stats = module.get_weight_stats()
+            if stats:
+                print(f"\nAttention Block {i} Weight Statistics:")
+                print("-" * 40)
+                if 'cosine_mean' in stats:  # 3-component format
+                    print(f"  Cosine weight:     {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
+                    print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
+                    print(f"  Variance weight:   {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
+                    
+                    print("\n  Weight Distribution:")
+                    for comp in ['cosine', 'cov', 'var']:
+                        print(f"    {comp.capitalize()}:")
+                        hist = stats['histogram'][comp]
+                        for bin_idx, count in enumerate(hist):
+                            if count > 0:  # Only show non-zero bins
+                                bin_start = bin_idx/10
+                                bin_end = (bin_idx+1)/10
+                                print(f"      {bin_start:.1f}-{bin_end:.1f}: {count}")
+                else:  # Legacy format
+                    print(f"  Mean: {stats['mean']:.4f}")
+                    print(f"  Std:  {stats['std']:.4f}")
+                    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
+                    
+                    print("\n  Distribution:")
+                    for bin_idx, count in enumerate(stats['histogram']):
+                        if count > 0:  # Only show non-zero bins
+                            bin_start = bin_idx/10
+                            bin_end = (bin_idx+1)/10
+                            print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+            
+            # Clear history and disable recording
+            module.clear_weight_history()
+            module.record_weights = False
+    
+    print("="*60)
+
 def seed_func():
     seed = 4040
     torch.manual_seed(seed)
@@ -228,7 +313,8 @@ if __name__ == '__main__':
     print()
 
     project_name = "Few-Shot_TransFormer"
-    if params.dataset == 'Omniglot': params.n_query = 15
+    if params.dataset == 'Omniglot': 
+        params.n_query = 15
 
     if params.wandb:
         wandb_name = params.method + "_" + params.backbone + "_" + params.dataset + \
@@ -259,8 +345,10 @@ if __name__ == '__main__':
         image_size = 224 if 'ResNet' in params.backbone else 84
 
     if params.dataset in ['Omniglot', 'cross_char']:
-        if params.backbone == 'Conv4': params.backbone = 'Conv4S'
-        if params.backbone == 'Conv6': params.backbone = 'Conv6S'
+        if params.backbone == 'Conv4': 
+            params.backbone = 'Conv4S'
+        if params.backbone == 'Conv6': 
+            params.backbone = 'Conv6S'
 
     optimization = params.optimization
 
@@ -323,10 +411,19 @@ if __name__ == '__main__':
         print("Train phase: ")
         model = train(base_loader, val_loader, model, optimization, params.num_epoch, params)
 
+        # Analyze dynamic weights if using cosine variant
+        if hasattr(model, 'ATTN') and model.ATTN.dynamic_weight:
+            print("\n===================================")
+            print("Dynamic Weight Analysis: ")
+            analyze_dynamic_weights(model, val_loader)
+
         print("===================================")
         print("Test phase: ")
 
-        # Continue with testing phase...
+        # Clear CUDA cache to free up memory for testing
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         iter_num = params.test_iter
         split = params.split
 
@@ -366,7 +463,11 @@ if __name__ == '__main__':
         print(f"Final attention mechanism used: {'Advanced' if model.use_advanced_attention else 'Basic'}")
 
         if params.wandb:
-            wandb.log({'Test Acc': acc_mean})
+            wandb.log({
+                'Test Acc': acc_mean,
+                'Test Std': acc_std,
+                'Attention Mode': 'Advanced' if model.use_advanced_attention else 'Basic'
+            })
 
         with open('./record/results.txt', 'a') as f:
             timestamp = params.datetime
@@ -384,4 +485,5 @@ if __name__ == '__main__':
             attention_mode = 'Advanced' if model.use_advanced_attention else 'Basic'
             f.write('Time: %s Setting: %s %s (Attention: %s)\n' % (timestamp, exp_setting.ljust(50), acc_str, attention_mode))
 
-        wandb.finish()
+        if params.wandb:
+            wandb.finish()
