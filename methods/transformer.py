@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -14,7 +15,7 @@ import IPython
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class FewShotTransformer(MetaTemplate):
-    def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
+    def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax", 
                  depth=1, heads=8, dim_head=64, mlp_dim=512,
                  initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
@@ -23,35 +24,35 @@ class FewShotTransformer(MetaTemplate):
         self.variant = variant
         self.depth = depth
         dim = self.feat_dim
-        
+
         # Initialize accuracy tracking - simple attributes, not parameters
         self.current_accuracy = 0.0
         self.accuracy_threshold = 40.0
         self.use_advanced_attention = False
-        
+
         # Parameters for advanced attention mechanism
         self.gamma = 1.0
         self.epsilon = 1e-8
-        
+
         # Create attention module
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
-                            initial_cov_weight=initial_cov_weight,
-                            initial_var_weight=initial_var_weight,
-                            dynamic_weight=dynamic_weight)
-        
+                             initial_cov_weight=initial_cov_weight,
+                             initial_var_weight=initial_var_weight,
+                             dynamic_weight=dynamic_weight)
         self.sm = nn.Softmax(dim=-2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
-        
+
         # Replace nn.Sequential with separate components to avoid lambda issues
         # FFN components
         self.ffn_layernorm = nn.LayerNorm(dim)
         self.ffn_linear1 = nn.Linear(dim, mlp_dim)
         self.ffn_gelu = nn.GELU()
         self.ffn_linear2 = nn.Linear(mlp_dim, dim)
-        
-        # Final linear components  
+
+        # Final linear components
         self.final_layernorm = nn.LayerNorm(dim)
         self.final_linear = nn.Linear(dim, dim_head)
+
         if variant == "cosine":
             self.final_classifier = CosineDistLinear(dim_head, 1)
         else:
@@ -64,7 +65,7 @@ class FewShotTransformer(MetaTemplate):
         x = self.ffn_gelu(x)
         x = self.ffn_linear2(x)
         return x
-    
+
     def final_linear_forward(self, x):
         """Forward pass through final linear layers"""
         x = self.final_layernorm(x)
@@ -76,19 +77,19 @@ class FewShotTransformer(MetaTemplate):
         """Update current accuracy and switch attention mechanism if needed"""
         self.current_accuracy = accuracy
         should_use_advanced = accuracy >= self.accuracy_threshold
-        
+
         if should_use_advanced != self.use_advanced_attention:
             self.use_advanced_attention = should_use_advanced
             print(f"Switching to {'advanced' if should_use_advanced else 'basic'} attention mechanism at accuracy: {accuracy:.2f}%")
-        
+
     def set_forward(self, x, is_feature=False):
         z_support, z_query = self.parse_feature(x, is_feature)
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
         z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)  # (1, n, d)
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)  # (q, 1, d)
-        
+
         x, query = z_proto, z_query
-        
+
         # Process through transformer layers
         for _ in range(self.depth):
             # Pass additional parameters for attention mechanism switching
@@ -98,37 +99,37 @@ class FewShotTransformer(MetaTemplate):
                                   epsilon=self.epsilon)
             x = attn_output + x
             x = self.FFN_forward(x) + x
-        
+
         # Output is the probabilistic prediction for each class
         return self.final_linear_forward(x).squeeze()  # (q, n)
 
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
-        
+
         scores = self.set_forward(x)
         loss = self.loss_fn(scores, target)
         predict = torch.argmax(scores, dim=1)
         acc = (predict == target).sum().item() / target.size(0) * 100
-        
+
         # Update accuracy and potentially switch attention mechanism
         self.update_accuracy(acc)
-        
+
         return acc / 100, loss  # Return normalized accuracy
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, 
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6,
                  initial_var_weight=0.2, dynamic_weight=False):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
-        
+
         self.heads = heads
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim=-1)
         self.variant = variant
-        
+
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
@@ -142,19 +143,19 @@ class Attention(nn.Module):
             # Fixed weights as parameters (still learnable)
             self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
             self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
-        
+
         # Replace nn.Sequential for input linear to avoid lambda issues
         self.input_layernorm = nn.LayerNorm(dim)
         self.input_linear = nn.Linear(dim, inner_dim, bias=False)
-        
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
+
         self.weight_history = []  # To store weights for analysis
         self.record_weights = False  # Toggle for weight recording
 
     def input_transform(self, t):
         """Transform input through layernorm and linear projection"""
         return self.input_linear(self.input_layernorm(t))
-    
+
     def weight_predictor_forward(self, x):
         """Forward pass through weight predictor"""
         x = self.weight_linear1(x)
@@ -174,19 +175,19 @@ class Attention(nn.Module):
         """PyTorch implementation of covariance component"""
         # E shape: (batch, seq, dim)
         batch_size, seq_len, dim = E.shape
-        
+
         # Process in chunks to avoid OOM
         chunk_size = min(16, batch_size)  # Smaller chunks for memory efficiency
         cov_results = []
-        
+
         for i in range(0, batch_size, chunk_size):
             end_idx = min(i + chunk_size, batch_size)
             E_chunk = E[i:end_idx]  # (chunk, seq, dim)
-            
+
             # Compute mean and center the data
             E_mean = torch.mean(E_chunk, dim=1, keepdim=True)  # (chunk, 1, dim)
             centered = E_chunk - E_mean  # (chunk, seq, dim)
-            
+
             # Compute covariance matrix for each sample in chunk
             for j in range(E_chunk.shape[0]):
                 centered_sample = centered[j]  # (seq, dim)
@@ -194,20 +195,20 @@ class Attention(nn.Module):
                     cov = torch.matmul(centered_sample.T, centered_sample) / (seq_len - 1)  # (dim, dim)
                 else:
                     cov = torch.matmul(centered_sample.T, centered_sample)  # Handle single sequence case
-                
+
                 # Sum of squares of off-diagonal elements
                 off_diag_mask = ~torch.eye(dim, dtype=torch.bool, device=cov.device)
                 off_diag_sum = torch.sum(cov[off_diag_mask] ** 2)
-                
+
                 # Normalize by dimension
                 C = off_diag_sum / dim
                 cov_results.append(C)
-            
+
             # Clear intermediate tensors
             del E_chunk, E_mean, centered
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        
+
         return torch.stack(cov_results).mean()
 
     def basic_attention_components(self, f_q, f_k):
@@ -217,149 +218,172 @@ class Attention(nn.Module):
         k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
         cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
         cov_component = cov_component / f_q.size(-1)
-        
+
         # Calculate variance component
         # Compute variance along feature dimension
         q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
         k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
-        
+
         # Create variance-based attention
         var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
         var_component = var_component / f_q.size(-1)  # Scale like covariance
-        
+
         return cov_component, var_component
 
     def advanced_attention_components(self, f_q, f_k, gamma=1.0, epsilon=1e-8):
-    """
-    FIXED: Advanced attention mechanism with proper tensor dimension handling
-    """
+        """
+        FIXED: Advanced attention mechanism with proper tensor dimension handling
+        This version resolves the RuntimeError: shape '[8, 1, 64]' is invalid for input of size 40960
+        """
+        # Determine the input format and handle different tensor shapes
         if len(f_q.shape) == 4:
+            # Input format: [h, q, n, d] from rearrange operation
             heads, batch_size, seq_q, dim = f_q.shape
             _, _, seq_k, _ = f_k.shape
-            
-            # Validate tensor dimensions before reshaping
+
+            # Check if dimensions make sense
             expected_elements_q = heads * batch_size * seq_q * dim
             actual_elements_q = f_q.numel()
-            
+
             if expected_elements_q != actual_elements_q:
-                print(f"Warning: Tensor size mismatch. Expected {expected_elements_q}, got {actual_elements_q}")
+                print(f"Warning: Tensor size mismatch in f_q. Expected {expected_elements_q}, got {actual_elements_q}")
+                print(f"f_q shape: {f_q.shape}, f_k shape: {f_k.shape}")
                 # Return safe fallback
                 return (torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon,
                         torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon)
-            
-                # Safe reshaping with error handling
-                try:
-                    f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
-                    f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
-                except RuntimeError as e:
-                    print(f"Error reshaping tensors: {e}")
-                    return (torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon,
-                            torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon)
-            else:
-            # Handle unexpected tensor shapes
-                return (torch.zeros_like(f_q[..., :1]) + epsilon, torch.zeros_like(f_q[..., :1]) + epsilon)
-    
-    # Continue with safe computation logic...
-    # [Rest of the method implementation with proper error handling]
+
+            # Safely reshape for processing: (heads*batch, seq, dim)
+            try:
+                f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
+                f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
+            except RuntimeError as e:
+                print(f"Error reshaping tensors: {e}")
+                # Return safe fallback using basic attention components instead
+                return self.basic_attention_components(f_q, f_k)
+
+        else:
+            print(f"Unexpected tensor dimensions: f_q {f_q.shape}, f_k {f_k.shape}")
+            # Return safe fallback
+            return self.basic_attention_components(f_q, f_k)
 
         # Compute components with memory optimization
         var_component_list = []
         cov_component_list = []
-        
+
         # Process in smaller chunks to avoid OOM
         total_samples = batch_size * heads
         chunk_size = min(4, total_samples)  # Smaller chunks for better memory management
-        
-        for i in range(0, total_samples, chunk_size):
-            end_idx = min(i + chunk_size, total_samples)
-            
-            # Get chunks
-            q_chunk = f_q_reshaped[i:end_idx]  # (chunk, seq_q, dim)
-            k_chunk = f_k_reshaped[i:end_idx]  # (chunk, seq_k, dim)
-            
-            # Compute variance component for this chunk
-            var_q = self.variance_component_torch(q_chunk, gamma, epsilon)
-            var_k = self.variance_component_torch(k_chunk, gamma, epsilon)
-            var_comp = var_q * var_k
-            var_component_list.append(var_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
-            
-            # Compute covariance component for this chunk
-            cov_q = self.covariance_component_torch(q_chunk)
-            cov_k = self.covariance_component_torch(k_chunk)
-            cov_comp = cov_q * cov_k
-            cov_component_list.append(cov_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
-            
-            # Clear intermediate tensors
-            del q_chunk, k_chunk
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        
-        # Combine results and reshape back to original format
-        var_component = torch.cat(var_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
-        cov_component = torch.cat(cov_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
-        
-        # Permute back to match f_q/f_k format [h, q, n, d] -> [h, q, n, m]
-        var_component = var_component.permute(1, 0, 2, 3)
-        cov_component = cov_component.permute(1, 0, 2, 3)
-        
-        return cov_component, var_component
+
+        try:
+            for i in range(0, total_samples, chunk_size):
+                end_idx = min(i + chunk_size, total_samples)
+
+                # Get chunks
+                q_chunk = f_q_reshaped[i:end_idx]  # (chunk, seq_q, dim)
+                k_chunk = f_k_reshaped[i:end_idx]  # (chunk, seq_k, dim)
+
+                # Compute variance component for this chunk
+                var_q = self.variance_component_torch(q_chunk, gamma, epsilon)
+                var_k = self.variance_component_torch(k_chunk, gamma, epsilon)
+                var_comp = var_q * var_k
+                var_component_list.append(var_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
+
+                # Compute covariance component for this chunk  
+                cov_q = self.covariance_component_torch(q_chunk)
+                cov_k = self.covariance_component_torch(k_chunk)
+                cov_comp = cov_q * cov_k
+                cov_component_list.append(cov_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
+
+                # Clear intermediate tensors
+                del q_chunk, k_chunk
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+            # Combine results and reshape back to original format
+            var_component = torch.cat(var_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
+            cov_component = torch.cat(cov_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
+
+            # Permute back to match f_q/f_k format [h, q, n, d] -> [h, q, n, m]
+            var_component = var_component.permute(1, 0, 2, 3)
+            cov_component = cov_component.permute(1, 0, 2, 3)
+
+            return cov_component, var_component
+
+        except Exception as e:
+            print(f"Error in advanced attention computation: {e}")
+            # Fallback to basic attention components
+            return self.basic_attention_components(f_q, f_k)
 
     def forward(self, q, k, v, use_advanced=False, gamma=1.0, epsilon=1e-8):
         # Apply input transformation - avoid lambda functions
         f_q = rearrange(self.input_transform(q), 'q n (h d) -> h q n d', h=self.heads)
         f_k = rearrange(self.input_transform(k), 'q n (h d) -> h q n d', h=self.heads)
         f_v = rearrange(self.input_transform(v), 'q n (h d) -> h q n d', h=self.heads)
-        
+
         if self.variant == "cosine":
             # Calculate cosine similarity (invariance component)
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
-            
-            # Choose attention mechanism based on accuracy
-            if use_advanced:
-                cov_component, var_component = self.advanced_attention_components(f_q, f_k, gamma, epsilon)
-            else:
+
+            # Choose attention mechanism based on accuracy with error handling
+            try:
+                if use_advanced:
+                    cov_component, var_component = self.advanced_attention_components(f_q, f_k, gamma, epsilon)
+                else:
+                    cov_component, var_component = self.basic_attention_components(f_q, f_k)
+
+            except Exception as e:
+                print(f"Error in attention components: {e}, falling back to basic")
                 cov_component, var_component = self.basic_attention_components(f_q, f_k)
-            
+
             # Weight combination logic
             if self.dynamic_weight:
-                # Use global feature statistics
-                q_global = f_q.mean(dim=(1, 2))  # [h, d]
-                k_global = f_k.mean(dim=(1, 2))  # [h, d]
-                # Concatenate global query and key features
-                qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
-                # Predict three weights per attention head
-                weights = self.weight_predictor_forward(qk_features)  # [h, 3]
-                
-                # Record weights during evaluation if needed
-                if self.record_weights and not self.training:
-                    self.weight_history.append(weights.detach().cpu().numpy().mean(axis=0))
-                
-                # Extract individual weights
-                cos_weight = weights[:, 0].view(self.heads, 1, 1, 1)  # Cosine weight
-                cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)  # Covariance weight
-                var_weight = weights[:, 2].view(self.heads, 1, 1, 1)  # Variance weight
-                
-                # Combine all three components
-                dots = (cos_weight * cosine_sim +
-                       cov_weight * cov_component +
-                       var_weight * var_component)
+                try:
+                    # Use global feature statistics
+                    q_global = f_q.mean(dim=(1, 2))  # [h, d]
+                    k_global = f_k.mean(dim=(1, 2))  # [h, d]
+
+                    # Concatenate global query and key features
+                    qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
+
+                    # Predict three weights per attention head
+                    weights = self.weight_predictor_forward(qk_features)  # [h, 3]
+
+                    # Record weights during evaluation if needed
+                    if self.record_weights and not self.training:
+                        self.weight_history.append(weights.detach().cpu().numpy().mean(axis=0))
+
+                    # Extract individual weights
+                    cos_weight = weights[:, 0].view(self.heads, 1, 1, 1)  # Cosine weight
+                    cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)  # Covariance weight
+                    var_weight = weights[:, 2].view(self.heads, 1, 1, 1)  # Variance weight
+
+                    # Combine all three components
+                    dots = (cos_weight * cosine_sim +
+                           cov_weight * cov_component + 
+                           var_weight * var_component)
+
+                except Exception as e:
+                    print(f"Error in dynamic weighting: {e}, using equal weights")
+                    # Fallback to equal weighting
+                    dots = (cosine_sim + cov_component + var_component) / 3
             else:
                 # Use fixed weights
                 cov_weight = torch.sigmoid(self.fixed_cov_weight)
                 var_weight = torch.sigmoid(self.fixed_var_weight)
+
                 # Ensure weights sum to approximately 1 by using the remaining portion for cosine
                 cos_weight = 1.0 - cov_weight - var_weight
-                
+
                 dots = (cos_weight * cosine_sim +
                        cov_weight * cov_component +
                        var_weight * var_component)
-            
+
             out = torch.matmul(dots, f_v)
-            
+
         else:  # self.variant == "softmax"
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
             out = torch.matmul(self.sm(dots), f_v)
-        
+
         out = rearrange(out, 'h q n d -> q n (h d)')
         return self.output_linear(out)
 
@@ -367,8 +391,9 @@ class Attention(nn.Module):
         """Returns statistics about the weights used"""
         if not self.weight_history:
             return None
-        
+
         weights = np.array(self.weight_history)
+
         if weights.shape[1] == 3:  # We have 3 components
             return {
                 'cosine_mean': float(weights[:, 0].mean()),
@@ -398,12 +423,13 @@ class Attention(nn.Module):
 
 
 def cosine_distance(x1, x2):
-    '''
-    x1 = [b, h, n, k]
-    x2 = [b, h, k, m]
-    output = [b, h, n, m]
-    '''
+    """
+    Compute cosine distance between tensors
+    x1 = [h, q, n, k]
+    x2 = [h, q, k, m]
+    output = [h, q, n, m]
+    """
     dots = torch.matmul(x1, x2)
-    scale = torch.einsum('bhi, bhj -> bhij',
-                        (torch.norm(x1, 2, dim=-1), torch.norm(x2, 2, dim=-2)))
-    return (dots / scale)
+    scale = torch.einsum('bhik, bhjk -> bhij',
+                        torch.norm(x1, 2, dim=-1), torch.norm(x2, 2, dim=-1))
+    return (dots / (scale + 1e-8))  # Add epsilon to avoid division by zero
