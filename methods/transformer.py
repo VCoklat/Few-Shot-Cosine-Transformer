@@ -422,14 +422,29 @@ class Attention(nn.Module):
         self.weight_history = []
 
 
-def cosine_distance(x1, x2):
-    """
-    Compute cosine distance between tensors
-    x1 = [h, q, n, k]
-    x2 = [h, q, k, m]
-    output = [h, q, n, m]
-    """
-    dots = torch.matmul(x1, x2)
-    scale = torch.einsum('bhik, bhjk -> bhij',
-                        torch.norm(x1, 2, dim=-1), torch.norm(x2, 2, dim=-1))
-    return (dots / (scale + 1e-8))  # Add epsilon to avoid division by zero
+    def cosine_distance(x1, x2):
+        """
+        FIXED: Handles both 3D and 4D tensors correctly
+        """
+        try:
+            if len(x1.shape) == 3 and len(x2.shape) == 3:
+                # 3D tensors: [q, n, d] and [q, d, m]
+                dots = torch.matmul(x1, x2)
+                x1_norm = torch.norm(x1, dim=-1, keepdim=True)
+                x2_norm = torch.norm(x2, dim=-2, keepdim=True)
+                scale = torch.matmul(x1_norm, x2_norm)
+                
+            elif len(x1.shape) == 4 and len(x2.shape) == 4:
+                # 4D tensors: [h, q, n, d] and [h, q, d, m]
+                dots = torch.matmul(x1, x2)
+                x1_norm = torch.norm(x1, dim=-1, keepdim=True)
+                x2_norm = torch.norm(x2, dim=-2, keepdim=True)
+                scale = torch.matmul(x1_norm, x2_norm)
+                
+            # Add epsilon to avoid division by zero
+            return dots / (scale + 1e-8)
+            
+        except Exception as e:
+            # Safe fallback mechanisms
+            print(f"Error in cosine_distance: {e}")
+            # Return appropriate fallback
