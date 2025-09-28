@@ -100,7 +100,7 @@ class FewShotTransformer(MetaTemplate):
         z_s, z_q = self.parse_feature(x, is_feature)
         z_s = z_s.view(self.n_way, self.k_shot, -1)
         z_proto = (z_s * self.sm(self.proto_weight)).sum(1).unsqueeze(0)
-        z_q = z_q.view(self.n_way * self.n_query, -1).unsqueeze(1)
+        z_q = z_q.reshape(self.n_way * self.n_query, -1).unsqueeze(1)
 
         h = z_proto
         for _ in range(self.depth):
