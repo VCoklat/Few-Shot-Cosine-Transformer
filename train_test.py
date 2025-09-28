@@ -1,4 +1,3 @@
-
 import glob
 import json
 import os
@@ -18,8 +17,12 @@ from torch.autograd import Variable
 from torchsummary import summary
 import psutil
 import subprocess
-import GPUtil
+try:
+    import GPUtil
+except ImportError:
+    GPUtil = None
 import sklearn.metrics as metrics
+import torch.nn.functional as F
 
 import backbone
 import configs
@@ -98,12 +101,17 @@ def get_system_metrics():
 
         if torch.cuda.is_available():
             try:
-                gpus = GPUtil.getGPUs()
-                if gpus:
-                    gpu = gpus[0]  # Use first GPU
-                    gpu_util = gpu.load
-                    gpu_mem_used_MB = gpu.memoryUsed
-                    gpu_mem_total_MB = gpu.memoryTotal
+                if GPUtil is not None:
+                    gpus = GPUtil.getGPUs()
+                    if gpus:
+                        gpu = gpus[0]  # Use first GPU
+                        gpu_util = gpu.load
+                        gpu_mem_used_MB = gpu.memoryUsed
+                        gpu_mem_total_MB = gpu.memoryTotal
+                else:
+                    # Fallback to torch if GPUtil not available
+                    gpu_mem_used_MB = torch.cuda.memory_allocated() / (1024**2)
+                    gpu_mem_total_MB = torch.cuda.get_device_properties(0).total_memory / (1024**2)
             except:
                 # Fallback to torch if GPUtil fails
                 gpu_mem_used_MB = torch.cuda.memory_allocated() / (1024**2)
@@ -297,7 +305,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 num_batches += 1
 
                 pbar.set_description(
-                    f'Epoch {epoch+1}/{num_epoch} | Loss: {avg_loss:.4f} | Acc: {avg_acc*100:.2f}% | Mode: {"Advanced" if model.use_advanced_attention else "Basic"}')
+                    f'Epoch {epoch+1}/{num_epoch} | Loss: {avg_loss:.4f} | Acc: {avg_acc*100:.2f}% | Mode: {"Advanced" if hasattr(model, "use_advanced_attention") and model.use_advanced_attention else "Basic"}')
                 pbar.update(1)
 
         # Validation phase with memory optimization
@@ -320,7 +328,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
 
-        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if model.use_advanced_attention else 'Basic'}")
+        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
         print()
 
     return model
@@ -388,7 +396,7 @@ def direct_test(test_loader, model, params):
             acc.append(np.mean(pred == y)*100)
 
             pbar.set_description(
-                f'Test | Acc: {np.mean(acc):.2f}% | Mode: {"Advanced" if model.use_advanced_attention else "Basic"}')
+                f'Test | Acc: {np.mean(acc):.2f}% | Mode: {"Advanced" if hasattr(model, "use_advanced_attention") and model.use_advanced_attention else "Basic"}')
             pbar.update(1)
 
     acc_all = np.asarray(acc)
@@ -402,7 +410,8 @@ def analyze_dynamic_weights(model, val_loader):
     # Enable weight recording
     for module in model.modules():
         if isinstance(module, Attention):
-            module.record_weights = True
+            if hasattr(module, 'record_weights'):
+                module.record_weights = True
 
     # Run validation to collect weights
     print("Collecting dynamic weight statistics...")
@@ -434,40 +443,43 @@ def analyze_dynamic_weights(model, val_loader):
 
     for i, module in enumerate(model.modules()):
         if isinstance(module, Attention):
-            stats = module.get_weight_stats()
-            if stats:
-                print(f"\nAttention Block {i} Weight Statistics:")
-                print("-" * 40)
+            if hasattr(module, 'get_weight_stats'):
+                stats = module.get_weight_stats()
+                if stats:
+                    print(f"\nAttention Block {i} Weight Statistics:")
+                    print("-" * 40)
 
-                if 'cosine_mean' in stats:  # 3-component format
-                    print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
-                    print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
-                    print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
+                    if 'cosine_mean' in stats:  # 3-component format
+                        print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
+                        print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
+                        print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
 
-                    print("\n Weight Distribution:")
-                    for comp in ['cosine', 'cov', 'var']:
-                        print(f"  {comp.capitalize()}:")
-                        hist = stats['histogram'][comp]
-                        for bin_idx, count in enumerate(hist):
+                        print("\n Weight Distribution:")
+                        for comp in ['cosine', 'cov', 'var']:
+                            print(f"  {comp.capitalize()}:")
+                            hist = stats['histogram'][comp]
+                            for bin_idx, count in enumerate(hist):
+                                if count > 0:  # Only show non-zero bins
+                                    bin_start = bin_idx/10
+                                    bin_end = (bin_idx+1)/10
+                                    print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
+                    else:  # Legacy format
+                        print(f"  Mean: {stats['mean']:.4f}")
+                        print(f"  Std: {stats['std']:.4f}")
+                        print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
+
+                        print("\n Distribution:")
+                        for bin_idx, count in enumerate(stats['histogram']):
                             if count > 0:  # Only show non-zero bins
                                 bin_start = bin_idx/10
                                 bin_end = (bin_idx+1)/10
                                 print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
-                else:  # Legacy format
-                    print(f"  Mean: {stats['mean']:.4f}")
-                    print(f"  Std: {stats['std']:.4f}")
-                    print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
 
-                    print("\n Distribution:")
-                    for bin_idx, count in enumerate(stats['histogram']):
-                        if count > 0:  # Only show non-zero bins
-                            bin_start = bin_idx/10
-                            bin_end = (bin_idx+1)/10
-                            print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
-
-            # Clear history and disable recording
-            module.clear_weight_history()
-            module.record_weights = False
+                # Clear history and disable recording
+                if hasattr(module, 'clear_weight_history'):
+                    module.clear_weight_history()
+                if hasattr(module, 'record_weights'):
+                    module.record_weights = False
 
     print("="*60)
 
@@ -508,7 +520,8 @@ if __name__ == '__main__':
         params.n_query = 15
 
     if params.wandb:
-        wandb_name = params.method + "_" + params.backbone + "_" + params.dataset +                      "_" + str(params.n_way) + "w" + str(params.k_shot) + "s"
+        wandb_name = params.method + "_" + params.backbone + "_" + params.dataset + \
+                     "_" + str(params.n_way) + "w" + str(params.k_shot) + "s"
         if params.train_aug:
             wandb_name += "_aug"
         if params.FETI and 'ResNet' in params.backbone:
@@ -602,7 +615,7 @@ if __name__ == '__main__':
         model = train(base_loader, val_loader, model, optimization, params.num_epoch, params)
 
         # Analyze dynamic weights if using cosine variant
-        if hasattr(model, 'ATTN') and model.ATTN.dynamic_weight:
+        if hasattr(model, 'ATTN') and hasattr(model.ATTN, 'dynamic_weight') and model.ATTN.dynamic_weight:
             print("\n===================================")
             print("Dynamic Weight Analysis: ")
             analyze_dynamic_weights(model, val_loader)
@@ -658,7 +671,7 @@ if __name__ == '__main__':
         print('\n📊 Traditional Test Results:')
         print('%d Test Acc = %4.2f%% +- %4.2f%%' %
               (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
-        print(f"Final attention mechanism used: {'Advanced' if model.use_advanced_attention else 'Basic'}")
+        print(f"Final attention mechanism used: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
 
         if params.wandb:
             # Log both traditional and comprehensive metrics
@@ -670,7 +683,7 @@ if __name__ == '__main__':
                 'Comprehensive/Model_Size_M': eval_results['param_count'],
                 'Comprehensive/GPU_Util_Percent': eval_results['gpu_util'] * 100,
                 'Comprehensive/CPU_Util_Percent': eval_results['cpu_util'],
-                'Attention Mode': 'Advanced' if model.use_advanced_attention else 'Basic'
+                'Attention Mode': 'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'
             })
 
         with open('./record/results.txt', 'a') as f:
@@ -686,7 +699,7 @@ if __name__ == '__main__':
             exp_setting = '%s-%s-%s%s-%sw%ss' % (params.dataset, params.backbone,
                                                  params.method, aug_str, params.n_way, params.k_shot)
             acc_str = 'Test Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std/np.sqrt(iter_num))
-            attention_mode = 'Advanced' if model.use_advanced_attention else 'Basic'
+            attention_mode = 'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'
 
             # Enhanced logging with comprehensive metrics
             f.write('Time: %s Setting: %s %s (Attention: %s) | Macro-F1: %.4f | Inf-Time: %.1fms | Params: %.2fM\n' % 
