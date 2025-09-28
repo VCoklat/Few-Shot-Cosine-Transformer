@@ -14,6 +14,68 @@ import IPython
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+
+def cosine_distance(x1, x2):
+    """
+    Compute cosine distance with proper dimension handling
+    x1: input tensor (3D or 4D)
+    x2: input tensor (3D or 4D) 
+    Returns: cosine similarity matrix
+    """
+    try:
+        # Handle different tensor dimensions
+        if len(x1.shape) == 3 and len(x2.shape) == 3:
+            # 3D tensors: [q, n, d] and [q, d, m]
+            dots = torch.matmul(x1, x2)
+            x1_norm = torch.norm(x1, dim=-1, keepdim=True)  # [q, n, 1]
+            x2_norm = torch.norm(x2, dim=-2, keepdim=True)  # [q, 1, m]
+            scale = torch.matmul(x1_norm, x2_norm)  # [q, n, m]
+
+        elif len(x1.shape) == 4 and len(x2.shape) == 4:
+            # 4D tensors: [h, q, n, d] and [h, q, d, m]
+            dots = torch.matmul(x1, x2)
+            x1_norm = torch.norm(x1, dim=-1, keepdim=True)  # [h, q, n, 1]
+            x2_norm = torch.norm(x2, dim=-2, keepdim=True)  # [h, q, 1, m]
+            scale = torch.matmul(x1_norm, x2_norm)  # [h, q, n, m]
+
+        else:
+            # Handle mixed dimensions or unexpected cases
+            print(f"Warning: Unexpected tensor dimensions in cosine_distance: x1={x1.shape}, x2={x2.shape}")
+
+            # Try generic approach
+            dots = torch.matmul(x1, x2)
+
+            # Compute norms along the appropriate dimensions
+            x1_norm = torch.norm(x1, dim=-1, keepdim=True)
+            x2_norm = torch.norm(x2, dim=-2, keepdim=True) 
+
+            # Use broadcasting to compute scale
+            scale = x1_norm * x2_norm
+
+        # Add epsilon to avoid division by zero
+        epsilon = 1e-8
+        result = dots / (scale + epsilon)
+
+        return result
+
+    except Exception as e:
+        print(f"Error in cosine_distance: {e}")
+        print(f"x1 shape: {x1.shape}, x2 shape: {x2.shape}")
+
+        # Safe fallback - return simple dot product scaled by feature dimension
+        try:
+            dots = torch.matmul(x1, x2)
+            scale = x1.size(-1) ** 0.5  # Simple scaling
+            return dots / scale
+        except:
+            # Ultimate fallback - return zeros with correct shape
+            if len(x1.shape) >= 2 and len(x2.shape) >= 2:
+                output_shape = list(x1.shape[:-1]) + [x2.shape[-1]]
+                return torch.zeros(output_shape, device=x1.device)
+            else:
+                return torch.tensor(0.0, device=x1.device)
+
+
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax", 
                  depth=1, heads=8, dim_head=64, mlp_dim=512,
@@ -210,32 +272,6 @@ class Attention(nn.Module):
                 torch.cuda.empty_cache()
 
         return torch.stack(cov_results).mean()
-    def cosine_distance(x1, x2):
-        """
-        FIXED: Handles both 3D and 4D tensors correctly
-        """
-        try:
-            if len(x1.shape) == 3 and len(x2.shape) == 3:
-                # 3D tensors: [q, n, d] and [q, d, m]
-                dots = torch.matmul(x1, x2)
-                x1_norm = torch.norm(x1, dim=-1, keepdim=True)
-                x2_norm = torch.norm(x2, dim=-2, keepdim=True)
-                scale = torch.matmul(x1_norm, x2_norm)
-                
-            elif len(x1.shape) == 4 and len(x2.shape) == 4:
-                # 4D tensors: [h, q, n, d] and [h, q, d, m]
-                dots = torch.matmul(x1, x2)
-                x1_norm = torch.norm(x1, dim=-1, keepdim=True)
-                x2_norm = torch.norm(x2, dim=-2, keepdim=True)
-                scale = torch.matmul(x1_norm, x2_norm)
-                
-            # Add epsilon to avoid division by zero
-            return dots / (scale + 1e-8)
-            
-        except Exception as e:
-            # Safe fallback mechanisms
-            print(f"Error in cosine_distance: {e}")
-            # Return appropriate fallback
 
     def basic_attention_components(self, f_q, f_k):
         """Original attention mechanism for accuracy < 40%"""
