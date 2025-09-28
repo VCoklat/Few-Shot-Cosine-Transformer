@@ -24,23 +24,21 @@ except ImportError:
     GPUtil = None
 import sklearn.metrics as metrics
 import torch.nn.functional as F
+
 import backbone
 import configs
 import data.feature_loader as feat_loader
 import wandb
+
 from data.datamgr import SetDataManager
 from io_utils import (get_assigned_file, get_best_file,
-                     model_dict, parse_args)
+                      model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# ================================================================================================
-# YOUR THREE REQUESTED FUNCTIONS - INTEGRATED HERE
-# ================================================================================================
 
 def pretty_print(res):
     """Enhanced pretty printing"""
@@ -139,10 +137,6 @@ def get_system_metrics():
             'gpu_mem_total_MB': 0
         }
 
-# ================================================================================================
-# ADDITIONAL HELPER FUNCTIONS THAT USE YOUR THREE FUNCTIONS
-# ================================================================================================
-
 def get_model_params(model):
     """Get model parameter count in millions"""
     try:
@@ -152,10 +146,10 @@ def get_model_params(model):
         return 0.0
 
 def evaluate_model_comprehensive(test_loader, model, params, testfile):
-    """Comprehensive model evaluation with detailed metrics - USES YOUR THREE FUNCTIONS"""
+    """Comprehensive model evaluation with detailed metrics"""
     print("\n🔍 Starting comprehensive model evaluation...")
 
-    # Get class names using YOUR function
+    # Get class names
     class_names = get_class_names_from_file(testfile, params.n_way)
 
     # Initialize tracking variables
@@ -163,7 +157,7 @@ def evaluate_model_comprehensive(test_loader, model, params, testfile):
     all_true_labels = []
     inference_times = []
 
-    # Get initial system metrics using YOUR function
+    # Get initial system metrics
     system_metrics = get_system_metrics()
     param_count = get_model_params(model)
 
@@ -222,7 +216,7 @@ def evaluate_model_comprehensive(test_loader, model, params, testfile):
     # Timing metrics
     avg_inference_time = np.mean(inference_times)
 
-    # Final system metrics using YOUR function
+    # Final system metrics
     final_system_metrics = get_system_metrics()
 
     # Compile results
@@ -244,132 +238,106 @@ def evaluate_model_comprehensive(test_loader, model, params, testfile):
 
     return evaluation_results
 
-# ================================================================================================
-# YOUR EXISTING FUNCTIONS - ENHANCED
-# ================================================================================================
-
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
-    import copy
-    import torch.optim as optim
-
+    # Memory optimization settings
     torch.cuda.empty_cache()
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
     if optimization == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'AdamW':
-        optimizer = optim.AdamW(model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'SGD':
-        optimizer = optim.SGD(model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
+        optimizer = torch.optim.SGD(
+            model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
     else:
-        raise ValueError('Unknown optimization type')
+        raise ValueError('Unknown optimization, please define by yourself')
 
-    # Scheduler: Reduce LR on Plateau with patience of 3 epochs
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=3, factor=0.1, verbose=True)
-
-    best_val_acc = 0
-    best_model_wts = copy.deepcopy(model.state_dict())
-    epochs_no_improve = 0
-    early_stop_patience = 7
-
+    max_acc = 0
     for epoch in range(num_epoch):
         model.train()
-        running_loss = 0
-        running_acc = 0
+
+        # Memory-optimized training loop
+        total_loss = 0
+        total_acc = 0
         num_batches = 0
 
-        pbar = tqdm.tqdm(total=len(base_loader))
-        for i, (x, _) in enumerate(base_loader):
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        with tqdm.tqdm(total=len(base_loader)) as pbar:
+            for i, (x, _) in enumerate(base_loader):
+                # Clear cache before processing
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
-            if x.size(0) > 32:
-                chunk_size = 16
-                losses = []
-                accs = []
-                for j in range(0, x.size(0), chunk_size):
-                    x_chunk = x[j:j+chunk_size].to(device)
+                # Process in smaller chunks if batch is too large
+                if x.size(0) > 32:
+                    chunk_size = 16
+                    chunk_losses = []
+                    chunk_accs = []
+                    for j in range(0, x.size(0), chunk_size):
+                        x_chunk = x[j:j+chunk_size].to(device)
+                        optimizer.zero_grad()
+                        acc, loss = model.set_forward_loss(x_chunk)
+                        loss.backward()
+                        # Gradient clipping for stability
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                        optimizer.step()
+                        chunk_losses.append(loss.item())
+                        chunk_accs.append(acc)
+                        # Clear cache after each chunk
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    avg_loss = np.mean(chunk_losses)
+                    avg_acc = np.mean(chunk_accs)
+                else:
+                    x = x.to(device)
                     optimizer.zero_grad()
-                    acc, loss = model.set_forward_loss(x_chunk)
+                    acc, loss = model.set_forward_loss(x)
                     loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    # Gradient clipping for stability
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
-                    losses.append(loss.item())
-                    accs.append(acc)
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                loss_val = sum(losses)/len(losses)
-                acc_val = sum(accs)/len(accs)
-            else:
-                x = x.to(device)
-                optimizer.zero_grad()
-                acc, loss = model.set_forward_loss(x)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
-                loss_val = loss.item()
-                acc_val = acc
+                    avg_loss = loss.item()
+                    avg_acc = acc
 
-            running_loss += loss_val
-            running_acc += acc_val
-            num_batches += 1
+                total_loss += avg_loss
+                total_acc += avg_acc
+                num_batches += 1
 
-            mode_str = 'Advanced' if getattr(model, 'use_advanced_attention', False) else 'Basic'
-            pbar.set_description(f'Epoch {epoch+1}/{num_epoch} Loss: {loss_val:.4f} Acc: {acc_val*100:.2f}% Mode: {mode_str}')
-            pbar.update(1)
+                pbar.set_description(
+                    f'Epoch {epoch+1}/{num_epoch} | Loss: {avg_loss:.4f} | Acc: {avg_acc*100:.2f}% | Mode: {"Advanced" if hasattr(model, "use_advanced_attention") and model.use_advanced_attention else "Basic"}')
+                pbar.update(1)
 
-        pbar.close()
+        # Validation phase with memory optimization
+        with torch.no_grad():
+            model.eval()
+            if not os.path.isdir(params.checkpoint_dir):
+                os.makedirs(params.checkpoint_dir)
 
-        val_acc = validate(val_loader, model)
-        print(f'Validation Accuracy after epoch {epoch+1}: {val_acc*100:.2f}%')
+            val_acc = validate_model(val_loader, model)
 
-        scheduler.step(val_acc)
+            # FIXED: Changed from acc > 40% to val_acc > 40%
+            if val_acc > 40:
+                print(f"🎯 Validation accuracy above 40%! Current: {val_acc:.2f}%")
 
-        # Early stopping
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_model_wts = copy.deepcopy(model.state_dict())
-            epochs_no_improve = 0
-            print(f'🎯 New best validation accuracy: {best_val_acc*100:.2f}%')
-        else:
-            epochs_no_improve += 1
-            print(f'No improvement for {epochs_no_improve} epochs')
+            if val_acc > max_acc:
+                print(f"Best model! Save... Accuracy: {val_acc:.2f}%")
+                max_acc = val_acc
+                outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
+                torch.save(
+                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
 
-        if epochs_no_improve >= early_stop_patience:
-            print(f'Early stopping at epoch {epoch+1}')
-            break
+            if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
+                outfile = os.path.join(
+                    params.checkpoint_dir, '{:d}.tar'.format(epoch))
+                torch.save(
+                    {'epoch': epoch, 'state': model.state_dict()}, outfile)
 
-        # Save checkpoints
-        if not os.path.isdir(params.checkpoint_dir):
-            os.makedirs(params.checkpoint_dir)
-
-        if val_acc > max(0.4, best_val_acc * 0.9):  # Save if above 40% or close to best
-            outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
-            torch.save({'epoch': epoch, 'state': model.state_dict()}, outfile)
-
-        if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
-            outfile = os.path.join(params.checkpoint_dir, '{:d}.tar'.format(epoch))
-            torch.save({'epoch': epoch, 'state': model.state_dict()}, outfile)
-
-        # Enhanced epoch summary
-        attention_mode = 'Advanced' if getattr(model, 'use_advanced_attention', False) else 'Basic'
-        print(f"Epoch {epoch+1} Summary - Attention: {attention_mode}")
+        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
         print()
 
-    # Restore best weights
-    model.load_state_dict(best_model_wts)
     return model
-
-def validate(val_loader, model):
-    """Helper validate function"""
-    model.eval()
-    accs = []
-    with torch.no_grad():
-        for x, _ in val_loader:
-            x = x.to(device)
-            acc, _ = model.set_forward_loss(x)
-            accs.append(acc)
-    return sum(accs)/len(accs) if accs else 0
 
 def validate_model(val_loader, model):
     """Memory-optimized validation function"""
@@ -385,14 +353,12 @@ def validate_model(val_loader, model):
             if x.size(0) > 16:
                 chunk_size = 8
                 chunk_accs = []
-
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size].to(device)
                     acc, _ = model.set_forward_loss(x_chunk)
                     chunk_accs.append(acc)
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-
                 avg_acc = np.mean(chunk_accs)
             else:
                 x = x.to(device)
@@ -418,15 +384,13 @@ def direct_test(test_loader, model, params):
             if x.size(0) > 16:
                 scores_list = []
                 chunk_size = 8
-
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size].to(device)
                     with torch.no_grad():
                         scores_chunk = model.set_forward(x_chunk)
-                        scores_list.append(scores_chunk.cpu())
+                    scores_list.append(scores_chunk.cpu())
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-
                 scores = torch.cat(scores_list, dim=0)
             else:
                 with torch.no_grad():
@@ -437,13 +401,14 @@ def direct_test(test_loader, model, params):
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
             acc.append(np.mean(pred == y)*100)
 
-            mode_str = 'Advanced' if getattr(model, 'use_advanced_attention', False) else 'Basic'
-            pbar.set_description(f'Test | Acc: {np.mean(acc):.2f}% | Mode: {mode_str}')
+            pbar.set_description(
+                f'Test | Acc: {np.mean(acc):.2f}% | Mode: {"Advanced" if hasattr(model, "use_advanced_attention") and model.use_advanced_attention else "Basic"}')
             pbar.update(1)
 
     acc_all = np.asarray(acc)
     acc_mean = np.mean(acc_all)
     acc_std = np.std(acc_all)
+
     return acc_mean, acc_std
 
 def analyze_dynamic_weights(model, val_loader):
@@ -462,6 +427,7 @@ def analyze_dynamic_weights(model, val_loader):
             for i, (x, _) in enumerate(val_loader):
                 if i >= 50:  # Limit analysis to save time
                     break
+
                 # Process in small chunks for memory efficiency
                 if x.size(0) > 8:
                     chunk_size = 4
@@ -473,6 +439,7 @@ def analyze_dynamic_weights(model, val_loader):
                 else:
                     x = x.to(device)
                     model.set_forward(x)
+
                 pbar.update(1)
 
     # Analyze weights
@@ -487,26 +454,27 @@ def analyze_dynamic_weights(model, val_loader):
                 if stats:
                     print(f"\nAttention Block {i} Weight Statistics:")
                     print("-" * 40)
-                    if 'cosine_mean' in stats:  # 3-component format
-                        print(f"  Cosine weight:     {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
-                        print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
-                        print(f"  Variance weight:   {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
 
-                        print("\n  Weight Distribution:")
+                    if 'cosine_mean' in stats:  # 3-component format
+                        print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
+                        print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
+                        print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
+
+                        print("\n Weight Distribution:")
                         for comp in ['cosine', 'cov', 'var']:
-                            print(f"    {comp.capitalize()}:")
+                            print(f"  {comp.capitalize()}:")
                             hist = stats['histogram'][comp]
                             for bin_idx, count in enumerate(hist):
                                 if count > 0:  # Only show non-zero bins
                                     bin_start = bin_idx/10
                                     bin_end = (bin_idx+1)/10
-                                    print(f"      {bin_start:.1f}-{bin_end:.1f}: {count}")
+                                    print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
                     else:  # Legacy format
                         print(f"  Mean: {stats['mean']:.4f}")
-                        print(f"  Std:  {stats['std']:.4f}")
+                        print(f"  Std: {stats['std']:.4f}")
                         print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
 
-                        print("\n  Distribution:")
+                        print("\n Distribution:")
                         for bin_idx, count in enumerate(stats['histogram']):
                             if count > 0:  # Only show non-zero bins
                                 bin_start = bin_idx/10
@@ -542,10 +510,6 @@ def change_model(model_name):
         model_name = 'Conv6SNP'
     return model_name
 
-# ================================================================================================
-# MAIN EXECUTION - USING YOUR THREE FUNCTIONS
-# ================================================================================================
-
 if __name__ == '__main__':
     # Enable memory optimization from the start
     torch.cuda.empty_cache()
@@ -557,19 +521,20 @@ if __name__ == '__main__':
     print()
 
     project_name = "Few-Shot_TransFormer"
-    if params.dataset == 'Omniglot': 
+
+    if params.dataset == 'Omniglot':
         params.n_query = 15
 
     if params.wandb:
         wandb_name = params.method + "_" + params.backbone + "_" + params.dataset + \
-                    "_" + str(params.n_way) + "w" + str(params.k_shot) + "s"
+                     "_" + str(params.n_way) + "w" + str(params.k_shot) + "s"
         if params.train_aug:
             wandb_name += "_aug"
         if params.FETI and 'ResNet' in params.backbone:
             wandb_name += "_FETI"
         wandb_name += "_" + params.datetime
         wandb.init(project=project_name, name=wandb_name,
-                  config=params, id=params.datetime)
+                   config=params, id=params.datetime)
 
     print()
 
@@ -589,9 +554,9 @@ if __name__ == '__main__':
         image_size = 224 if 'ResNet' in params.backbone else 84
 
     if params.dataset in ['Omniglot', 'cross_char']:
-        if params.backbone == 'Conv4': 
+        if params.backbone == 'Conv4':
             params.backbone = 'Conv4S'
-        if params.backbone == 'Conv6': 
+        if params.backbone == 'Conv6':
             params.backbone = 'Conv6S'
 
     optimization = params.optimization
@@ -699,11 +664,11 @@ if __name__ == '__main__':
             tmp = torch.load(modelfile)
             model.load_state_dict(tmp['state'])
 
-        # COMPREHENSIVE EVALUATION USING YOUR THREE FUNCTIONS!
+        # Use comprehensive evaluation
         print("\n🚀 Starting comprehensive evaluation...")
         eval_results = evaluate_model_comprehensive(test_loader, model, params, testfile)
 
-        # USE YOUR PRETTY_PRINT FUNCTION HERE!
+        # Pretty print the results
         pretty_print(eval_results)
 
         # Also compute traditional metrics for compatibility
@@ -712,11 +677,10 @@ if __name__ == '__main__':
         print('\n📊 Traditional Test Results:')
         print('%d Test Acc = %4.2f%% +- %4.2f%%' %
               (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
-
-        attention_mode = 'Advanced' if getattr(model, 'use_advanced_attention', False) else 'Basic'
-        print(f"Final attention mechanism used: {attention_mode}")
+        print(f"Final attention mechanism used: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
 
         if params.wandb:
+            # Log both traditional and comprehensive metrics
             wandb.log({
                 'Test Acc': acc_mean,
                 'Test Std': acc_std,
@@ -725,7 +689,7 @@ if __name__ == '__main__':
                 'Comprehensive/Model_Size_M': eval_results['param_count'],
                 'Comprehensive/GPU_Util_Percent': eval_results['gpu_util'] * 100,
                 'Comprehensive/CPU_Util_Percent': eval_results['cpu_util'],
-                'Attention Mode': attention_mode
+                'Attention Mode': 'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'
             })
 
         with open('./record/results.txt', 'a') as f:
@@ -739,8 +703,9 @@ if __name__ == '__main__':
                 params.backbone = "Conv6"
 
             exp_setting = '%s-%s-%s%s-%sw%ss' % (params.dataset, params.backbone,
-                                                params.method, aug_str, params.n_way, params.k_shot)
+                                                 params.method, aug_str, params.n_way, params.k_shot)
             acc_str = 'Test Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std/np.sqrt(iter_num))
+            attention_mode = 'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'
 
             # Enhanced logging with comprehensive metrics
             f.write('Time: %s Setting: %s %s (Attention: %s) | Macro-F1: %.4f | Inf-Time: %.1fms | Params: %.2fM\n' % 
