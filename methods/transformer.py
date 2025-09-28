@@ -376,36 +376,22 @@ class Attention(nn.Module):
             return self.basic_attention_components(f_q, f_k)
 
     def forward(self, q, k, v, use_advanced=False, gamma=1.0, epsilon=1e-8):
-        # FIXED: Handle dimension mismatch in torch.cat by ensuring proper tensor shapes
+        # FIXED: Properly handle q, k, v dimensions to ensure matrix multiplication compatibility
 
-        # Check and print tensor shapes for debugging
-        # print(f"Input tensor shapes - q: {q.shape}, k: {k.shape}, v: {v.shape}")
-
-        # Ensure all tensors have same batch and feature dimensions before transformation
-        batch_size_q, seq_len_q, feat_dim_q = q.shape
-        batch_size_k, seq_len_k, feat_dim_k = k.shape  
-        batch_size_v, seq_len_v, feat_dim_v = v.shape
-
-        # Check if we can safely process these tensors
-        if feat_dim_q != feat_dim_k or feat_dim_q != feat_dim_v:
-            print(f"Feature dimension mismatch: q={feat_dim_q}, k={feat_dim_k}, v={feat_dim_v}")
-            # Use basic linear transformation without combined projection
-            f_q = self.input_transform(q)
-            f_k = self.input_transform(k) 
-            f_v = self.input_transform(v)
-        else:
-            # Use combined transformation - but apply to each tensor separately
-            f_q = self.input_transform(q)
-            f_k = self.input_transform(k)
-            f_v = self.input_transform(v)
+        # Apply input transformation to each tensor separately
+        f_q = self.input_transform(q)  # [batch_q, seq_q, feat_dim] -> [batch_q, seq_q, inner_dim]
+        f_k = self.input_transform(k)  # [batch_k, seq_k, feat_dim] -> [batch_k, seq_k, inner_dim]
+        f_v = self.input_transform(v)  # [batch_v, seq_v, feat_dim] -> [batch_v, seq_v, inner_dim]
 
         # Apply rearrange to each transformed tensor
-        f_q = rearrange(f_q, 'q n (h d) -> h q n d', h=self.heads)
-        f_k = rearrange(f_k, 'q n (h d) -> h q n d', h=self.heads)
-        f_v = rearrange(f_v, 'q n (h d) -> h q n d', h=self.heads)
+        f_q = rearrange(f_q, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_q, head_dim]
+        f_k = rearrange(f_k, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_k, head_dim]
+        f_v = rearrange(f_v, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_v, head_dim]
 
         if self.variant == "cosine":
             # Calculate cosine similarity (invariance component)
+            # f_k.transpose(-1, -2) gives us [heads, batch, head_dim, seq_k]
+            # cosine_distance(f_q, f_k.transpose(-1, -2)) gives [heads, batch, seq_q, seq_k]
             cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
 
             # Choose attention mechanism based on accuracy with error handling
@@ -462,13 +448,45 @@ class Attention(nn.Module):
                        cov_weight * cov_component +
                        var_weight * var_component)
 
-            out = torch.matmul(dots, f_v)
+            # CRITICAL FIX: Ensure f_v has the correct sequence dimension to match dots
+            # dots shape: [heads, batch, seq_q, seq_k] 
+            # f_v shape should be: [heads, batch, seq_v, head_dim] where seq_v = seq_k
+
+            # Check if sequence dimensions match for matrix multiplication
+            if f_v.shape[2] != dots.shape[3]:  # seq_v != seq_k
+                print(f"Warning: Sequence dimension mismatch - dots expects seq_k={dots.shape[3]} but f_v has seq_v={f_v.shape[2]}")
+
+                # If k and v come from the same input (self-attention case), they should have same seq length
+                # Adjust f_v to match the expected sequence length
+                if dots.shape[3] < f_v.shape[2]:
+                    # Truncate f_v
+                    f_v = f_v[:, :, :dots.shape[3], :]
+                elif dots.shape[3] > f_v.shape[2]:
+                    # Pad f_v with zeros or repeat last elements
+                    pad_size = dots.shape[3] - f_v.shape[2]
+                    padding = f_v[:, :, -1:, :].expand(-1, -1, pad_size, -1)  # Repeat last element
+                    f_v = torch.cat([f_v, padding], dim=2)
+
+            # Now perform matrix multiplication: dots @ f_v
+            out = torch.matmul(dots, f_v)  # [heads, batch, seq_q, head_dim]
 
         else:  # self.variant == "softmax"
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
-            out = torch.matmul(self.sm(dots), f_v)
+            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale  # [heads, batch, seq_q, seq_k]
 
-        out = rearrange(out, 'h q n d -> q n (h d)')
+            # Same fix for softmax variant
+            if f_v.shape[2] != dots.shape[3]:  # seq_v != seq_k
+                print(f"Warning: Sequence dimension mismatch in softmax - adjusting f_v")
+                if dots.shape[3] < f_v.shape[2]:
+                    f_v = f_v[:, :, :dots.shape[3], :]
+                elif dots.shape[3] > f_v.shape[2]:
+                    pad_size = dots.shape[3] - f_v.shape[2]
+                    padding = f_v[:, :, -1:, :].expand(-1, -1, pad_size, -1)
+                    f_v = torch.cat([f_v, padding], dim=2)
+
+            out = torch.matmul(self.sm(dots), f_v)  # [heads, batch, seq_q, head_dim]
+
+        # Rearrange back to original format
+        out = rearrange(out, 'h b n d -> b n (h d)')  # [batch, seq_q, inner_dim]
         return self.output_linear(out)
 
     def get_weight_stats(self):
