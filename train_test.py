@@ -1,3 +1,4 @@
+
 import glob
 import json
 import os
@@ -315,6 +316,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 os.makedirs(params.checkpoint_dir)
 
             val_acc = validate_model(val_loader, model)
+            # Fixed condition: changed from acc > 40% to val_acc > 40%
+            if val_acc > 40:
+                print(f"Validation accuracy above 40%! Current: {val_acc:.2f}%")
+
             if val_acc > max_acc:
                 print(f"Best model! Save... Accuracy: {val_acc:.2f}%")
                 max_acc = val_acc
