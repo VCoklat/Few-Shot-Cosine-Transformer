@@ -139,9 +139,9 @@ class FewShotTransformer(MetaTemplate):
         self.current_accuracy = accuracy
         should_use_advanced = accuracy >= self.accuracy_threshold
 
-        if should_use_advanced != self.use_advanced_attention:
-            self.use_advanced_attention = should_use_advanced
-            print(f"Switching to {'advanced' if should_use_advanced else 'basic'} attention mechanism at accuracy: {accuracy:.2f}%")
+        # if should_use_advanced != self.use_advanced_attention:
+        #     self.use_advanced_attention = should_use_advanced
+        #     print(f"Switching to {'advanced' if should_use_advanced else 'basic'} attention mechanism at accuracy: {accuracy:.2f}%")
 
     def set_forward(self, x, is_feature=False):
         z_support, z_query = self.parse_feature(x, is_feature)
