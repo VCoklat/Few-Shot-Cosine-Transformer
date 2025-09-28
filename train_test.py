@@ -96,7 +96,8 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             running_acc += acc_val
             num_batches += 1
 
-            pbar.set_description(f'Epoch {epoch+1}/{num_epoch} Loss: {loss_val:.4f} Acc: {acc_val*100:.2f}% Mode: {'Advanced' if getattr(model, 'use_advanced_attention', False) else 'Basic'}')
+            mode_str = "Advanced" if getattr(model, "use_advanced_attention", False) else "Basic"
+            pbar.set_description(f'Epoch {epoch+1}/{num_epoch} Loss: {loss_val:.4f} Acc: {acc_val*100:.2f}% Mode: {mode_str}')
             pbar.update(1)
 
         pbar.close()
