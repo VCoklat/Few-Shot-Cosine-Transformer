@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 from einops import rearrange, repeat
-from einops.layers import Rearrange
+from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
 from methods.meta_template import MetaTemplate
 
