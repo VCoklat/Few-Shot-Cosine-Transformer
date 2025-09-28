@@ -247,17 +247,17 @@ class Attention(nn.Module):
                 return (torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon,
                         torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon)
             
-            # Safe reshaping with error handling
-            try:
-                f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
-                f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
-            except RuntimeError as e:
-                print(f"Error reshaping tensors: {e}")
-                return (torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon,
-                        torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon)
-        else:
-        # Handle unexpected tensor shapes
-            return (torch.zeros_like(f_q[..., :1]) + epsilon, torch.zeros_like(f_q[..., :1]) + epsilon)
+                # Safe reshaping with error handling
+                try:
+                    f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
+                    f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
+                except RuntimeError as e:
+                    print(f"Error reshaping tensors: {e}")
+                    return (torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon,
+                            torch.zeros(heads, batch_size, seq_q, seq_k, device=f_q.device) + epsilon)
+            else:
+            # Handle unexpected tensor shapes
+                return (torch.zeros_like(f_q[..., :1]) + epsilon, torch.zeros_like(f_q[..., :1]) + epsilon)
     
     # Continue with safe computation logic...
     # [Rest of the method implementation with proper error handling]
