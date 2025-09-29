@@ -423,7 +423,7 @@ if __name__ == '__main__':
 
     project_name = "Few-Shot_TransFormer"            
 
-    if params.dataset == 'Omniglot': params.n_query = 15
+    if params.dataset == 'Omniglot': params.n_query = 5
     if params.wandb:
 
         wandb_name = params.method + "_" + params.backbone + "_" + params.dataset + \
