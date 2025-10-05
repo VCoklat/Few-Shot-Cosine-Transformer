@@ -247,7 +247,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         print()
     return model
 
-def direct_test(test_loader, model, params, data_file=None, comprehensive=False):
+def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
     """Enhanced testing function with optional comprehensive evaluation"""
     if comprehensive and data_file:
         # Use comprehensive evaluation
