@@ -4,7 +4,7 @@ import os
 import pdb
 import pprint
 import random
-import timef
+import time
 import h5py
 import numpy as np
 import torch
