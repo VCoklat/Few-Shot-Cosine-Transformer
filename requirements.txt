@@ -11,3 +11,6 @@ pillow
 tqdm
 wandb
 umap-learn
+gputil 
+psutil
+scikit-learn
