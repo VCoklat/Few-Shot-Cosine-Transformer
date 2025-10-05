@@ -4,7 +4,7 @@ import os
 import pdb
 import pprint
 import random
-import time
+import timef
 import h5py
 import numpy as np
 import torch
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     
     # Add comprehensive evaluation parameter if not present
     if not hasattr(params, 'comprehensive_eval'):
-        params.comprehensive_eval = False
+        params.comprehensive_eval = True
     
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(vars(params))
