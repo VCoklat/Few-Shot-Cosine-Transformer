@@ -16,15 +16,20 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
-                initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
+                initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
+                use_gradient_checkpointing=False, label_smoothing=0.1):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
-        self.loss_fn = nn.CrossEntropyLoss()
+        # Use label smoothing for better generalization
+        self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
         dim = self.feat_dim
+        
+        # Enable gradient checkpointing to save memory
+        self.use_gradient_checkpointing = use_gradient_checkpointing
 
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
                              initial_cov_weight=initial_cov_weight,
@@ -32,7 +37,9 @@ class FewShotTransformer(MetaTemplate):
                              dynamic_weight=dynamic_weight)
         
         self.sm = nn.Softmax(dim = -2)
+        # Better initialization for proto_weight using Xavier initialization
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+        nn.init.xavier_uniform_(self.proto_weight)
         
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
@@ -57,9 +64,23 @@ class FewShotTransformer(MetaTemplate):
 
         x, query = z_proto, z_query
         
-        for _ in range(self.depth):
-           x = self.ATTN(q = x, k = query, v = query) + x
-           x = self.FFN(x) + x
+        # Use gradient checkpointing if enabled and in training mode
+        if self.use_gradient_checkpointing and self.training:
+            for _ in range(self.depth):
+                # Checkpointed attention
+                x = torch.utils.checkpoint.checkpoint(
+                    lambda inp, q: self.ATTN(q=inp, k=q, v=q) + inp,
+                    x, query, use_reentrant=False
+                )
+                # Checkpointed FFN
+                x = torch.utils.checkpoint.checkpoint(
+                    lambda inp: self.FFN(inp) + inp,
+                    x, use_reentrant=False
+                )
+        else:
+            for _ in range(self.depth):
+                x = self.ATTN(q = x, k = query, v = query) + x
+                x = self.FFN(x) + x
         
         # Output is the probabilistic prediction for each class
         return self.linear(x).squeeze()                                                                # (q, n)
@@ -75,7 +96,8 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, dynamic_weight=False):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, 
+                 dynamic_weight=False, dropout=0.1):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -84,6 +106,17 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
+        
+        # Add dropout for regularization
+        self.dropout = nn.Dropout(dropout)
+        
+        # Add learnable temperature for better calibration
+        self.temperature = nn.Parameter(torch.ones(1) * 0.07)  # Initialize similar to CLIP
+        
+        # Add learnable scaling factors for each component
+        self.cosine_scale = nn.Parameter(torch.ones(1))
+        self.cov_scale = nn.Parameter(torch.ones(1))
+        self.var_scale = nn.Parameter(torch.ones(1))
         
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
@@ -97,9 +130,11 @@ class Attention(nn.Module):
                 nn.Softmax(dim=-1)  # Ensure weights sum to 1.0
             )
         else:
-            # Fixed weights as parameters (still learnable)
-            self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
-            self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
+            # Fixed weights as parameters (still learnable) - Better initialization
+            # Initialize with more balanced weights that sum close to 1
+            self.fixed_cov_weight = nn.Parameter(torch.tensor(0.25))  # Covariance
+            self.fixed_var_weight = nn.Parameter(torch.tensor(0.25))  # Variance
+            # Cosine will get the remaining weight (approximately 0.5)
             
         self.input_linear = nn.Sequential(
             nn.LayerNorm(dim),
@@ -115,23 +150,23 @@ class Attention(nn.Module):
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            # Calculate cosine similarity (invariance component)
-            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
+            # Calculate cosine similarity (invariance component) with learnable scaling
+            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2)) * self.cosine_scale
             
-            # Calculate covariance component
+            # Calculate covariance component with learnable scaling
             q_centered = f_q - f_q.mean(dim=-1, keepdim=True)
             k_centered = f_k - f_k.mean(dim=-1, keepdim=True)
             cov_component = torch.matmul(q_centered, k_centered.transpose(-1, -2))
-            cov_component = cov_component / f_q.size(-1)
+            cov_component = (cov_component / f_q.size(-1)) * self.cov_scale
             
-            # Calculate variance component (new)
+            # Calculate variance component with learnable scaling
             # Compute variance along feature dimension
             q_var = torch.var(f_q, dim=-1, keepdim=True)  # [h, q, n, 1]
             k_var = torch.var(f_k, dim=-1, keepdim=True).transpose(-1, -2)  # [h, q, 1, m]
             
             # Create variance-based attention
             var_component = torch.matmul(q_var, k_var)  # [h, q, n, m]
-            var_component = var_component / f_q.size(-1)  # Scale like covariance
+            var_component = (var_component / f_q.size(-1)) * self.var_scale  # Scale like covariance
             
             if self.dynamic_weight:
                 # Use global feature statistics
@@ -153,26 +188,37 @@ class Attention(nn.Module):
                 cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)  # Covariance weight
                 var_weight = weights[:, 2].view(self.heads, 1, 1, 1)  # Variance weight
                 
-                # Combine all three components
+                # Combine all three components with temperature scaling
                 dots = (cos_weight * cosine_sim + 
                        cov_weight * cov_component + 
-                       var_weight * var_component)
+                       var_weight * var_component) / torch.clamp(self.temperature, min=0.01, max=1.0)
             else:
-                # Use fixed weights
+                # Use fixed weights with better normalization
                 cov_weight = torch.sigmoid(self.fixed_cov_weight) 
                 var_weight = torch.sigmoid(self.fixed_var_weight)
                 # Ensure weights sum to approximately 1 by using the remaining portion for cosine
+                total_weight = cov_weight + var_weight
+                # Normalize weights to ensure they sum to at most 1
+                if total_weight > 0.9:
+                    scale_factor = 0.9 / total_weight
+                    cov_weight = cov_weight * scale_factor
+                    var_weight = var_weight * scale_factor
                 cos_weight = 1.0 - cov_weight - var_weight
                 
+                # Combine all three components with temperature scaling
                 dots = (cos_weight * cosine_sim + 
                        cov_weight * cov_component + 
-                       var_weight * var_component)
-                
+                       var_weight * var_component) / torch.clamp(self.temperature, min=0.01, max=1.0)
+            
+            # Apply dropout to attention weights for regularization
+            dots = self.dropout(dots)
             out = torch.matmul(dots, f_v)
         
         else: # self.variant == "softmax" 
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
-            out = torch.matmul(self.sm(dots), f_v)
+            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
+            attn = self.sm(dots)
+            attn = self.dropout(attn)  # Apply dropout
+            out = torch.matmul(attn, f_v)
         
         out = rearrange(out, 'h q n d -> q n (h d)')
         return self.output_linear(out)
@@ -217,7 +263,15 @@ def cosine_distance(x1, x2):
     x2      =  [b, h, k, m]
     output  =  [b, h, n, m]
     '''
+    # Compute dot product
     dots = torch.matmul(x1, x2)
-    scale = torch.einsum('bhi, bhj -> bhij', 
-            (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
-    return (dots / scale)
+    
+    # Compute norms with numerical stability
+    x1_norm = torch.norm(x1, 2, dim=-1, keepdim=True)  # [b, h, n, 1]
+    x2_norm = torch.norm(x2, 2, dim=-2, keepdim=True)  # [b, h, 1, m]
+    
+    # Compute scale with numerical stability (avoid division by zero)
+    scale = torch.clamp(x1_norm * x2_norm.transpose(-2, -1), min=1e-8)
+    
+    # Return normalized cosine similarity
+    return dots / scale
