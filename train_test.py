@@ -25,6 +25,21 @@ except ImportError:
 import sklearn.metrics as metrics
 import torch.nn.functional as F
 
+# Additional imports for enhanced functionality
+try:
+    import psutil
+except ImportError:
+    print("psutil not installed. System monitoring will be limited.")
+    psutil = None
+
+try:
+    import GPUtil
+except ImportError:
+    print("GPUtil not installed. GPU monitoring will be limited.")
+    GPUtil = None
+
+from sklearn.metrics import confusion_matrix, f1_score
+
 import backbone
 import configs
 import data.feature_loader as feat_loader
@@ -32,10 +47,10 @@ import wandb
 
 from data.datamgr import SetDataManager
 from io_utils import (get_assigned_file, get_best_file,
-                      model_dict, parse_args)
+                     model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
-from methods.transformer import Attention
+import eval_utils
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -336,7 +351,6 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
         print()
-
     return model
 
 def validate_model(val_loader, model):
@@ -516,6 +530,7 @@ if __name__ == '__main__':
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
     params = parse_args()
+    
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(vars(params))
     print()
@@ -595,7 +610,7 @@ if __name__ == '__main__':
                 if params.dataset in ['Omniglot', 'cross_char']:
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
-
+            
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
 
         else:
