@@ -17,10 +17,11 @@ class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax",
                 depth=1, heads=8, dim_head=64, mlp_dim=512,
                 initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
-                use_gradient_checkpointing=False):
+                use_gradient_checkpointing=False, label_smoothing=0.1):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
 
-        self.loss_fn = nn.CrossEntropyLoss()
+        # Use label smoothing for better generalization
+        self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         
         self.k_shot = k_shot
         self.variant = variant
@@ -95,7 +96,8 @@ class FewShotTransformer(MetaTemplate):
         return acc, loss
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, dynamic_weight=False):
+    def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6, initial_var_weight=0.2, 
+                 dynamic_weight=False, dropout=0.1):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -104,6 +106,9 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
+        
+        # Add dropout for regularization
+        self.dropout = nn.Dropout(dropout)
         
         # Add learnable temperature for better calibration
         self.temperature = nn.Parameter(torch.ones(1) * 0.07)  # Initialize similar to CLIP
@@ -204,12 +209,16 @@ class Attention(nn.Module):
                 dots = (cos_weight * cosine_sim + 
                        cov_weight * cov_component + 
                        var_weight * var_component) / torch.clamp(self.temperature, min=0.01, max=1.0)
-                
+            
+            # Apply dropout to attention weights for regularization
+            dots = self.dropout(dots)
             out = torch.matmul(dots, f_v)
         
         else: # self.variant == "softmax" 
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
-            out = torch.matmul(self.sm(dots), f_v)
+            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
+            attn = self.sm(dots)
+            attn = self.dropout(attn)  # Apply dropout
+            out = torch.matmul(attn, f_v)
         
         out = rearrange(out, 'h q n d -> q n (h d)')
         return self.output_linear(out)
