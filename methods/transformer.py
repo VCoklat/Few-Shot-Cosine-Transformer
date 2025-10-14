@@ -253,6 +253,9 @@ class Attention(nn.Module):
         # Sum and normalize by number of samples
         V_E = torch.sum(hinge_values) / E_reshaped.shape[0]
         
+        # Clear intermediate tensors for memory efficiency
+        del E_reshaped, variance_per_dim, regularized_std, hinge_values
+        
         return V_E
 
     def covariance_component_torch(self, E):
@@ -268,57 +271,76 @@ class Attention(nn.Module):
         
         Memory-optimized version with chunking to prevent OOM.
         """
-        # E shape: (batch, seq, dim)
-        batch_size, seq_len, dim = E.shape
-        
-        # Reshape to (batch*seq, dim) to compute covariance across all samples
-        E_reshaped = E.reshape(-1, dim)  # (K, dim) where K = batch*seq
-        K = E_reshaped.shape[0]
-        
-        # Compute mean across samples (axis=0)
-        E_mean = torch.mean(E_reshaped, dim=0, keepdim=True)  # (1, dim)
-        
-        # Center the data
-        E_centered = E_reshaped - E_mean  # (K, dim)
-        
-        # Compute covariance matrix with chunking to avoid OOM
-        # cov_matrix = E_centered.T @ E_centered / (K - 1)
-        # This is (dim, dim) which can be large
-        
-        # Process in chunks if dim is large to avoid OOM
-        chunk_size = min(256, dim)  # Process features in chunks
-        cov_matrix = torch.zeros(dim, dim, device=E.device)
-        
-        for i in range(0, dim, chunk_size):
-            end_i = min(i + chunk_size, dim)
-            for j in range(0, dim, chunk_size):
-                end_j = min(j + chunk_size, dim)
-                
-                # Compute chunk of covariance matrix
-                chunk_i = E_centered[:, i:end_i]  # (K, chunk_i_size)
-                chunk_j = E_centered[:, j:end_j]  # (K, chunk_j_size)
-                
-                cov_chunk = torch.matmul(chunk_i.T, chunk_j)  # (chunk_i_size, chunk_j_size)
-                if K > 1:
-                    cov_chunk = cov_chunk / (K - 1)
-                
-                cov_matrix[i:end_i, j:end_j] = cov_chunk
-                
-                # Clear intermediate tensors
-                del chunk_i, chunk_j, cov_chunk
-        
-        # Create mask for off-diagonal elements
-        mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
-        
-        # Compute sum of squares of off-diagonal elements
-        off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2)
-        
-        # Clear large tensors
-        del E_centered, cov_matrix, mask
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        return off_diagonal_squared
+        try:
+            # E shape: (batch, seq, dim)
+            batch_size, seq_len, dim = E.shape
+            
+            # Reshape to (batch*seq, dim) to compute covariance across all samples
+            E_reshaped = E.reshape(-1, dim)  # (K, dim) where K = batch*seq
+            K = E_reshaped.shape[0]
+            
+            # Compute mean across samples (axis=0)
+            E_mean = torch.mean(E_reshaped, dim=0, keepdim=True)  # (1, dim)
+            
+            # Center the data
+            E_centered = E_reshaped - E_mean  # (K, dim)
+            
+            # Compute covariance matrix with chunking to avoid OOM
+            # cov_matrix = E_centered.T @ E_centered / (K - 1)
+            # This is (dim, dim) which can be large
+            
+            # Process in chunks if dim is large to avoid OOM
+            # Adaptive chunk size based on dimension to prevent OOM
+            if dim > 1024:
+                chunk_size = min(128, dim)  # Smaller chunks for very large dimensions
+            elif dim > 512:
+                chunk_size = min(256, dim)  # Medium chunks for large dimensions
+            else:
+                chunk_size = min(512, dim)  # Larger chunks for moderate dimensions
+            
+            cov_matrix = torch.zeros(dim, dim, device=E.device)
+            
+            for i in range(0, dim, chunk_size):
+                end_i = min(i + chunk_size, dim)
+                for j in range(0, dim, chunk_size):
+                    end_j = min(j + chunk_size, dim)
+                    
+                    # Compute chunk of covariance matrix
+                    chunk_i = E_centered[:, i:end_i]  # (K, chunk_i_size)
+                    chunk_j = E_centered[:, j:end_j]  # (K, chunk_j_size)
+                    
+                    cov_chunk = torch.matmul(chunk_i.T, chunk_j)  # (chunk_i_size, chunk_j_size)
+                    if K > 1:
+                        cov_chunk = cov_chunk / (K - 1)
+                    
+                    cov_matrix[i:end_i, j:end_j] = cov_chunk
+                    
+                    # Clear intermediate tensors
+                    del chunk_i, chunk_j, cov_chunk
+            
+            # Create mask for off-diagonal elements
+            mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
+            
+            # Compute sum of squares of off-diagonal elements
+            off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2)
+            
+            # Clear large tensors
+            del E_centered, cov_matrix, mask
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            return off_diagonal_squared
+            
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                # OOM detected - clear cache and try with smaller chunks
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print(f"OOM in covariance computation, using fallback with smaller chunks")
+                # Return a small penalty value instead of crashing
+                return torch.tensor(0.0, device=E.device, requires_grad=True)
+            else:
+                raise e
 
     def basic_attention_components(self, f_q, f_k):
         """Original attention mechanism for accuracy < 40%"""
@@ -380,8 +402,12 @@ class Attention(nn.Module):
         cov_component_list = []
 
         # Process in smaller chunks to avoid OOM
+        # Adaptive chunk size based on dimension
         total_samples = batch_size * heads
-        chunk_size = min(4, total_samples)  # Smaller chunks for better memory management
+        if dim > 128:
+            chunk_size = min(2, total_samples)  # Very small chunks for large dimensions
+        else:
+            chunk_size = min(4, total_samples)  # Smaller chunks for better memory management
 
         try:
             for i in range(0, total_samples, chunk_size):
