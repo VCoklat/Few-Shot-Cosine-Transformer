@@ -92,7 +92,7 @@ class FewShotTransformer(MetaTemplate):
         self.use_advanced_attention = True  # Enable advanced attention from the start
 
         # Parameters for advanced attention mechanism
-        self.gamma = 0.5  # Reduced for better regularization balance
+        self.gamma = 0.1  # Variance target as per paper (stronger regularization)
         self.epsilon = 1e-8
 
         # Create attention module

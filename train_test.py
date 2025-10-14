@@ -273,6 +273,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     # Enable mixed precision training for better memory efficiency
     scaler = torch.cuda.amp.GradScaler() if torch.cuda.is_available() else None
     
+    # Add learning rate scheduler for better convergence
+    # CosineAnnealingLR helps the model converge better by gradually reducing learning rate
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=1e-6)
+    
     # Gradient accumulation steps to reduce memory usage
     accumulation_steps = 2
 
@@ -393,8 +397,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # Step the learning rate scheduler
+        scheduler.step()
 
-        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
+        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'} - LR: {scheduler.get_last_lr()[0]:.6f}")
         print()
     return model
 
@@ -654,9 +661,10 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
             # Enable dynamic weighting for improved accuracy
+            # Optimized initial weights: higher covariance weight helps with feature separation
             model = FewShotTransformer(feature_model, variant=variant, 
-                                     initial_cov_weight=0.4, 
-                                     initial_var_weight=0.3, 
+                                     initial_cov_weight=0.5,  # Increased for stronger covariance regularization
+                                     initial_var_weight=0.25, # Balanced variance regularization
                                      dynamic_weight=True,
                                      **few_shot_params)
 
