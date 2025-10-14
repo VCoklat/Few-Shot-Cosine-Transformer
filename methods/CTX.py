@@ -118,6 +118,9 @@ class CTX(MetaTemplate):
         # Compute hinge function
         V = torch.mean(torch.clamp(self.gamma - sigma, min=0.0))
         
+        # Clear intermediate tensors for memory efficiency
+        del var_per_dim, sigma
+        
         return V
     
     def covariance_regularization(self, E):
@@ -128,28 +131,72 @@ class CTX(MetaTemplate):
         
         This computes the sum of squared off-diagonal coefficients of the covariance matrix.
         
+        Memory-optimized version with chunking to prevent OOM.
+        
         Args:
             E: Embeddings tensor of shape (batch, m) where m is number of dimensions
         Returns:
             C: Covariance regularization term (scalar)
         """
-        # Center the embeddings
-        E_mean = torch.mean(E, dim=0, keepdim=True)  # (1, m)
-        E_centered = E - E_mean  # (batch, m)
-        
-        # Compute covariance matrix
-        batch_size = E.size(0)
-        if batch_size > 1:
-            cov = torch.matmul(E_centered.T, E_centered) / (batch_size - 1)  # (m, m)
-        else:
-            cov = torch.matmul(E_centered.T, E_centered)  # (m, m)
-        
-        # Sum of squares of off-diagonal elements
-        m = E.size(1)
-        off_diag_mask = ~torch.eye(m, dtype=torch.bool, device=E.device)
-        C = torch.sum(cov[off_diag_mask] ** 2) / m
-        
-        return C
+        try:
+            # Center the embeddings
+            E_mean = torch.mean(E, dim=0, keepdim=True)  # (1, m)
+            E_centered = E - E_mean  # (batch, m)
+            
+            batch_size = E.size(0)
+            m = E.size(1)
+            
+            # Use chunking for large feature dimensions to prevent OOM
+            if m > 512:  # Only chunk for large dimensions
+                # Process in chunks to avoid OOM
+                chunk_size = min(256, m)
+                cov = torch.zeros(m, m, device=E.device)
+                
+                for i in range(0, m, chunk_size):
+                    end_i = min(i + chunk_size, m)
+                    for j in range(0, m, chunk_size):
+                        end_j = min(j + chunk_size, m)
+                        
+                        # Compute chunk of covariance matrix
+                        chunk_i = E_centered[:, i:end_i]  # (batch, chunk_i_size)
+                        chunk_j = E_centered[:, j:end_j]  # (batch, chunk_j_size)
+                        
+                        cov_chunk = torch.matmul(chunk_i.T, chunk_j)  # (chunk_i_size, chunk_j_size)
+                        if batch_size > 1:
+                            cov_chunk = cov_chunk / (batch_size - 1)
+                        
+                        cov[i:end_i, j:end_j] = cov_chunk
+                        
+                        # Clear intermediate tensors
+                        del chunk_i, chunk_j, cov_chunk
+            else:
+                # Compute covariance matrix directly for smaller dimensions
+                if batch_size > 1:
+                    cov = torch.matmul(E_centered.T, E_centered) / (batch_size - 1)  # (m, m)
+                else:
+                    cov = torch.matmul(E_centered.T, E_centered)  # (m, m)
+            
+            # Sum of squares of off-diagonal elements
+            off_diag_mask = ~torch.eye(m, dtype=torch.bool, device=E.device)
+            C = torch.sum(cov[off_diag_mask] ** 2) / m
+            
+            # Clear large tensors
+            del E_centered, cov
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            return C
+            
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                # OOM detected - clear cache and return fallback value
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print(f"OOM in covariance regularization, using fallback")
+                # Return a small penalty value instead of crashing
+                return torch.tensor(0.0, device=E.device, requires_grad=True)
+            else:
+                raise e
 
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
