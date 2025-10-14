@@ -43,6 +43,8 @@ def parse_args():
     parser.add_argument('--save_iter'       , default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
     parser.add_argument('--visualize_features', action='store_true', 
                         help='Generate feature space visualizations')
+    parser.add_argument('--comprehensive_eval', type=int, default=1, 
+                        help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
     return parser.parse_args()
 
 

@@ -40,6 +40,7 @@ from io_utils import (get_assigned_file, get_best_file,
                      model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+import eval_utils
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -250,12 +251,15 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
     """Enhanced testing function with optional comprehensive evaluation"""
     if comprehensive and data_file:
-        # Use comprehensive evaluation
-        results = evaluate_comprehensive(test_loader, model, params, data_file)
-        pretty_print(results)
+        # Get class names from data file
+        class_names = get_class_names_from_file(data_file, params.n_way)
+        
+        # Use eval_utils comprehensive evaluation
+        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
+        eval_utils.pretty_print(results)
         
         # Still return traditional accuracy metrics for backward compatibility
-        acc_mean = results['macro_f1'] * 100  # Convert F1 to percentage scale
+        acc_mean = results['accuracy'] * 100  # Convert accuracy to percentage scale
         acc_std = np.std([f1 * 100 for f1 in results['class_f1']])  # Std of class F1s
         
         return acc_mean, acc_std, results
@@ -314,10 +318,6 @@ def change_model(model_name):
 
 if __name__ == '__main__':
     params = parse_args()
-    
-    # Add comprehensive evaluation parameter if not present
-    if not hasattr(params, 'comprehensive_eval'):
-        params.comprehensive_eval = True
     
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(vars(params))

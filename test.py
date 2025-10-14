@@ -26,6 +26,7 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+import eval_utils
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -86,6 +87,27 @@ def change_model(model_name):
     elif model_name == 'Conv6S':
         model_name = 'Conv6SNP'
     return model_name
+
+def get_class_names_from_file(data_file, n_way=None):
+    """Extract class names from JSON data file"""
+    try:
+        with open(data_file, 'r') as f:
+            meta = json.load(f)
+
+        unique_labels = np.unique(meta['image_labels']).tolist()
+
+        if 'class_names' in meta:
+            class_names = [meta['class_names'][str(label)] for label in unique_labels]
+        else:
+            class_names = [f"Class_{label}" for label in unique_labels]
+
+        if n_way and len(class_names) > n_way:
+            class_names = class_names[:n_way]
+
+        return class_names
+    except Exception as e:
+        print(f"Error extracting class names: {e}")
+        return [f"Class_{i}" for i in range(n_way)] if n_way else ["Class_0"]
 
 if __name__ == '__main__':
     
@@ -200,7 +222,23 @@ if __name__ == '__main__':
     else:
         split_str = split
     
-    acc_mean, acc_std = direct_test(test_loader, model, params)
+    # Check if comprehensive evaluation is requested (default: True)
+    comprehensive = getattr(params, 'comprehensive_eval', True)
+    
+    if comprehensive:
+        # Get class names from data file
+        class_names = get_class_names_from_file(testfile, params.n_way)
+        
+        # Use comprehensive evaluation
+        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
+        eval_utils.pretty_print(results)
+        
+        # Extract traditional metrics for compatibility
+        acc_mean = results['accuracy'] * 100
+        acc_std = np.std([f1 * 100 for f1 in results['class_f1']])
+    else:
+        # Use standard evaluation
+        acc_mean, acc_std = direct_test(test_loader, model, params)
         
     print('%d Test Acc = %4.2f%% +- %4.2f%%' %
             (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
