@@ -41,15 +41,18 @@ def direct_test(test_loader, model, params):
     
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            # Process in smaller chunks if needed
-            if x.size(0) > 20:  # If batch is larger than 20
+            # Process in smaller chunks if needed - more conservative to prevent OOM
+            if x.size(0) > 16:  # Reduced from 20 to 16
                 scores_list = []
-                chunk_size = 20
+                chunk_size = 8  # Reduced from 20 to 8
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size]
                     with torch.cuda.amp.autocast():  # Use mixed precision
                         scores_chunk = model.set_forward(x_chunk)
                     scores_list.append(scores_chunk.cpu())
+                    # Clear cache after each chunk
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 scores = torch.cat(scores_list, dim=0)
             else:
                 with torch.cuda.amp.autocast():  # Use mixed precision
