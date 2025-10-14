@@ -226,51 +226,99 @@ class Attention(nn.Module):
         return self.weight_softmax(x)
 
     def variance_component_torch(self, E, gamma=1.0, epsilon=1e-8):
-        """PyTorch implementation of variance component"""
+        """
+        PyTorch implementation of variance component matching problem statement:
+        def variance_regularization_multi_dim(E, gamma=0.1, epsilon=1e-8):
+            variance_per_dim = np.var(E, axis=0, ddof=0)
+            regularized_std = np.sqrt(variance_per_dim + epsilon)
+            hinge_values = np.maximum(0.0, gamma - regularized_std)
+            V_E = np.sum(hinge_values) / m
+            return V_E
+        """
         # E shape: (batch, seq, dim)
-        sigma = torch.sqrt(torch.var(E, dim=1, keepdim=True) + epsilon)  # (batch, 1, dim)
-        V = torch.mean(torch.clamp(gamma - sigma, min=0.0))
-        return V
+        batch_size = E.shape[0]
+        
+        # Reshape to (batch*seq, dim) to compute variance across all samples
+        E_reshaped = E.reshape(-1, E.shape[-1])  # (batch*seq, dim)
+        
+        # Compute variance per dimension across samples (axis=0)
+        variance_per_dim = torch.var(E_reshaped, dim=0, unbiased=False)  # (dim,)
+        
+        # Compute regularized standard deviation
+        regularized_std = torch.sqrt(variance_per_dim + epsilon)  # (dim,)
+        
+        # Apply hinge: max(0, gamma - regularized_std)
+        hinge_values = torch.clamp(gamma - regularized_std, min=0.0)  # (dim,)
+        
+        # Sum and normalize by number of samples
+        V_E = torch.sum(hinge_values) / E_reshaped.shape[0]
+        
+        return V_E
 
     def covariance_component_torch(self, E):
-        """PyTorch implementation of covariance component"""
+        """
+        PyTorch implementation of covariance component matching problem statement:
+        def covariance_regularization(E):
+            E_mean = np.mean(E, axis=0, keepdims=True)
+            E_centered = E - E_mean
+            cov_matrix = np.dot(E_centered.T, E_centered) / (K - 1)
+            mask = np.ones_like(cov_matrix) - np.eye(cov_matrix.shape[0])
+            off_diagonal_squared = np.sum((cov_matrix * mask) ** 2)
+            return off_diagonal_squared
+        
+        Memory-optimized version with chunking to prevent OOM.
+        """
         # E shape: (batch, seq, dim)
         batch_size, seq_len, dim = E.shape
-
-        # Process in chunks to avoid OOM
-        chunk_size = min(16, batch_size)  # Smaller chunks for memory efficiency
-        cov_results = []
-
-        for i in range(0, batch_size, chunk_size):
-            end_idx = min(i + chunk_size, batch_size)
-            E_chunk = E[i:end_idx]  # (chunk, seq, dim)
-
-            # Compute mean and center the data
-            E_mean = torch.mean(E_chunk, dim=1, keepdim=True)  # (chunk, 1, dim)
-            centered = E_chunk - E_mean  # (chunk, seq, dim)
-
-            # Compute covariance matrix for each sample in chunk
-            for j in range(E_chunk.shape[0]):
-                centered_sample = centered[j]  # (seq, dim)
-                if seq_len > 1:
-                    cov = torch.matmul(centered_sample.T, centered_sample) / (seq_len - 1)  # (dim, dim)
-                else:
-                    cov = torch.matmul(centered_sample.T, centered_sample)  # Handle single sequence case
-
-                # Sum of squares of off-diagonal elements
-                off_diag_mask = ~torch.eye(dim, dtype=torch.bool, device=cov.device)
-                off_diag_sum = torch.sum(cov[off_diag_mask] ** 2)
-
-                # Normalize by dimension
-                C = off_diag_sum / dim
-                cov_results.append(C)
-
-            # Clear intermediate tensors
-            del E_chunk, E_mean, centered
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-        return torch.stack(cov_results).mean()
+        
+        # Reshape to (batch*seq, dim) to compute covariance across all samples
+        E_reshaped = E.reshape(-1, dim)  # (K, dim) where K = batch*seq
+        K = E_reshaped.shape[0]
+        
+        # Compute mean across samples (axis=0)
+        E_mean = torch.mean(E_reshaped, dim=0, keepdim=True)  # (1, dim)
+        
+        # Center the data
+        E_centered = E_reshaped - E_mean  # (K, dim)
+        
+        # Compute covariance matrix with chunking to avoid OOM
+        # cov_matrix = E_centered.T @ E_centered / (K - 1)
+        # This is (dim, dim) which can be large
+        
+        # Process in chunks if dim is large to avoid OOM
+        chunk_size = min(256, dim)  # Process features in chunks
+        cov_matrix = torch.zeros(dim, dim, device=E.device)
+        
+        for i in range(0, dim, chunk_size):
+            end_i = min(i + chunk_size, dim)
+            for j in range(0, dim, chunk_size):
+                end_j = min(j + chunk_size, dim)
+                
+                # Compute chunk of covariance matrix
+                chunk_i = E_centered[:, i:end_i]  # (K, chunk_i_size)
+                chunk_j = E_centered[:, j:end_j]  # (K, chunk_j_size)
+                
+                cov_chunk = torch.matmul(chunk_i.T, chunk_j)  # (chunk_i_size, chunk_j_size)
+                if K > 1:
+                    cov_chunk = cov_chunk / (K - 1)
+                
+                cov_matrix[i:end_i, j:end_j] = cov_chunk
+                
+                # Clear intermediate tensors
+                del chunk_i, chunk_j, cov_chunk
+        
+        # Create mask for off-diagonal elements
+        mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
+        
+        # Compute sum of squares of off-diagonal elements
+        off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2)
+        
+        # Clear large tensors
+        del E_centered, cov_matrix, mask
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        return off_diagonal_squared
 
     def basic_attention_components(self, f_q, f_k):
         """Original attention mechanism for accuracy < 40%"""
