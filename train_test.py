@@ -270,6 +270,16 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
+    # Enable mixed precision training for better memory efficiency
+    scaler = torch.cuda.amp.GradScaler() if torch.cuda.is_available() else None
+    
+    # Add learning rate scheduler for better convergence
+    # CosineAnnealingLR helps the model converge better by gradually reducing learning rate
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=1e-6)
+    
+    # Gradient accumulation steps to reduce memory usage
+    accumulation_steps = 2
+
     max_acc = 0
     for epoch in range(num_epoch):
         model.train()
@@ -292,14 +302,34 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     chunk_accs = []
                     for j in range(0, x.size(0), chunk_size):
                         x_chunk = x[j:j+chunk_size].to(device)
-                        optimizer.zero_grad()
-                        acc, loss = model.set_forward_loss(x_chunk)
-                        loss.backward()
-                        # Gradient clipping for stability
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                        optimizer.step()
-                        chunk_losses.append(loss.item())
+                        
+                        # Use mixed precision for memory efficiency
+                        if scaler is not None:
+                            with torch.cuda.amp.autocast():
+                                acc, loss = model.set_forward_loss(x_chunk)
+                            # Scale loss for gradient accumulation
+                            loss = loss / accumulation_steps
+                            scaler.scale(loss).backward()
+                        else:
+                            acc, loss = model.set_forward_loss(x_chunk)
+                            loss = loss / accumulation_steps
+                            loss.backward()
+                        
+                        chunk_losses.append(loss.item() * accumulation_steps)
                         chunk_accs.append(acc)
+                        
+                        # Update weights after accumulation steps
+                        if (j // chunk_size + 1) % accumulation_steps == 0:
+                            if scaler is not None:
+                                scaler.unscale_(optimizer)
+                                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                                scaler.step(optimizer)
+                                scaler.update()
+                            else:
+                                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                                optimizer.step()
+                            optimizer.zero_grad()
+                        
                         # Clear cache after each chunk
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
@@ -307,13 +337,32 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     avg_acc = np.mean(chunk_accs)
                 else:
                     x = x.to(device)
-                    optimizer.zero_grad()
-                    acc, loss = model.set_forward_loss(x)
-                    loss.backward()
-                    # Gradient clipping for stability
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                    optimizer.step()
-                    avg_loss = loss.item()
+                    
+                    # Use mixed precision for memory efficiency
+                    if scaler is not None:
+                        with torch.cuda.amp.autocast():
+                            acc, loss = model.set_forward_loss(x)
+                        # Scale loss for gradient accumulation
+                        loss = loss / accumulation_steps
+                        scaler.scale(loss).backward()
+                    else:
+                        acc, loss = model.set_forward_loss(x)
+                        loss = loss / accumulation_steps
+                        loss.backward()
+                    
+                    # Update weights after accumulation steps
+                    if (i + 1) % accumulation_steps == 0:
+                        if scaler is not None:
+                            scaler.unscale_(optimizer)
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                            scaler.step(optimizer)
+                            scaler.update()
+                        else:
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                            optimizer.step()
+                        optimizer.zero_grad()
+                    
+                    avg_loss = loss.item() * accumulation_steps
                     avg_acc = acc
 
                 total_loss += avg_loss
@@ -348,8 +397,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # Step the learning rate scheduler
+        scheduler.step()
 
-        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'}")
+        print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'} - LR: {scheduler.get_last_lr()[0]:.6f}")
         print()
     return model
 
@@ -369,14 +421,18 @@ def validate_model(val_loader, model):
                 chunk_accs = []
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size].to(device)
-                    acc, _ = model.set_forward_loss(x_chunk)
+                    # Use mixed precision for validation
+                    with torch.cuda.amp.autocast():
+                        acc, _ = model.set_forward_loss(x_chunk)
                     chunk_accs.append(acc)
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                 avg_acc = np.mean(chunk_accs)
             else:
                 x = x.to(device)
-                avg_acc, _ = model.set_forward_loss(x)
+                # Use mixed precision for validation
+                with torch.cuda.amp.autocast():
+                    avg_acc, _ = model.set_forward_loss(x)
 
             acc_list.append(avg_acc * 100)
             pbar.set_description(f'Val | Acc: {np.mean(acc_list):.2f}%')
@@ -401,7 +457,9 @@ def direct_test(test_loader, model, params):
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size].to(device)
                     with torch.no_grad():
-                        scores_chunk = model.set_forward(x_chunk)
+                        # Use mixed precision for inference
+                        with torch.cuda.amp.autocast():
+                            scores_chunk = model.set_forward(x_chunk)
                     scores_list.append(scores_chunk.cpu())
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -409,7 +467,9 @@ def direct_test(test_loader, model, params):
             else:
                 with torch.no_grad():
                     x = x.to(device)
-                    scores = model.set_forward(x)
+                    # Use mixed precision for inference
+                    with torch.cuda.amp.autocast():
+                        scores = model.set_forward(x)
 
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
@@ -600,7 +660,13 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            # Enable dynamic weighting for improved accuracy
+            # Optimized initial weights: higher covariance weight helps with feature separation
+            model = FewShotTransformer(feature_model, variant=variant, 
+                                     initial_cov_weight=0.5,  # Increased for stronger covariance regularization
+                                     initial_var_weight=0.25, # Balanced variance regularization
+                                     dynamic_weight=True,
+                                     **few_shot_params)
 
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'

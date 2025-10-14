@@ -88,11 +88,11 @@ class FewShotTransformer(MetaTemplate):
 
         # Initialize accuracy tracking - simple attributes, not parameters
         self.current_accuracy = 0.0
-        self.accuracy_threshold = 40.0
-        self.use_advanced_attention = False
+        self.accuracy_threshold = 30.0  # Lowered to enable advanced attention earlier
+        self.use_advanced_attention = True  # Enable advanced attention from the start
 
         # Parameters for advanced attention mechanism
-        self.gamma = 1.0
+        self.gamma = 0.1  # Variance target as per paper (stronger regularization)
         self.epsilon = 1e-8
 
         # Create attention module
@@ -290,11 +290,11 @@ class Attention(nn.Module):
             # OPTIMIZED: Better chunking strategy to prevent OOM
             # Adaptive chunk size based on both dimension and available memory
             if dim > 2048:
-                chunk_size = 64  # Very small chunks for huge dimensions
+                chunk_size = 32  # Very small chunks for huge dimensions
             elif dim > 1024:
-                chunk_size = 128  # Smaller chunks for very large dimensions
+                chunk_size = 64  # Smaller chunks for very large dimensions
             elif dim > 512:
-                chunk_size = 256  # Medium chunks for large dimensions
+                chunk_size = 128  # Medium chunks for large dimensions
             else:
                 # For smaller dimensions, compute directly without chunking
                 # This is more efficient and avoids chunking overhead
@@ -427,8 +427,11 @@ class Attention(nn.Module):
 
         # OPTIMIZED: Better adaptive chunk size based on dimension and memory
         total_samples = batch_size * heads
-        if dim > 256:
+        # More conservative chunk sizes to prevent OOM
+        if dim > 512:
             chunk_size = 1  # Process one sample at a time for very large dimensions
+        elif dim > 256:
+            chunk_size = 1  # Still very conservative
         elif dim > 128:
             chunk_size = min(2, total_samples)  # Very small chunks for large dimensions
         else:
@@ -458,7 +461,7 @@ class Attention(nn.Module):
                 del q_chunk, k_chunk, var_q, var_k, var_comp, cov_q, cov_k, cov_comp
                 
                 # Clear GPU cache more frequently to prevent accumulation
-                if torch.cuda.is_available() and i % (chunk_size * 2) == 0:
+                if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
             # Combine results and reshape back to original format
