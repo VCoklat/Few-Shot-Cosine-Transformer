@@ -250,8 +250,10 @@ class Attention(nn.Module):
         # Apply hinge: max(0, gamma - regularized_std)
         hinge_values = torch.clamp(gamma - regularized_std, min=0.0)  # (dim,)
         
-        # Sum and normalize by number of samples
-        V_E = torch.sum(hinge_values) / E_reshaped.shape[0]
+        # FIXED: Sum and normalize by number of dimensions (m), not samples
+        # This matches the problem statement: V_E = np.sum(hinge_values) / m
+        m = E_reshaped.shape[1]  # Number of dimensions
+        V_E = torch.sum(hinge_values) / m
         
         # Clear intermediate tensors for memory efficiency
         del E_reshaped, variance_per_dim, regularized_std, hinge_values
@@ -285,19 +287,36 @@ class Attention(nn.Module):
             # Center the data
             E_centered = E_reshaped - E_mean  # (K, dim)
             
-            # Compute covariance matrix with chunking to avoid OOM
-            # cov_matrix = E_centered.T @ E_centered / (K - 1)
-            # This is (dim, dim) which can be large
-            
-            # Process in chunks if dim is large to avoid OOM
-            # Adaptive chunk size based on dimension to prevent OOM
-            if dim > 1024:
-                chunk_size = min(128, dim)  # Smaller chunks for very large dimensions
+            # OPTIMIZED: Better chunking strategy to prevent OOM
+            # Adaptive chunk size based on both dimension and available memory
+            if dim > 2048:
+                chunk_size = 64  # Very small chunks for huge dimensions
+            elif dim > 1024:
+                chunk_size = 128  # Smaller chunks for very large dimensions
             elif dim > 512:
-                chunk_size = min(256, dim)  # Medium chunks for large dimensions
+                chunk_size = 256  # Medium chunks for large dimensions
             else:
-                chunk_size = min(512, dim)  # Larger chunks for moderate dimensions
+                # For smaller dimensions, compute directly without chunking
+                # This is more efficient and avoids chunking overhead
+                if K > 1:
+                    cov_matrix = torch.matmul(E_centered.T, E_centered) / (K - 1)
+                else:
+                    cov_matrix = torch.matmul(E_centered.T, E_centered)
+                
+                # Create mask for off-diagonal elements
+                mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
+                
+                # FIXED: Normalize by dimension m
+                off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2) / dim
+                
+                # Clear tensors
+                del E_centered, cov_matrix, mask, E_mean, E_reshaped
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                return off_diagonal_squared
             
+            # For large dimensions, use chunked computation
             cov_matrix = torch.zeros(dim, dim, device=E.device)
             
             for i in range(0, dim, chunk_size):
@@ -315,17 +334,22 @@ class Attention(nn.Module):
                     
                     cov_matrix[i:end_i, j:end_j] = cov_chunk
                     
-                    # Clear intermediate tensors
+                    # Clear intermediate tensors immediately
                     del chunk_i, chunk_j, cov_chunk
+                    
+                # Clear cache after each row of chunks
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             # Create mask for off-diagonal elements
             mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
             
-            # Compute sum of squares of off-diagonal elements
-            off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2)
+            # FIXED: Compute sum of squares of off-diagonal elements and normalize by m
+            # This matches the CTX.py implementation and improves numerical stability
+            off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2) / dim
             
             # Clear large tensors
-            del E_centered, cov_matrix, mask
+            del E_centered, cov_matrix, mask, E_mean, E_reshaped
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
@@ -401,13 +425,14 @@ class Attention(nn.Module):
         var_component_list = []
         cov_component_list = []
 
-        # Process in smaller chunks to avoid OOM
-        # Adaptive chunk size based on dimension
+        # OPTIMIZED: Better adaptive chunk size based on dimension and memory
         total_samples = batch_size * heads
-        if dim > 128:
+        if dim > 256:
+            chunk_size = 1  # Process one sample at a time for very large dimensions
+        elif dim > 128:
             chunk_size = min(2, total_samples)  # Very small chunks for large dimensions
         else:
-            chunk_size = min(4, total_samples)  # Smaller chunks for better memory management
+            chunk_size = min(4, total_samples)  # Moderate chunks for normal dimensions
 
         try:
             for i in range(0, total_samples, chunk_size):
@@ -429,23 +454,35 @@ class Attention(nn.Module):
                 cov_comp = cov_q * cov_k
                 cov_component_list.append(cov_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
 
-                # Clear intermediate tensors
-                del q_chunk, k_chunk
-                if torch.cuda.is_available():
+                # Clear intermediate tensors immediately
+                del q_chunk, k_chunk, var_q, var_k, var_comp, cov_q, cov_k, cov_comp
+                
+                # Clear GPU cache more frequently to prevent accumulation
+                if torch.cuda.is_available() and i % (chunk_size * 2) == 0:
                     torch.cuda.empty_cache()
 
             # Combine results and reshape back to original format
             var_component = torch.cat(var_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
             cov_component = torch.cat(cov_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
 
+            # Clear intermediate lists to free memory
+            del var_component_list, cov_component_list, f_q_reshaped, f_k_reshaped
+
             # Permute back to match f_q/f_k format [h, q, n, d] -> [h, q, n, m]
             var_component = var_component.permute(1, 0, 2, 3)
             cov_component = cov_component.permute(1, 0, 2, 3)
+            
+            # Final memory cleanup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             return cov_component, var_component
 
         except Exception as e:
             print(f"Error in advanced attention computation: {e}")
+            # Clear any allocated memory
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             # Fallback to basic attention components
             return self.basic_attention_components(f_q, f_k)
 
