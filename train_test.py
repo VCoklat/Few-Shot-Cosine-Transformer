@@ -254,6 +254,92 @@ def evaluate_model_comprehensive(test_loader, model, params, testfile):
 
     return evaluation_results
 
+def safe_checkpoint_save(checkpoint_dict, filepath, max_retries=3):
+    """
+    Safely save a checkpoint with error handling and cleanup.
+    
+    Args:
+        checkpoint_dict: Dictionary containing model state to save
+        filepath: Path where checkpoint should be saved
+        max_retries: Maximum number of retry attempts
+    
+    Returns:
+        bool: True if save succeeded, False otherwise
+    """
+    import shutil
+    import tempfile
+    
+    # Clean up old checkpoint files to free space (keep only last 3)
+    checkpoint_dir = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    
+    # Only clean up numbered checkpoints, not best_model.tar
+    if filename != 'best_model.tar' and filename.endswith('.tar'):
+        try:
+            # Get all numbered checkpoint files
+            checkpoint_files = []
+            for f in os.listdir(checkpoint_dir):
+                if f.endswith('.tar') and f != 'best_model.tar':
+                    try:
+                        # Extract epoch number from filename
+                        epoch_num = int(f.replace('.tar', ''))
+                        checkpoint_files.append((epoch_num, os.path.join(checkpoint_dir, f)))
+                    except ValueError:
+                        continue
+            
+            # Sort by epoch number and keep only the last 2 (plus the one we're about to save = 3 total)
+            if len(checkpoint_files) > 2:
+                checkpoint_files.sort(key=lambda x: x[0])
+                # Remove older checkpoints
+                for epoch_num, old_file in checkpoint_files[:-2]:
+                    try:
+                        os.remove(old_file)
+                        print(f"Removed old checkpoint: {os.path.basename(old_file)}")
+                    except Exception as e:
+                        print(f"Warning: Could not remove old checkpoint {old_file}: {e}")
+        except Exception as e:
+            print(f"Warning: Error during checkpoint cleanup: {e}")
+    
+    # Try to save with retries
+    for attempt in range(max_retries):
+        try:
+            # Use atomic write pattern: write to temp file first, then rename
+            temp_fd, temp_path = tempfile.mkstemp(dir=checkpoint_dir, suffix='.tar.tmp')
+            os.close(temp_fd)  # Close the file descriptor
+            
+            try:
+                # Save to temporary file
+                torch.save(checkpoint_dict, temp_path)
+                
+                # Atomic rename
+                shutil.move(temp_path, filepath)
+                
+                print(f"✓ Checkpoint saved successfully: {os.path.basename(filepath)}")
+                return True
+                
+            except Exception as e:
+                # Clean up temp file if it exists
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+                raise e
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Warning: Checkpoint save attempt {attempt + 1} failed: {e}")
+                print(f"Retrying... ({attempt + 2}/{max_retries})")
+                time.sleep(1)  # Brief pause before retry
+            else:
+                print(f"✗ ERROR: Failed to save checkpoint after {max_retries} attempts")
+                print(f"  File: {filepath}")
+                print(f"  Error: {e}")
+                print(f"  Training will continue without saving this checkpoint.")
+                return False
+    
+    return False
+
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
     # Memory optimization settings
     torch.cuda.empty_cache()
@@ -390,13 +476,13 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 print(f"Best model! Save... Accuracy: {val_acc:.2f}%")
                 max_acc = val_acc
                 outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
-                torch.save(
+                safe_checkpoint_save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
 
             if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
                 outfile = os.path.join(
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
-                torch.save(
+                safe_checkpoint_save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
         
         # Step the learning rate scheduler
