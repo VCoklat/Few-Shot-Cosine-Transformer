@@ -14,11 +14,12 @@ import IPython
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-def cosine_distance(x1, x2):
+def cosine_distance(x1, x2, temperature=None):
     """
-    Compute cosine distance with proper dimension handling
+    Compute cosine distance with proper dimension handling and optional temperature scaling
     x1: input tensor (3D or 4D)
-    x2: input tensor (3D or 4D) 
+    x2: input tensor (3D or 4D)
+    temperature: optional temperature scaling tensor (higher = softer distribution, lower = sharper)
     Returns: cosine similarity matrix
     """
     try:
@@ -54,6 +55,10 @@ def cosine_distance(x1, x2):
         # Add epsilon to avoid division by zero
         epsilon = 1e-8
         result = dots / (scale + epsilon)
+        
+        # Apply temperature scaling if provided
+        if temperature is not None:
+            result = result / temperature
 
         return result
 
@@ -99,7 +104,8 @@ class FewShotTransformer(MetaTemplate):
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
                              initial_cov_weight=initial_cov_weight,
                              initial_var_weight=initial_var_weight,
-                             dynamic_weight=dynamic_weight)
+                             dynamic_weight=dynamic_weight,
+                             n_way=n_way, k_shot=k_shot)
         self.sm = nn.Softmax(dim=-2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
 
@@ -142,6 +148,10 @@ class FewShotTransformer(MetaTemplate):
         # if should_use_advanced != self.use_advanced_attention:
         #     self.use_advanced_attention = should_use_advanced
         #     print(f"Switching to {'advanced' if should_use_advanced else 'basic'} attention mechanism at accuracy: {accuracy:.2f}%")
+    
+    def update_epoch(self, epoch):
+        """Update epoch in attention module for adaptive gamma"""
+        self.ATTN.update_epoch(epoch)
 
     def set_forward(self, x, is_feature=False):
         z_support, z_query = self.parse_feature(x, is_feature)
@@ -181,7 +191,7 @@ class FewShotTransformer(MetaTemplate):
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6,
-                 initial_var_weight=0.2, dynamic_weight=False):
+                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -190,20 +200,49 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim=-1)
         self.variant = variant
+        self.n_way = n_way
+        self.k_shot = k_shot
+
+        # Solution 1: Temperature Scaling - Learnable temperature per head
+        self.temperature = nn.Parameter(torch.ones(heads) * 0.5)
+        
+        # Solution 5: EMA Smoothing - Track moving averages for stability
+        self.ema_decay = 0.99
+        self.register_buffer('var_ema', torch.ones(1))
+        self.register_buffer('cov_ema', torch.ones(1))
+        
+        # Solution 2: Adaptive Gamma - Dynamic variance regularization
+        self.gamma_start = 0.5  # Start with stronger regularization
+        self.gamma_end = 0.05   # End with weaker regularization
+        self.current_epoch = 0
+        self.max_epochs = 50
 
         # Dynamic weighting components
         self.dynamic_weight = dynamic_weight
         if dynamic_weight:
-            # Separate components instead of nn.Sequential to avoid recursion
-            self.weight_linear1 = nn.Linear(dim_head * 2, dim_head)
-            self.weight_layernorm = nn.LayerNorm(dim_head)
-            self.weight_relu = nn.ReLU()
-            self.weight_linear2 = nn.Linear(dim_head, 3)  # Now predict 3 weights
+            # Solution 4: Multi-Scale Dynamic Weighting with 4 components
+            # Enhanced weight predictor with increased capacity
+            self.weight_linear1 = nn.Linear(dim_head * 2, dim_head * 2)
+            self.weight_layernorm1 = nn.LayerNorm(dim_head * 2)
+            self.weight_gelu1 = nn.GELU()  # Better activation than ReLU
+            self.weight_dropout1 = nn.Dropout(0.1)
+            self.weight_linear2 = nn.Linear(dim_head * 2, dim_head)
+            self.weight_layernorm2 = nn.LayerNorm(dim_head)
+            self.weight_gelu2 = nn.GELU()
+            self.weight_linear3 = nn.Linear(dim_head, 4)  # 4 weights instead of 3
             self.weight_softmax = nn.Softmax(dim=-1)  # Ensure weights sum to 1.0
         else:
             # Fixed weights as parameters (still learnable)
             self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
             self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
+
+        # Solution 6: Cross-Attention Between Query and Support
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=dim_head,
+            num_heads=1,
+            dropout=0.1,
+            batch_first=True
+        )
 
         # Replace nn.Sequential for input linear to avoid lambda issues
         self.input_layernorm = nn.LayerNorm(dim)
@@ -218,12 +257,29 @@ class Attention(nn.Module):
         return self.input_linear(self.input_layernorm(t))
 
     def weight_predictor_forward(self, x):
-        """Forward pass through weight predictor"""
+        """Forward pass through enhanced weight predictor for 4 components"""
         x = self.weight_linear1(x)
-        x = self.weight_layernorm(x)
-        x = self.weight_relu(x)
+        x = self.weight_layernorm1(x)
+        x = self.weight_gelu1(x)
+        x = self.weight_dropout1(x)
         x = self.weight_linear2(x)
+        x = self.weight_layernorm2(x)
+        x = self.weight_gelu2(x)
+        x = self.weight_linear3(x)
         return self.weight_softmax(x)
+
+    def get_adaptive_gamma(self):
+        """
+        Solution 2: Compute adaptive gamma that linearly decreases from start to end.
+        Early training needs stronger regularization, later training benefits from weaker.
+        """
+        progress = min(self.current_epoch / self.max_epochs, 1.0)
+        gamma = self.gamma_start + (self.gamma_end - self.gamma_start) * progress
+        return gamma
+    
+    def update_epoch(self, epoch):
+        """Update current epoch for adaptive gamma calculation"""
+        self.current_epoch = epoch
 
     def variance_component_torch(self, E, gamma=1.0, epsilon=1e-8):
         """
@@ -491,6 +547,46 @@ class Attention(nn.Module):
 
     def forward(self, q, k, v, use_advanced=False, gamma=1.0, epsilon=1e-8):
         # FIXED: Properly handle q, k, v dimensions to ensure matrix multiplication compatibility
+        
+        # Solution 6: Cross-Attention Between Query and Support
+        # Split input into support and query based on sequence length
+        # Expected: q is support (1, n_way, d), k and v are queries (n_way*n_query, 1, d)
+        if q.shape[0] == 1 and k.shape[0] > 1:
+            # q is support, k/v are queries
+            support = q  # [1, n_way, d]
+            query = k    # [n_way*n_query, 1, d]
+            
+            # Apply cross-attention: query attends to support
+            # Reshape for MultiheadAttention (batch_first=True)
+            support_reshaped = support.squeeze(0).unsqueeze(0)  # [1, n_way, d]
+            query_reshaped = query.squeeze(1)  # [n_way*n_query, d]
+            
+            # Apply cross-attention
+            try:
+                # Get the embedding dimension
+                embed_dim = query_reshaped.shape[-1]
+                
+                # Check if cross_attn is compatible
+                if self.cross_attn.embed_dim != embed_dim:
+                    # Create a new cross-attention layer with correct dimensions
+                    self.cross_attn = nn.MultiheadAttention(
+                        embed_dim=embed_dim,
+                        num_heads=1,
+                        dropout=0.1,
+                        batch_first=True
+                    ).to(query_reshaped.device)
+                
+                # Reshape for batch processing
+                query_batch = query_reshaped.unsqueeze(0)  # [1, n_way*n_query, d]
+                query_enhanced, _ = self.cross_attn(query_batch, support_reshaped, support_reshaped)
+                query_enhanced = query_enhanced.squeeze(0).unsqueeze(1)  # [n_way*n_query, 1, d]
+                
+                # Update k and v with enhanced query
+                k = query_enhanced
+                v = query_enhanced
+            except Exception as e:
+                # If cross-attention fails, continue with original k, v
+                pass
 
         # Apply input transformation to each tensor separately
         f_q = self.input_transform(q)  # [batch_q, seq_q, feat_dim] -> [batch_q, seq_q, inner_dim]
@@ -503,21 +599,37 @@ class Attention(nn.Module):
         f_v = rearrange(f_v, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_v, head_dim]
 
         if self.variant == "cosine":
-            # Calculate cosine similarity (invariance component)
+            # Solution 1: Calculate cosine similarity with temperature scaling
             # f_k.transpose(-1, -2) gives us [heads, batch, head_dim, seq_k]
             # cosine_distance(f_q, f_k.transpose(-1, -2)) gives [heads, batch, seq_q, seq_k]
-            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2))
+            
+            # Reshape temperature for broadcasting: [heads] -> [heads, 1, 1, 1]
+            temp_reshaped = self.temperature.view(self.heads, 1, 1, 1)
+            cosine_sim = cosine_distance(f_q, f_k.transpose(-1, -2), temperature=temp_reshaped)
 
+            # Solution 2: Use adaptive gamma for variance regularization
+            adaptive_gamma = self.get_adaptive_gamma()
+            
             # Choose attention mechanism based on accuracy with error handling
             try:
                 if use_advanced:
-                    cov_component, var_component = self.advanced_attention_components(f_q, f_k, gamma, epsilon)
+                    cov_component, var_component = self.advanced_attention_components(f_q, f_k, adaptive_gamma, epsilon)
                 else:
                     cov_component, var_component = self.basic_attention_components(f_q, f_k)
 
             except Exception as e:
                 print(f"Error in attention components: {e}, falling back to basic")
                 cov_component, var_component = self.basic_attention_components(f_q, f_k)
+
+            # Solution 5: Apply EMA smoothing during training
+            if self.training:
+                with torch.no_grad():
+                    self.var_ema = self.ema_decay * self.var_ema + (1 - self.ema_decay) * var_component.detach().mean()
+                    self.cov_ema = self.ema_decay * self.cov_ema + (1 - self.ema_decay) * cov_component.detach().mean()
+            
+            # Normalize components by their EMA for stability
+            var_component_norm = var_component / (self.var_ema + epsilon)
+            cov_component_norm = cov_component / (self.cov_ema + epsilon)
 
             # Weight combination logic
             if self.dynamic_weight:
@@ -529,27 +641,32 @@ class Attention(nn.Module):
                     # Concatenate global query and key features
                     qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
 
-                    # Predict three weights per attention head
-                    weights = self.weight_predictor_forward(qk_features)  # [h, 3]
+                    # Solution 4: Predict four weights per attention head
+                    weights = self.weight_predictor_forward(qk_features)  # [h, 4]
 
                     # Record weights during evaluation if needed
                     if self.record_weights and not self.training:
                         self.weight_history.append(weights.detach().cpu().numpy().mean(axis=0))
 
-                    # Extract individual weights
+                    # Extract individual weights for 4 components
                     cos_weight = weights[:, 0].view(self.heads, 1, 1, 1)  # Cosine weight
                     cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)  # Covariance weight
                     var_weight = weights[:, 2].view(self.heads, 1, 1, 1)  # Variance weight
+                    interaction_weight = weights[:, 3].view(self.heads, 1, 1, 1)  # Interaction weight
 
-                    # Combine all three components
+                    # Solution 4: Add interaction term (product of cosine and covariance)
+                    interaction_term = cosine_sim * cov_component_norm
+
+                    # Combine all four components
                     dots = (cos_weight * cosine_sim +
-                           cov_weight * cov_component + 
-                           var_weight * var_component)
+                           cov_weight * cov_component_norm + 
+                           var_weight * var_component_norm +
+                           interaction_weight * interaction_term)
 
                 except Exception as e:
                     print(f"Error in dynamic weighting: {e}, using equal weights")
                     # Fallback to equal weighting
-                    dots = (cosine_sim + cov_component + var_component) / 3
+                    dots = (cosine_sim + cov_component_norm + var_component_norm) / 3
             else:
                 # Use fixed weights
                 cov_weight = torch.sigmoid(self.fixed_cov_weight)
@@ -610,7 +727,24 @@ class Attention(nn.Module):
 
         weights = np.array(self.weight_history)
 
-        if weights.shape[1] == 3:  # We have 3 components
+        if weights.shape[1] == 4:  # We have 4 components (updated)
+            return {
+                'cosine_mean': float(weights[:, 0].mean()),
+                'cov_mean': float(weights[:, 1].mean()),
+                'var_mean': float(weights[:, 2].mean()),
+                'interaction_mean': float(weights[:, 3].mean()),
+                'cosine_std': float(weights[:, 0].std()),
+                'cov_std': float(weights[:, 1].std()),
+                'var_std': float(weights[:, 2].std()),
+                'interaction_std': float(weights[:, 3].std()),
+                'histogram': {
+                    'cosine': np.histogram(weights[:, 0], bins=10, range=(0,1))[0].tolist(),
+                    'cov': np.histogram(weights[:, 1], bins=10, range=(0,1))[0].tolist(),
+                    'var': np.histogram(weights[:, 2], bins=10, range=(0,1))[0].tolist(),
+                    'interaction': np.histogram(weights[:, 3], bins=10, range=(0,1))[0].tolist()
+                }
+            }
+        elif weights.shape[1] == 3:  # We have 3 components (legacy)
             return {
                 'cosine_mean': float(weights[:, 0].mean()),
                 'cov_mean': float(weights[:, 1].mean()),
