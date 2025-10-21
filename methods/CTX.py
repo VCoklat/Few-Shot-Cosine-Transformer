@@ -39,14 +39,14 @@ class CTX(MetaTemplate):
         self.variance_weight = nn.Parameter(torch.ones(1))
         self.covariance_weight = nn.Parameter(torch.ones(1))
         
-        # Invariance projection layers
+        # Invariance projection layers - applied per channel
         self.invariance_query = nn.Sequential(
-            nn.Linear(dim_attn, dim_attn),
-            nn.LayerNorm(dim_attn)
+            nn.Conv2d(dim_attn, dim_attn, 1),
+            nn.BatchNorm2d(dim_attn)
         )
         self.invariance_support = nn.Sequential(
-            nn.Linear(dim_attn, dim_attn),
-            nn.LayerNorm(dim_attn)
+            nn.Conv2d(dim_attn, dim_attn, 1),
+            nn.BatchNorm2d(dim_attn)
         )
 
     def compute_variance(self, x):
@@ -80,37 +80,32 @@ class CTX(MetaTemplate):
         query_q, query_v, support_k, support_v = map(lambda t: self.linear_attn(t),
                             (z_query, z_query, z_support, z_support))
         
-        query_q, query_v = map(lambda t: rearrange(t, 'q c h w -> q () (c h w)'), (query_q, query_v))
+        # Apply invariance transformations before flattening (on spatial features)
+        query_q_inv = self.invariance_query(query_q)
+        support_k_inv = self.invariance_support(support_k)
+        
+        query_q, query_v = map(lambda t: rearrange(t, 'q c h w -> q () (c h w)'), (query_q_inv, query_v))
         support_k, support_v = map(lambda t: rearrange(t, '(n k) c h w -> n (c h w) k',
-                            n=self.n_way, k=self.k_shot), (support_k, support_v))
+                            n=self.n_way, k=self.k_shot), (support_k_inv, support_v))
         
         query_q = rearrange(query_q, 'q b d -> b q d')
         
-        # Apply invariance transformations
-        query_q_orig = query_q
-        support_k_orig = support_k
+        # Compute variance for dynamic weighting
+        var_q = self.compute_variance(query_q).mean()
+        # Reshape support_k for variance computation: (n, d, k) -> (n*k, d)
+        support_k_reshaped = support_k.transpose(-1, -2).reshape(-1, support_k.shape[1])
+        var_k = self.compute_variance(support_k_reshaped).mean()
         
-        query_q_flat = rearrange(query_q, 'b q d -> (b q) d')
-        query_q_inv = self.invariance_query(query_q_flat)
-        query_q = rearrange(query_q_inv, '(b q) d -> b q d', b=query_q_orig.shape[0])
-        
-        support_k_flat = rearrange(support_k, 'n d k -> (n k) d')
-        support_k_inv = self.invariance_support(support_k_flat)
-        support_k = rearrange(support_k_inv, '(n k) d -> n d k', n=self.n_way, k=self.k_shot)
-        
-        # Compute variance and covariance
-        var_q = self.compute_variance(query_q)
-        var_k = self.compute_variance(support_k.transpose(-1, -2))
-        
-        # Compute covariance between query and support
-        query_q_exp = query_q.unsqueeze(0).expand(self.n_way, -1, -1, -1)
-        support_k_exp = support_k.transpose(-1, -2).unsqueeze(1).expand(-1, query_q.shape[0], -1, -1)
-        cov_qk = self.compute_covariance(query_q_exp, support_k_exp)
+        # Compute covariance metric using feature statistics
+        # Simple approximation: correlation of norms
+        query_norm = torch.norm(query_q, p=2, dim=-1).mean()
+        support_norm = torch.norm(support_k, p=2, dim=1).mean()
+        cov_qk = query_norm * support_norm
         
         # Dynamic weighting based on variance and covariance
         weight_factor = torch.sigmoid(self.dynamic_weight * (
-            self.variance_weight * (var_q.mean() + var_k.mean()) + 
-            self.covariance_weight * cov_qk.mean()
+            self.variance_weight * (var_q + var_k) + 
+            self.covariance_weight * cov_qk
         ))
         
         if self.attn == 'softmax':
