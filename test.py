@@ -110,25 +110,34 @@ def change_model(model_name):
     return model_name
 
 def get_class_names_from_file(data_file, n_way=None):
-    """Extract class names from JSON data file"""
+    """
+    Generate class names for few-shot evaluation.
+    
+    In few-shot learning, each episode randomly samples n_way classes from the dataset,
+    and labels are re-mapped to 0, 1, ..., n_way-1 for each episode. Therefore, the
+    class names should be generic labels representing these positions, not specific
+    class names from the dataset (which vary across episodes).
+    """
     try:
         with open(data_file, 'r') as f:
             meta = json.load(f)
 
         unique_labels = np.unique(meta['image_labels']).tolist()
-
-        if 'class_names' in meta:
-            class_names = [meta['class_names'][str(label)] for label in unique_labels]
+        total_classes = len(unique_labels)
+        
+        # In few-shot learning, labels are re-mapped to 0 to n_way-1 for each episode
+        # Use generic names that represent the position/way rather than specific classes
+        if n_way:
+            class_names = [f"Way {i}" for i in range(n_way)]
         else:
-            class_names = [f"Class_{label}" for label in unique_labels]
-
-        if n_way and len(class_names) > n_way:
-            class_names = class_names[:n_way]
-
+            # If n_way is not specified, use all available classes
+            class_names = [f"Class {i}" for i in range(total_classes)]
+        
+        print(f"Dataset has {total_classes} classes total, using {len(class_names)} ways for evaluation")
         return class_names
     except Exception as e:
         print(f"Error extracting class names: {e}")
-        return [f"Class_{i}" for i in range(n_way)] if n_way else ["Class_0"]
+        return [f"Way {i}" for i in range(n_way)] if n_way else ["Class_0"]
 
 if __name__ == '__main__':
     
