@@ -36,7 +36,11 @@ torch.cuda.empty_cache()
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 def direct_test(test_loader, model, params):
+    from sklearn.metrics import f1_score
+    
     acc = []
+    all_preds = []
+    all_labels = []
     iter_num = len(test_loader)
     
     with tqdm.tqdm(total=len(test_loader)) as pbar:
@@ -57,6 +61,10 @@ def direct_test(test_loader, model, params):
                     
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+            
+            all_preds.extend(pred.tolist())
+            all_labels.extend(y.tolist())
+            
             acc.append(np.mean(pred == y)*100)
             pbar.set_description(
                 'Test       | Acc {:.6f}'.format(np.mean(acc)))
@@ -65,6 +73,19 @@ def direct_test(test_loader, model, params):
     acc_all = np.asarray(acc)
     acc_mean = np.mean(acc_all)
     acc_std = np.std(acc_all)
+    
+    # Calculate and display per-class F1 scores
+    all_preds = np.array(all_preds)
+    all_labels = np.array(all_labels)
+    class_f1 = f1_score(all_labels, all_preds, average=None)
+    macro_f1 = f1_score(all_labels, all_preds, average='macro')
+    
+    print(f"\n📊 F1 Score Results:")
+    print(f"Macro-F1: {macro_f1:.4f}")
+    print("\nPer-class F1 scores:")
+    for i, f1 in enumerate(class_f1):
+        print(f"  Class {i}: {f1:.4f}")
+    
     return acc_mean, acc_std
 
 def seed_func():
