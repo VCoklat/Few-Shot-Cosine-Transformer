@@ -86,16 +86,71 @@ class Attention(nn.Module):
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
+        # Dynamic weight learning for variance-covariance weighting
+        self.dynamic_weight = nn.Parameter(torch.ones(1))
+        self.variance_weight = nn.Parameter(torch.ones(1))
+        self.covariance_weight = nn.Parameter(torch.ones(1))
+        
+        # Invariance projection layer
+        self.invariance_proj = nn.Sequential(
+            nn.Linear(inner_dim, inner_dim),
+            nn.LayerNorm(inner_dim)
+        )
+        
+    def compute_variance(self, x):
+        """Compute variance across the feature dimension"""
+        # x shape: (h, q, n, d)
+        mean = x.mean(dim=-1, keepdim=True)
+        variance = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+        return variance
+    
+    def compute_covariance(self, x, y):
+        """Compute covariance between two feature sets"""
+        # x, y shape: (h, q, n, d)
+        x_mean = x.mean(dim=-1, keepdim=True)
+        y_mean = y.mean(dim=-1, keepdim=True)
+        covariance = ((x - x_mean) * (y - y_mean)).mean(dim=-1, keepdim=True)
+        return covariance
+    
+    def apply_invariance(self, x):
+        """Apply invariance transformation for robust features"""
+        # Reshape for processing
+        orig_shape = x.shape
+        x_flat = rearrange(x, 'h q n d -> (h q n) d')
+        x_inv = self.invariance_proj(x_flat)
+        x_inv = rearrange(x_inv, '(h q n) d -> h q n d', h=orig_shape[0], q=orig_shape[1], n=orig_shape[2])
+        return x_inv
+        
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
+        # Apply invariance transformation
+        f_q_inv = self.apply_invariance(f_q)
+        f_k_inv = self.apply_invariance(f_k)
+        
+        # Compute variance and covariance statistics
+        var_q = self.compute_variance(f_q)
+        var_k = self.compute_variance(f_k)
+        cov_qk = self.compute_covariance(f_q, f_k)
+        
+        # Dynamic weighting based on variance and covariance
+        weight_factor = torch.sigmoid(self.dynamic_weight * (
+            self.variance_weight * (var_q + var_k) + 
+            self.covariance_weight * cov_qk
+        ))
+        
         if self.variant == "cosine":
-            dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
+            # Use invariance-transformed features for attention computation
+            dots = cosine_distance(f_q_inv, f_k_inv.transpose(-1, -2))
+            # Apply dynamic weighting
+            dots = dots * weight_factor
             out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
         
         else: # self.variant == "softmax"
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
+            dots = torch.matmul(f_q_inv, f_k_inv.transpose(-1, -2)) * self.scale
+            # Apply dynamic weighting
+            dots = dots * weight_factor
             out = torch.matmul(self.sm(dots), f_v)
         
         out = rearrange(out, 'h q n d -> q n (h d)')                                                   # (q, n, d)
@@ -111,4 +166,4 @@ def cosine_distance(x1, x2):
     dots = torch.matmul(x1, x2)
     scale = torch.einsum('bhi, bhj -> bhij', 
             (torch.norm(x1, 2, dim = -1), torch.norm(x2, 2, dim = -2)))
-    return (dots / scale)
+    return (dots / (scale + 1e-8))  # Add epsilon for numerical stability
