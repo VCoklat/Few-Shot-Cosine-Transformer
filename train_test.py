@@ -368,6 +368,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     accumulation_steps = 2
 
     max_acc = 0
+    best_epoch = -1
     for epoch in range(num_epoch):
         model.train()
 
@@ -475,6 +476,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
             if val_acc > max_acc:
                 print(f"Best model! Save... Accuracy: {val_acc:.2f}%")
                 max_acc = val_acc
+                best_epoch = epoch
                 outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
                 safe_checkpoint_save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
@@ -490,6 +492,15 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         print(f"Epoch {epoch+1} - Attention Mode: {'Advanced' if hasattr(model, 'use_advanced_attention') and model.use_advanced_attention else 'Basic'} - LR: {scheduler.get_last_lr()[0]:.6f}")
         print()
+    
+    # Load the best model before returning
+    print(f"Training completed. Best validation accuracy: {max_acc:.2f}% at epoch {best_epoch}")
+    best_model_file = os.path.join(params.checkpoint_dir, 'best_model.tar')
+    if os.path.isfile(best_model_file):
+        print(f"Loading best model from {best_model_file}")
+        checkpoint = torch.load(best_model_file)
+        model.load_state_dict(checkpoint['state'])
+    
     return model
 
 def validate_model(val_loader, model):
