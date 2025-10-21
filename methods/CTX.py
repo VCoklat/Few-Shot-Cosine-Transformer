@@ -39,12 +39,24 @@ class CTX(MetaTemplate):
         self.variance_weight = nn.Parameter(torch.ones(1))
         self.covariance_weight = nn.Parameter(torch.ones(1))
         
-        # Invariance projection layers - applied per channel
+        # Learnable attention temperature for adaptive sharpness
+        self.attention_temperature = nn.Parameter(torch.ones(1))
+        
+        # Output temperature for better calibration
+        self.output_temperature = nn.Parameter(torch.ones(1))
+        
+        # Enhanced invariance projection layers with residual connections
         self.invariance_query = nn.Sequential(
+            nn.Conv2d(dim_attn, dim_attn, 1),
+            nn.BatchNorm2d(dim_attn),
+            nn.ReLU(),
             nn.Conv2d(dim_attn, dim_attn, 1),
             nn.BatchNorm2d(dim_attn)
         )
         self.invariance_support = nn.Sequential(
+            nn.Conv2d(dim_attn, dim_attn, 1),
+            nn.BatchNorm2d(dim_attn),
+            nn.ReLU(),
             nn.Conv2d(dim_attn, dim_attn, 1),
             nn.BatchNorm2d(dim_attn)
         )
@@ -80,9 +92,14 @@ class CTX(MetaTemplate):
         query_q, query_v, support_k, support_v = map(lambda t: self.linear_attn(t),
                             (z_query, z_query, z_support, z_support))
         
-        # Apply invariance transformations before flattening (on spatial features)
+        # Apply invariance transformations with residual connections before flattening
+        query_q_orig = query_q
+        support_k_orig = support_k
         query_q_inv = self.invariance_query(query_q)
         support_k_inv = self.invariance_support(support_k)
+        # Add residual connections
+        query_q_inv = query_q_orig + query_q_inv
+        support_k_inv = support_k_orig + support_k_inv
         
         query_q, query_v = map(lambda t: rearrange(t, 'q c h w -> q () (c h w)'), (query_q_inv, query_v))
         support_k, support_v = map(lambda t: rearrange(t, '(n k) c h w -> n (c h w) k',
@@ -111,17 +128,25 @@ class CTX(MetaTemplate):
         if self.attn == 'softmax':
             dots = torch.matmul(query_q, support_k)
             scale = self.dim_attn ** 0.5
-            attn_weights = self.sm(dots / scale) * weight_factor
+            # Apply temperature scaling and dynamic weighting
+            dots = dots / (scale * (torch.abs(self.attention_temperature) + 1e-8))
+            attn_weights = self.sm(dots) * weight_factor
             
         else:
             dots = torch.matmul(query_q, support_k)
             scale = torch.einsum('bq, nk -> nqk',
                         (torch.norm(query_q, 2, dim=-1), torch.norm(support_k, 2, dim=-2)))
-            attn_weights = (dots / (scale + 1e-8)) * weight_factor
+            # Apply temperature scaling and dynamic weighting
+            dots = dots / (scale + 1e-8)
+            dots = dots / (torch.abs(self.attention_temperature) + 1e-8)
+            attn_weights = dots * weight_factor
         
         out = torch.einsum('nqk, ndk -> qnd', attn_weights, support_v)
         
         euclidean_dist = -((query_v - out) ** 2).sum(dim=-1) / (self.feat_dim[1] * self.feat_dim[2])
+        
+        # Apply output temperature scaling for better calibration
+        euclidean_dist = euclidean_dist / (torch.abs(self.output_temperature) + 1e-8)
 
         return euclidean_dist
 
