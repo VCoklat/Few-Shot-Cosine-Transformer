@@ -91,10 +91,10 @@ class Attention(nn.Module):
         self.variance_weight = nn.Parameter(torch.ones(1))
         self.covariance_weight = nn.Parameter(torch.ones(1))
         
-        # Invariance projection layer
+        # Invariance projection layer - uses dim_head since it operates after rearrange
         self.invariance_proj = nn.Sequential(
-            nn.Linear(inner_dim, inner_dim),
-            nn.LayerNorm(inner_dim)
+            nn.Linear(dim_head, dim_head),
+            nn.LayerNorm(dim_head)
         )
         
     def compute_variance(self, x):
