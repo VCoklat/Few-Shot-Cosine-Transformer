@@ -30,11 +30,25 @@ class FewShotTransformer(MetaTemplate):
         self.sm = nn.Softmax(dim = -2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
         
+        # Enhanced prototype aggregation with learnable temperature
+        self.proto_temperature = nn.Parameter(torch.ones(1))
+        
+        # Multi-scale feature processing
+        self.feature_refiner = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.LayerNorm(dim),
+            nn.GELU(),
+            nn.Linear(dim, dim)
+        )
+        
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, mlp_dim),
             nn.GELU(),
             nn.Linear(mlp_dim, dim))
+        
+        # Output temperature for better calibration
+        self.output_temperature = nn.Parameter(torch.ones(1))
         
         self.linear = nn.Sequential(
             nn.LayerNorm(dim),
@@ -47,9 +61,16 @@ class FewShotTransformer(MetaTemplate):
         z_support, z_query = self.parse_feature(x, is_feature)
                 
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
-        z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+        
+        # Enhanced prototype computation with temperature-scaled aggregation
+        proto_weights = self.sm(self.proto_weight * torch.abs(self.proto_temperature))
+        z_proto = (z_support * proto_weights).sum(1).unsqueeze(0)                         # (1, n, d)
+        
+        # Apply feature refinement for richer representations
+        z_proto = z_proto + self.feature_refiner(z_proto)
         
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
+        z_query = z_query + self.feature_refiner(z_query)
 
         x, query = z_proto, z_query
         
@@ -57,8 +78,10 @@ class FewShotTransformer(MetaTemplate):
            x = self.ATTN(q = x, k = query, v = query) + x
            x = self.FFN(x) + x
         
-        # Output is the probabilistic prediction for each class
-        return self.linear(x).squeeze()                                                                # (q, n)
+        # Output with temperature scaling for better calibration
+        output = self.linear(x).squeeze()
+        output = output / (torch.abs(self.output_temperature) + 1e-8)
+        return output                                                                # (q, n)
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
@@ -91,8 +114,14 @@ class Attention(nn.Module):
         self.variance_weight = nn.Parameter(torch.ones(1))
         self.covariance_weight = nn.Parameter(torch.ones(1))
         
-        # Invariance projection layer - uses dim_head since it operates after rearrange
+        # Learnable attention temperature for adaptive sharpness
+        self.attention_temperature = nn.Parameter(torch.ones(1))
+        
+        # Enhanced invariance projection with residual connection
         self.invariance_proj = nn.Sequential(
+            nn.Linear(dim_head, dim_head),
+            nn.LayerNorm(dim_head),
+            nn.GELU(),
             nn.Linear(dim_head, dim_head),
             nn.LayerNorm(dim_head)
         )
@@ -113,11 +142,13 @@ class Attention(nn.Module):
         return covariance
     
     def apply_invariance(self, x):
-        """Apply invariance transformation for robust features"""
+        """Apply invariance transformation with residual connection for robust features"""
         # Reshape for processing
         orig_shape = x.shape
         x_flat = rearrange(x, 'h q n d -> (h q n) d')
         x_inv = self.invariance_proj(x_flat)
+        # Add residual connection to preserve information
+        x_inv = x_flat + x_inv
         x_inv = rearrange(x_inv, '(h q n) d -> h q n d', h=orig_shape[0], q=orig_shape[1], n=orig_shape[2])
         return x_inv
         
@@ -125,7 +156,7 @@ class Attention(nn.Module):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
-        # Apply invariance transformation
+        # Apply invariance transformation with residual
         f_q_inv = self.apply_invariance(f_q)
         f_k_inv = self.apply_invariance(f_k)
         
@@ -143,14 +174,16 @@ class Attention(nn.Module):
         if self.variant == "cosine":
             # Use invariance-transformed features for attention computation
             dots = cosine_distance(f_q_inv, f_k_inv.transpose(-1, -2))
-            # Apply dynamic weighting
+            # Apply dynamic weighting and temperature scaling
             dots = dots * weight_factor
+            dots = dots / (torch.abs(self.attention_temperature) + 1e-8)
             out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
         
         else: # self.variant == "softmax"
             dots = torch.matmul(f_q_inv, f_k_inv.transpose(-1, -2)) * self.scale
-            # Apply dynamic weighting
+            # Apply dynamic weighting and temperature scaling
             dots = dots * weight_factor
+            dots = dots / (torch.abs(self.attention_temperature) + 1e-8)
             out = torch.matmul(self.sm(dots), f_v)
         
         out = rearrange(out, 'h q n d -> q n (h d)')                                                   # (q, n, d)
