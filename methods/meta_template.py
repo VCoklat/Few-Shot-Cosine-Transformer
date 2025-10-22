@@ -58,19 +58,32 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, gradient_accumulation_steps=1):
         avg_loss = 0
         avg_acc = []
+        optimizer.zero_grad()  # Zero gradients at the start
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
                     self.n_way  = x.size(0)
                 
-                optimizer.zero_grad()
                 acc, loss = self.set_forward_loss(x = x.to(device))
+                
+                # Scale loss by accumulation steps
+                loss = loss / gradient_accumulation_steps
                 loss.backward()
-                optimizer.step()
-                avg_loss += loss.item()
+                
+                # Only step optimizer and zero gradients every N steps
+                if (i + 1) % gradient_accumulation_steps == 0 or (i + 1) == len(train_loader):
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    
+                    # Clear CUDA cache periodically to reduce memory fragmentation
+                    if torch.cuda.is_available() and (i + 1) % (gradient_accumulation_steps * 10) == 0:
+                        torch.cuda.empty_cache()
+                
+                avg_loss += loss.item() * gradient_accumulation_steps  # Scale back for logging
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))

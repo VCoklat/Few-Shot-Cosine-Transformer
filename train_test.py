@@ -7,6 +7,12 @@ import random
 import time
 import h5py
 import numpy as np
+
+# Set CUDA memory configuration early to avoid fragmentation
+# Using both old and new variable names for compatibility
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+os.environ['PYTORCH_ALLOC_CONF'] = 'expandable_segments:True'
+
 import torch
 import torch.nn as nn
 import torch.optim
@@ -223,8 +229,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
     for epoch in range(num_epoch):
         model.train()
+        
+        # Pass gradient accumulation steps if available
+        gradient_accumulation_steps = getattr(params, 'gradient_accumulation_steps', 1)
         model.train_loop(epoch, num_epoch, base_loader,
-                        params.wandb, optimizer)
+                        params.wandb, optimizer, gradient_accumulation_steps)
 
         with torch.no_grad():
             model.eval()
@@ -245,6 +254,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # Clear CUDA cache at the end of each epoch to prevent memory buildup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
         print()
     return model
 

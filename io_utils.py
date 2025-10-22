@@ -45,6 +45,8 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
+                        help='Number of gradient accumulation steps to reduce memory usage (default: 1, no accumulation)')
     return parser.parse_args()
 
 

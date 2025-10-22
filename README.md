@@ -90,10 +90,15 @@ These enhancements are integrated into both **FSCT** and **CTX** models with min
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  - `--gradient_accumulation_steps`: number of gradient accumulation steps to reduce GPU memory usage (default `1`, no accumulation). Higher values reduce memory at the cost of slightly slower training.
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
++ **Memory optimization** (for CUDA Out of Memory errors):
+  + If you encounter GPU memory issues, use gradient accumulation:
+  + `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --gradient_accumulation_steps 4`
+  + See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed guide and troubleshooting
 + **Testing enhancements**:
   + Validate the variance, covariance, invariance and dynamic weight mechanisms:
   + `python test_enhancements.py`
