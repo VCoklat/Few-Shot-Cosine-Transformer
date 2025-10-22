@@ -17,6 +17,9 @@ import tqdm
 from torch.autograd import Variable
 from torchsummary import summary
 
+# Set CUDA memory management environment variable to prevent OOM errors
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 import backbone
 import configs
 import data.feature_loader as feat_loader
