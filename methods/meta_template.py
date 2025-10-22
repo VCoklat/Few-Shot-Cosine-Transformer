@@ -72,6 +72,12 @@ class MetaTemplate(nn.Module):
                 optimizer.step()
                 avg_loss += loss.item()
                 avg_acc.append(acc)
+                
+                # Delete tensors to free memory immediately after backward pass
+                del loss
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
