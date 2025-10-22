@@ -16,6 +16,9 @@ import tqdm
 from torch.autograd import Variable
 from torchsummary import summary
 
+# Set CUDA memory management environment variable to prevent OOM errors
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 # Additional imports for enhanced functionality
 try:
     import psutil
@@ -455,8 +458,6 @@ if __name__ == '__main__':
         
         # Memory optimization
         torch.cuda.empty_cache()
-        import os
-        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
         iter_num = params.test_iter
         split = params.split
