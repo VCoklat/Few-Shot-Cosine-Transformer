@@ -72,18 +72,25 @@ class MetaTemplate(nn.Module):
                 
                 # Scale loss by accumulation steps
                 loss = loss / gradient_accumulation_steps
+                
+                # Store loss value before backward (to avoid holding graph reference)
+                loss_value = loss.item()
+                
                 loss.backward()
+                
+                # Explicitly delete loss tensor to free computational graph
+                del loss
+                
+                # Clear CUDA cache after each backward to prevent memory buildup
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 
                 # Only step optimizer and zero gradients every N steps
                 if (i + 1) % gradient_accumulation_steps == 0 or (i + 1) == len(train_loader):
                     optimizer.step()
                     optimizer.zero_grad()
-                    
-                    # Clear CUDA cache periodically to reduce memory fragmentation
-                    if torch.cuda.is_available() and (i + 1) % (gradient_accumulation_steps * 10) == 0:
-                        torch.cuda.empty_cache()
                 
-                avg_loss += loss.item() * gradient_accumulation_steps  # Scale back for logging
+                avg_loss += loss_value * gradient_accumulation_steps  # Scale back for logging
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))

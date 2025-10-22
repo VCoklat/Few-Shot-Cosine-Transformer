@@ -47,16 +47,22 @@ Default is 1 (no accumulation). Higher values (2, 4, 8) reduce memory usage prop
 - Loss is scaled by `1/gradient_accumulation_steps` during accumulation
 - Optimizer step occurs every N accumulation steps
 
-### 3. Periodic CUDA Cache Clearing
+### 3. Aggressive CUDA Cache Clearing and Memory Management
 
-The training loop now periodically clears the CUDA cache to prevent memory fragmentation:
+The training loop now aggressively clears the CUDA cache and manages memory to prevent fragmentation and OOM errors:
 
-- During training: Every 10 * gradient_accumulation_steps iterations
-- After each epoch: Once at the end of validation
+- **After every backward pass**: Clears CUDA cache immediately after gradient computation
+- **Explicit tensor deletion**: The loss tensor is explicitly deleted after backward() to free the computational graph
+- **Loss value extraction**: Loss value is extracted before backward() to avoid holding graph references
 
 This is done automatically in:
-- `methods/meta_template.py` in the `train_loop()` method
+- `methods/meta_template.py` in the `train_loop()` method after each batch's backward pass
 - `train_test.py` and `train.py` after each epoch
+
+**Key improvements over previous version:**
+- Cache clearing happens after EVERY backward, not every 10 steps
+- Computational graph is explicitly freed by deleting the loss tensor
+- This prevents memory buildup during gradient accumulation
 
 ## Testing
 
