@@ -131,3 +131,26 @@ If one forward+backward pass uses M GB:
 - With accumulation of 4: ~M/4 GB per step (gradients accumulated, not full activations)
 
 Actual savings may vary depending on model architecture and batch size.
+
+### Key Implementation Details
+
+The fix implements three critical optimizations in `methods/meta_template.py`:
+
+1. **Extract loss value before backward**: `loss_value = loss.item()`
+   - Prevents holding reference to computational graph
+   - Allows graph to be freed immediately after backward()
+
+2. **Explicit tensor deletion**: `del loss`
+   - Forces Python garbage collector to free the loss tensor
+   - Releases the computational graph from memory
+
+3. **Aggressive CUDA cache clearing**: `torch.cuda.empty_cache()`
+   - Called after EVERY backward pass, not just periodically
+   - Prevents memory fragmentation and buildup
+   - Critical for preventing OOM errors during gradient accumulation
+
+**Why this works:**
+- Without these optimizations, PyTorch holds computational graphs in memory even after backward()
+- With gradient accumulation, multiple graphs can accumulate, causing OOM
+- By explicitly freeing tensors and clearing cache after each backward, we prevent buildup
+- This allows training with larger models on limited GPU memory
