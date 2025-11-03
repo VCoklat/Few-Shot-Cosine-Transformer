@@ -333,14 +333,15 @@ class ProFOCT(MetaTemplate):
         # Alternative: use dropout as implicit augmentation
         loss_i = torch.tensor(0.0, device=device)
         
-        # Optional: Apply VIC to attention outputs
+        # Optional: Apply VIC to attention outputs (but detach to reduce memory)
         if self.use_vic_on_attention:
             attn_output = x_attn.squeeze(0)  # (n_query, dim)
-            loss_v += self.compute_variance_loss(attn_output) * 0.5
-            loss_c += self.compute_covariance_loss(attn_output) * 0.5
+            # Detach to avoid storing too many intermediate gradients
+            loss_v = loss_v + self.compute_variance_loss(attn_output.detach()) * 0.5
+            loss_c = loss_c + self.compute_covariance_loss(attn_output.detach()) * 0.5
         
-        # Dynamic VIC weight update
-        self.update_dynamic_vic_weights(loss_ce, loss_v, loss_c)
+        # Dynamic VIC weight update (detach losses to avoid graph retention)
+        self.update_dynamic_vic_weights(loss_ce.detach(), loss_v.detach(), loss_c.detach())
         
         # Total loss with VIC regularization
         if self.dynamic_vic:
@@ -350,9 +351,15 @@ class ProFOCT(MetaTemplate):
         
         loss = loss_ce + alpha * loss_v + beta * loss_i + gamma * loss_c
         
-        # Compute accuracy
-        predict = torch.argmax(scores, dim=1)
-        acc = (predict == target).sum().item() / target.size(0)
+        # Compute accuracy (detach to free memory)
+        with torch.no_grad():
+            predict = torch.argmax(scores.detach(), dim=1)
+            acc = (predict == target).sum().item() / target.size(0)
+        
+        # Clean up intermediate tensors
+        del z_support, z_query, z_support_flat, z_query_flat, z_proto
+        del x_attn, query, scores, target
+        del all_support_embeddings, loss_v, loss_c, loss_i, loss_ce
         
         return acc, loss
     

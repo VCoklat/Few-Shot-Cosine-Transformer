@@ -234,11 +234,17 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         raise ValueError('Unknown optimization, please define by yourself')
 
     max_acc = 0
+    
+    # Gradient accumulation for memory efficiency (default to 2 for better memory management)
+    gradient_accumulation_steps = getattr(params, 'gradient_accumulation_steps', 2)
+    
+    # Automatic mixed precision for memory efficiency and speed
+    use_amp = getattr(params, 'use_amp', True)
 
     for epoch in range(num_epoch):
         model.train()
         model.train_loop(epoch, num_epoch, base_loader,
-                        params.wandb, optimizer)
+                        params.wandb, optimizer, gradient_accumulation_steps, use_amp)
 
         with torch.no_grad():
             model.eval()
@@ -259,6 +265,9 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # Clear cache after each epoch
+        torch.cuda.empty_cache()
         print()
     return model
 

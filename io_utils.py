@@ -60,6 +60,12 @@ def parse_args():
     parser.add_argument('--use_vic_on_attention', type=int, default=0,
                         help='[1:0] - [True:False]; Apply VIC regularization to attention outputs')
     
+    # Memory optimization arguments
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=2,
+                        help='Number of gradient accumulation steps for memory efficiency (default: 2)')
+    parser.add_argument('--use_amp', type=int, default=1,
+                        help='[1:0] - [True:False]; Use automatic mixed precision training for memory efficiency')
+    
     return parser.parse_args()
 
 
