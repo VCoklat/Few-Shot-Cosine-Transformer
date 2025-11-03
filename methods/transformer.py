@@ -174,15 +174,12 @@ class FewShotTransformer(MetaTemplate):
         # x now contains refined prototypes: (1, n_way, d)
         # We need to compute similarity scores between each query and each prototype
         
-        # Project prototypes and queries through final layers
+        # Project prototypes through final layers
         proto_features = self.final_linear_forward(x)  # (1, n_way, dim_head)
         
-        # Process each query through the same layers
-        query_features = []
-        for i in range(z_query.shape[0]):
-            q_feat = self.final_linear_forward(z_query[i:i+1])  # (1, 1, dim_head)
-            query_features.append(q_feat)
-        query_features = torch.cat(query_features, dim=0)  # (n_way*n_query, 1, dim_head)
+        # Vectorized processing of all queries through final layers
+        # Reshape z_query to (n_way*n_query, 1, d) for batch processing
+        query_features = self.final_linear_forward(z_query)  # (n_way*n_query, 1, dim_head)
         
         # Compute scores: for each query, compute similarity with each prototype
         proto_features = proto_features.squeeze(0)  # (n_way, dim_head)
@@ -193,8 +190,10 @@ class FewShotTransformer(MetaTemplate):
             proto_norm = F.normalize(proto_features, p=2, dim=1)  # (n_way, dim_head)
             query_norm = F.normalize(query_features, p=2, dim=1)  # (n_way*n_query, dim_head)
             scores = torch.matmul(query_norm, proto_norm.t())  # (n_way*n_query, n_way)
-            # Scale cosine similarity to make it compatible with cross-entropy
-            scores = scores * 10.0  # Temperature scaling
+            # Temperature scaling: scale up cosine similarity (range [-1, 1]) to make gradients
+            # more effective for cross-entropy loss. Value of 10.0 empirically works well for
+            # few-shot learning to amplify the differences between similar and dissimilar classes.
+            scores = scores * 10.0
         else:
             # Euclidean distance (negative, so higher is better)
             scores = -torch.cdist(query_features, proto_features, p=2)  # (n_way*n_query, n_way)
