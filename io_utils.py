@@ -21,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description= 'few-shot script' )
     parser.add_argument('--dataset'         , default='miniImagenet', help='CIFAR/CUB/miniImagenet/cross/Omniglot/cross_char/Yoga/')
     parser.add_argument('--backbone'        , default='ResNet18',      help='backbone: Conv{4|6} / ResNet{12|18|34}')
-    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine') 
+    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine/ProFOCT_cosine/ProFOCT_softmax') 
     parser.add_argument('--n_way'           , default=5, type=int,  help='number of categories')
     parser.add_argument('--n_query'         , default=16, type=int,  help='number of query samples per category')
     parser.add_argument('--k_shot'          , default=5, type=int,  help='number of labeled data per category') 
@@ -45,6 +45,21 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # ProFOCT-specific arguments
+    parser.add_argument('--vic_alpha', type=float, default=0.5,
+                        help='Initial variance regularization weight for ProFOCT')
+    parser.add_argument('--vic_beta', type=float, default=9.0,
+                        help='Initial invariance regularization weight for ProFOCT')
+    parser.add_argument('--vic_gamma', type=float, default=0.5,
+                        help='Initial covariance regularization weight for ProFOCT')
+    parser.add_argument('--dynamic_vic', type=int, default=1,
+                        help='[1:0] - [True:False]; Use dynamic VIC weight adaptation')
+    parser.add_argument('--distance_metric', type=str, default='euclidean',
+                        help='Distance metric for ProFOCT: euclidean/mahalanobis/cityblock')
+    parser.add_argument('--use_vic_on_attention', type=int, default=0,
+                        help='[1:0] - [True:False]; Apply VIC regularization to attention outputs')
+    
     return parser.parse_args()
 
 

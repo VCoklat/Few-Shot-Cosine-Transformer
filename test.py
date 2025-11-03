@@ -26,6 +26,7 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+from methods.ProFOCT import ProFOCT
 import eval_utils
 
 global device
@@ -174,7 +175,7 @@ if __name__ == '__main__':
         testfile = configs.data_dir[params.dataset] + split + '.json'
 
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'ProFOCT_cosine', 'ProFOCT_softmax']:
        
         seed_func()
         
@@ -200,6 +201,26 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
 
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+            
+        elif params.method in ['ProFOCT_cosine', 'ProFOCT_softmax']:
+            variant = 'cosine' if params.method == 'ProFOCT_cosine' else 'softmax'
+            
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+            
+            # ProFOCT-specific parameters
+            profoct_params = {
+                'vic_alpha': params.vic_alpha,
+                'vic_beta': params.vic_beta,
+                'vic_gamma': params.vic_gamma,
+                'dynamic_vic': bool(params.dynamic_vic),
+                'distance_metric': params.distance_metric,
+                'use_vic_on_attention': bool(params.use_vic_on_attention)
+            }
+            
+            model = ProFOCT(feature_model, variant=variant, **few_shot_params, **profoct_params)
     else:
         raise ValueError('Unknown method')
 
