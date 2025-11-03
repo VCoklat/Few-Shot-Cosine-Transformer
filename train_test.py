@@ -7,6 +7,10 @@ import random
 import time
 import h5py
 import numpy as np
+
+# Set CUDA memory configuration before importing torch
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 import torch
 import torch.nn as nn
 import torch.optim
@@ -474,10 +478,9 @@ if __name__ == '__main__':
         print("===================================")
         print("Test phase: ")
         
-        # Memory optimization
+        # Memory optimization - clear cache before testing
         torch.cuda.empty_cache()
-        import os
-        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 
         iter_num = params.test_iter
         split = params.split
