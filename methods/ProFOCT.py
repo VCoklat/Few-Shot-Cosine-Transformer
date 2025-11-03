@@ -48,7 +48,8 @@ class ProFOCT(MetaTemplate):
                  dynamic_vic=True,
                  vic_ema_decay=0.9,
                  distance_metric='mahalanobis',
-                 use_vic_on_attention=False):
+                 use_vic_on_attention=False,
+                 vic_attention_scale=0.5):
         """
         Args:
             model_func: Backbone feature extractor
@@ -67,6 +68,7 @@ class ProFOCT(MetaTemplate):
             vic_ema_decay: EMA decay for smoothing dynamic VIC updates
             distance_metric: 'mahalanobis', 'euclidean', or 'cityblock'
             use_vic_on_attention: Whether to apply VIC to attention outputs
+            vic_attention_scale: Scaling factor for VIC losses on attention outputs
         """
         super(ProFOCT, self).__init__(model_func, n_way, k_shot, n_query)
         
@@ -75,6 +77,7 @@ class ProFOCT(MetaTemplate):
         self.depth = depth
         self.distance_metric = distance_metric
         self.use_vic_on_attention = use_vic_on_attention
+        self.vic_attention_scale = vic_attention_scale
         dim = self.feat_dim
         
         # Cosine attention mechanism
@@ -337,8 +340,9 @@ class ProFOCT(MetaTemplate):
         if self.use_vic_on_attention:
             attn_output = x_attn.squeeze(0)  # (n_query, dim)
             # Detach to avoid storing too many intermediate gradients
-            loss_v = loss_v + self.compute_variance_loss(attn_output.detach()) * 0.5
-            loss_c = loss_c + self.compute_covariance_loss(attn_output.detach()) * 0.5
+            # Scale by vic_attention_scale to prevent over-regularization
+            loss_v = loss_v + self.compute_variance_loss(attn_output.detach()) * self.vic_attention_scale
+            loss_c = loss_c + self.compute_covariance_loss(attn_output.detach()) * self.vic_attention_scale
         
         # Dynamic VIC weight update (detach losses to avoid graph retention)
         self.update_dynamic_vic_weights(loss_ce.detach(), loss_v.detach(), loss_c.detach())

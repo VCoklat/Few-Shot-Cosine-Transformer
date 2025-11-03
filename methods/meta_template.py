@@ -116,6 +116,14 @@ class MetaTemplate(nn.Module):
                 cache_clear_freq = 10 if gradient_accumulation_steps > 1 else 50
                 if (i + 1) % cache_clear_freq == 0:
                     torch.cuda.empty_cache()
+            
+            # Handle any remaining accumulated gradients at the end of epoch
+            if len(train_loader) % gradient_accumulation_steps != 0:
+                if use_amp:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
                     
         if wandb_flag:
             wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)

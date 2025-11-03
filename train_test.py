@@ -235,11 +235,12 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
     max_acc = 0
     
-    # Gradient accumulation for memory efficiency (default to 2 for better memory management)
-    gradient_accumulation_steps = getattr(params, 'gradient_accumulation_steps', 2)
+    # Get memory optimization parameters from args
+    gradient_accumulation_steps = params.gradient_accumulation_steps
     
-    # Automatic mixed precision for memory efficiency and speed
-    use_amp = getattr(params, 'use_amp', True)
+    # Convert use_amp from int (0/1) to bool
+    use_amp = bool(params.use_amp) and torch.cuda.is_available()
+
 
     for epoch in range(num_epoch):
         model.train()
