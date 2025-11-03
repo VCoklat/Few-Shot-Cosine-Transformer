@@ -7,7 +7,10 @@ import torch.nn.functional as F
 import tqdm
 from abc import abstractmethod
 import pdb
-import wandb
+try:
+    import wandb
+except ImportError:
+    wandb = None
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import warnings
@@ -75,7 +78,7 @@ class MetaTemplate(nn.Module):
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
-        if wandb_flag:
+        if wandb_flag and wandb is not None:
             wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
 
     def val_loop(self, val_loader, epoch, wandb_flag, record = None):
@@ -96,7 +99,7 @@ class MetaTemplate(nn.Module):
         acc_all  = np.asarray(acc_all)
         acc_mean = np.mean(acc_all)
         acc_std  = np.std(acc_all)
-        if wandb_flag:
+        if wandb_flag and wandb is not None:
             wandb.log({'Val Acc': acc_mean},  step = epoch + 1)
         print('Val Acc = %4.2f%% +- %4.2f%%' %(  acc_mean, 1.96* acc_std/np.sqrt(iter_num)))
 
