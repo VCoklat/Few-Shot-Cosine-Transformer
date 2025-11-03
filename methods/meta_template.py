@@ -70,13 +70,22 @@ class MetaTemplate(nn.Module):
                 acc, loss = self.set_forward_loss(x = x.to(device))
                 loss.backward()
                 optimizer.step()
-                avg_loss += loss.item()
+                
+                # Detach to prevent memory retention of computation graph
+                avg_loss += loss.detach().item()
                 avg_acc.append(acc)
+                
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
+                
+                # Clear cache periodically to free up unused memory
+                if (i + 1) % 50 == 0:
+                    torch.cuda.empty_cache()
+                    
         if wandb_flag:
             wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
+
 
     def val_loop(self, val_loader, epoch, wandb_flag, record = None):
         correct =0
