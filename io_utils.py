@@ -45,6 +45,24 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=2,
+                        help='Number of gradient accumulation steps for memory-efficient training')
+    parser.add_argument('--use_amp', type=int, default=1,
+                        help='[1:0] - [True:False]; Use automatic mixed precision training')
+    parser.add_argument('--dynamic_vic', type=int, default=1,
+                        help='[1:0] - [True:False]; Use dynamic VIC (Variance-Invariance-Covariance) weighting')
+    parser.add_argument('--vic_alpha', type=float, default=0.5,
+                        help='VIC regularization weight for variance component')
+    parser.add_argument('--vic_beta', type=float, default=9.0,
+                        help='VIC regularization weight for covariance component')
+    parser.add_argument('--vic_gamma', type=float, default=0.5,
+                        help='VIC target variance value (gamma parameter)')
+    parser.add_argument('--vic_attention_scale', type=float, default=0.5,
+                        help='VIC attention scaling factor')
+    parser.add_argument('--use_vic_on_attention', type=int, default=0,
+                        help='[1:0] - [True:False]; Apply VIC regularization on attention layers')
+    parser.add_argument('--distance_metric', type=str, default='euclidean',
+                        help='Distance metric to use (euclidean/cosine)')
     return parser.parse_args()
 
 

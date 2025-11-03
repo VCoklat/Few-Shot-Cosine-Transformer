@@ -358,14 +358,14 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         raise ValueError('Unknown optimization, please define by yourself')
 
     # Enable mixed precision training for better memory efficiency
-    scaler = torch.cuda.amp.GradScaler() if torch.cuda.is_available() else None
+    scaler = torch.cuda.amp.GradScaler() if (torch.cuda.is_available() and params.use_amp) else None
     
     # Add learning rate scheduler for better convergence
     # CosineAnnealingLR helps the model converge better by gradually reducing learning rate
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epoch, eta_min=1e-6)
     
     # Gradient accumulation steps to reduce memory usage
-    accumulation_steps = 2
+    accumulation_steps = params.gradient_accumulation_steps
 
     max_acc = 0
     for epoch in range(num_epoch):
