@@ -723,7 +723,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'ProFOCT_cosine', 'ProFOCT_softmax']:
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
 
@@ -739,8 +739,9 @@ if __name__ == '__main__':
 
         seed_func()
 
-        if params.method in ['FSCT_softmax', 'FSCT_cosine']:
-            variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
+        if params.method in ['FSCT_softmax', 'FSCT_cosine', 'ProFOCT_cosine', 'ProFOCT_softmax']:
+            # ProFOCT is an alias for FSCT (Prototype Few-shot Cosine Transformer)
+            variant = 'cosine' if params.method in ['FSCT_cosine', 'ProFOCT_cosine'] else 'softmax'
 
             def feature_model():
                 if params.dataset in ['Omniglot', 'cross_char']:
