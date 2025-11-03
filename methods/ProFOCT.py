@@ -129,8 +129,12 @@ class ProFOCT(MetaTemplate):
             eps: Minimum variance threshold
         
         Returns:
-            Variance loss (scalar)
+            Variance loss (scalar), already normalized
         """
+        # Avoid computation if batch is too small
+        if z.size(0) < 2:
+            return torch.tensor(0.0, device=z.device)
+            
         std_z = torch.sqrt(z.var(dim=0) + 1e-8)
         # Hinge loss: penalize dimensions with std below eps
         return torch.mean(F.relu(eps - std_z))
@@ -158,9 +162,15 @@ class ProFOCT(MetaTemplate):
             z: Feature embeddings (batch_size, feature_dim)
         
         Returns:
-            Covariance loss (scalar)
+            Covariance loss (scalar), normalized by feature dimension
         """
         batch_size = z.size(0)
+        feat_dim = z.size(1)
+        
+        # Avoid computation if batch is too small
+        if batch_size < 2:
+            return torch.tensor(0.0, device=z.device)
+        
         # Center features
         z = z - z.mean(dim=0, keepdim=True)
         # Compute covariance matrix
@@ -168,7 +178,8 @@ class ProFOCT(MetaTemplate):
         # Penalize off-diagonal elements
         off_diag = cov_z.clone()
         off_diag.diagonal().zero_()
-        return off_diag.pow(2).sum() / z.size(1)
+        # Normalize by feature dimension to keep loss scale-invariant
+        return off_diag.pow(2).sum() / (feat_dim * feat_dim)
     
     def compute_mahalanobis_distance(self, query, prototypes, support_features):
         """
@@ -233,9 +244,10 @@ class ProFOCT(MetaTemplate):
         norm_ce = grad_ce / total_grad
         
         # Update with EMA smoothing
-        new_alpha = 0.5 + norm_v * 2.0  # Range: [0.5, 2.5]
-        new_gamma = 0.5 + norm_c * 2.0  # Range: [0.5, 2.5]
-        new_beta = 9.0 * (1.0 - norm_ce * 0.5)  # Reduce when CE is high
+        # Use more conservative ranges to avoid over-regularization
+        new_alpha = 0.1 + norm_v * 1.0  # Range: [0.1, 1.1]
+        new_gamma = 0.1 + norm_c * 1.0  # Range: [0.1, 1.1]
+        new_beta = 1.0 * (1.0 - norm_ce * 0.5)  # Range: [0.5, 1.0]
         
         # Apply EMA
         self.alpha_ema = self.vic_ema_decay * self.alpha_ema + (1 - self.vic_ema_decay) * new_alpha
@@ -243,9 +255,9 @@ class ProFOCT(MetaTemplate):
         self.beta_ema = self.vic_ema_decay * self.beta_ema + (1 - self.vic_ema_decay) * new_beta
         
         # Constrain weights to safe ranges to avoid over-regularization
-        self.vic_alpha = torch.clamp(self.alpha_ema, 0.1, 5.0)
-        self.vic_gamma = torch.clamp(self.gamma_ema, 0.1, 5.0)
-        self.vic_beta = torch.clamp(self.beta_ema, 1.0, 20.0)
+        self.vic_alpha = torch.clamp(self.alpha_ema, 0.01, 2.0)
+        self.vic_gamma = torch.clamp(self.gamma_ema, 0.01, 2.0)
+        self.vic_beta = torch.clamp(self.beta_ema, 0.1, 5.0)
     
     def set_forward(self, x, is_feature=False):
         """

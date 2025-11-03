@@ -233,6 +233,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
+    # Add learning rate scheduler for better convergence
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.01)
+
     max_acc = 0
     
     # Get memory optimization parameters from args
@@ -266,6 +270,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # Step the learning rate scheduler
+        scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        print(f"Learning rate: {current_lr:.6f}")
         
         # Clear cache after each epoch
         torch.cuda.empty_cache()

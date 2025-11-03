@@ -47,12 +47,12 @@ def parse_args():
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
     
     # ProFOCT-specific arguments
-    parser.add_argument('--vic_alpha', type=float, default=0.5,
-                        help='Initial variance regularization weight for ProFOCT')
-    parser.add_argument('--vic_beta', type=float, default=9.0,
-                        help='Initial invariance regularization weight for ProFOCT')
-    parser.add_argument('--vic_gamma', type=float, default=0.5,
-                        help='Initial covariance regularization weight for ProFOCT')
+    parser.add_argument('--vic_alpha', type=float, default=0.1,
+                        help='Initial variance regularization weight for ProFOCT (default: 0.1)')
+    parser.add_argument('--vic_beta', type=float, default=1.0,
+                        help='Initial invariance regularization weight for ProFOCT (default: 1.0)')
+    parser.add_argument('--vic_gamma', type=float, default=0.1,
+                        help='Initial covariance regularization weight for ProFOCT (default: 0.1)')
     parser.add_argument('--dynamic_vic', type=int, default=1,
                         help='[1:0] - [True:False]; Use dynamic VIC weight adaptation')
     parser.add_argument('--distance_metric', type=str, default='euclidean',

@@ -66,6 +66,9 @@ class MetaTemplate(nn.Module):
         # Initialize GradScaler for automatic mixed precision
         scaler = GradScaler() if use_amp else None
         
+        # Gradient clipping threshold
+        max_grad_norm = 1.0
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
@@ -87,6 +90,9 @@ class MetaTemplate(nn.Module):
                     
                     # Only step optimizer after accumulating gradients
                     if (i + 1) % gradient_accumulation_steps == 0:
+                        # Unscale gradients and clip
+                        scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(self.parameters(), max_grad_norm)
                         scaler.step(optimizer)
                         scaler.update()
                 else:
@@ -98,6 +104,8 @@ class MetaTemplate(nn.Module):
                     loss.backward()
                     # Only step optimizer after accumulating gradients
                     if (i + 1) % gradient_accumulation_steps == 0:
+                        # Clip gradients to prevent explosion
+                        torch.nn.utils.clip_grad_norm_(self.parameters(), max_grad_norm)
                         optimizer.step()
                 
                 # Detach to prevent memory retention of computation graph
@@ -120,9 +128,12 @@ class MetaTemplate(nn.Module):
             # Handle any remaining accumulated gradients at the end of epoch
             if len(train_loader) % gradient_accumulation_steps != 0:
                 if use_amp:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_grad_norm)
                     scaler.step(optimizer)
                     scaler.update()
                 else:
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_grad_norm)
                     optimizer.step()
                     
         if wandb_flag:
