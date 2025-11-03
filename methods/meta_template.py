@@ -8,6 +8,7 @@ import tqdm
 from abc import abstractmethod
 import pdb
 import wandb
+from torch.cuda.amp import autocast, GradScaler
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import warnings
@@ -58,30 +59,71 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, gradient_accumulation_steps=1, use_amp=False):
         avg_loss = 0
         avg_acc = []
+        
+        # Initialize GradScaler for automatic mixed precision
+        scaler = GradScaler() if use_amp else None
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
                     self.n_way  = x.size(0)
                 
-                optimizer.zero_grad()
-                acc, loss = self.set_forward_loss(x = x.to(device))
-                loss.backward()
-                optimizer.step()
+                # Gradient accumulation: only zero gradients at the start of accumulation
+                if i % gradient_accumulation_steps == 0:
+                    optimizer.zero_grad()
+                
+                # Forward pass with optional automatic mixed precision
+                if use_amp:
+                    with autocast():
+                        acc, loss = self.set_forward_loss(x = x.to(device))
+                        # Scale loss by accumulation steps for averaging
+                        loss = loss / gradient_accumulation_steps
+                    
+                    # Backward pass with gradient scaling
+                    scaler.scale(loss).backward()
+                    
+                    # Only step optimizer after accumulating gradients
+                    if (i + 1) % gradient_accumulation_steps == 0:
+                        scaler.step(optimizer)
+                        scaler.update()
+                else:
+                    # Standard precision training
+                    acc, loss = self.set_forward_loss(x = x.to(device))
+                    # Scale loss by accumulation steps for averaging
+                    loss = loss / gradient_accumulation_steps
+                    # Backward pass
+                    loss.backward()
+                    # Only step optimizer after accumulating gradients
+                    if (i + 1) % gradient_accumulation_steps == 0:
+                        optimizer.step()
                 
                 # Detach to prevent memory retention of computation graph
-                avg_loss += loss.detach().item()
+                avg_loss += loss.detach().item() * gradient_accumulation_steps
                 avg_acc.append(acc)
                 
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
                 
-                # Clear cache periodically to free up unused memory
-                if (i + 1) % 50 == 0:
+                # More aggressive memory management
+                # Delete intermediate variables
+                del loss, acc
+                
+                # Clear cache more frequently when using gradient accumulation
+                cache_clear_freq = 10 if gradient_accumulation_steps > 1 else 50
+                if (i + 1) % cache_clear_freq == 0:
                     torch.cuda.empty_cache()
+            
+            # Handle any remaining accumulated gradients at the end of epoch
+            if len(train_loader) % gradient_accumulation_steps != 0:
+                if use_amp:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
                     
         if wandb_flag:
             wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)

@@ -234,11 +234,18 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         raise ValueError('Unknown optimization, please define by yourself')
 
     max_acc = 0
+    
+    # Get memory optimization parameters from args
+    gradient_accumulation_steps = params.gradient_accumulation_steps
+    
+    # Convert use_amp from int (0/1) to bool
+    use_amp = bool(params.use_amp) and torch.cuda.is_available()
+
 
     for epoch in range(num_epoch):
         model.train()
         model.train_loop(epoch, num_epoch, base_loader,
-                        params.wandb, optimizer)
+                        params.wandb, optimizer, gradient_accumulation_steps, use_amp)
 
         with torch.no_grad():
             model.eval()
@@ -259,6 +266,9 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                     params.checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
+        
+        # Clear cache after each epoch
+        torch.cuda.empty_cache()
         print()
     return model
 
@@ -446,7 +456,8 @@ if __name__ == '__main__':
                 'vic_gamma': params.vic_gamma,
                 'dynamic_vic': bool(params.dynamic_vic),
                 'distance_metric': params.distance_metric,
-                'use_vic_on_attention': bool(params.use_vic_on_attention)
+                'use_vic_on_attention': bool(params.use_vic_on_attention),
+                'vic_attention_scale': params.vic_attention_scale
             }
             
             model = ProFOCT(feature_model, variant=variant, **few_shot_params, **profoct_params)

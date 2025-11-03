@@ -128,11 +128,18 @@ This tests all core components including VIC losses, dynamic weight updates, cos
   - `--dynamic_vic`: Enable dynamic VIC weight adaptation if `1`, static if `0` (default `1`)
   - `--distance_metric`: Distance metric for prototype space: `euclidean`/`mahalanobis`/`cityblock` (default `euclidean`)
   - `--use_vic_on_attention`: Apply VIC regularization to attention outputs if `1`, none if `0` (default `0`)
++ **Memory optimization parameters** (to prevent CUDA out-of-memory errors):
+  - `--gradient_accumulation_steps`: Number of gradient accumulation steps for memory efficiency (default `2`)
+  - `--use_amp`: Use automatic mixed precision (FP16) training if `1`, FP32 if `0` (default `1`)
+  - See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed guide
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
   
   For ProFOCT with dynamic VIC:  
   `python train_test.py --method ProFOCT_cosine --dataset miniImagenet --backbone ResNet18 --n_way 5 --k_shot 5 --dynamic_vic 1 --wandb 1`  
+  
+  For memory-constrained GPUs:  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet18 --gradient_accumulation_steps 4 --use_amp 1 --n_query 8`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
