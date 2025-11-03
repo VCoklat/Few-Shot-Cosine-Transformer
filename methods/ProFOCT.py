@@ -131,24 +131,27 @@ class ProFOCT(MetaTemplate):
         # Initialize weights
         self._init_weights()
         
-        # Loss function
-        self.loss_fn = nn.CrossEntropyLoss()
-        
-        # Initialize weights
-        self._init_weights()
-        
     def _init_weights(self):
         """Initialize weights for better training stability."""
         # Initialize proto_weight with small random values instead of all ones
         # This helps with learning different importance for different support samples
         nn.init.normal_(self.proto_weight, mean=1.0, std=0.01)
         
-        # Initialize linear layers with Xavier initialization
+        # Initialize FFN and attention linear layers with Xavier initialization
+        # Skip the final classification head (self.linear) which has its own initialization
         for m in self.modules():
-            if isinstance(m, nn.Linear) and m not in [layer for layer in self.linear]:
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
+            if isinstance(m, nn.Linear):
+                # Check if this linear layer is not part of the final classification head
+                is_in_linear_head = False
+                for module in self.linear.modules():
+                    if m is module:
+                        is_in_linear_head = True
+                        break
+                
+                if not is_in_linear_head:
+                    nn.init.xavier_uniform_(m.weight)
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
     
     def _warmup_vic_weights(self):
         """Gradually increase VIC weights during warmup phase."""
