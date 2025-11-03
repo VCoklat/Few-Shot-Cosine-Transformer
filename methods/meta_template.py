@@ -71,7 +71,7 @@ class MetaTemplate(nn.Module):
                 loss.backward()
                 optimizer.step()
                 
-                # Detach values to prevent gradient accumulation
+                # Detach to prevent memory retention of computation graph
                 avg_loss += loss.detach().item()
                 avg_acc.append(acc)
                 
@@ -79,8 +79,8 @@ class MetaTemplate(nn.Module):
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
                 
-                # Clear cache periodically to free up memory
-                if (i + 1) % 10 == 0:
+                # Clear cache periodically to free up unused memory
+                if (i + 1) % 50 == 0:
                     torch.cuda.empty_cache()
                     
         if wandb_flag:
