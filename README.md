@@ -14,9 +14,55 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - [Acknowledgment](#acknowledgment)
   - [Citation](#citation)
   - [Contact](#contact)
+  
 ## Few-shot Cosine Transformer
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
+
+## ProFO-CT: Prototypical Feature-Optimized Cosine Transformer with Dynamic VIC
+
+**ProFO-CT** is an advanced few-shot learning method that combines the strengths of multiple state-of-the-art approaches:
+
+### Key Innovations
+1. **VIC-Regularized Prototypical Learning**: Incorporates Variance-Invariance-Covariance (VIC) regularization to create robust, well-separated class prototypes that resist representation collapse.
+
+2. **Dynamic VIC Weights**: Unlike fixed regularization weights, ProFO-CT adapts the V, I, and C coefficients per-episode based on task difficulty and feature statistics, preventing over-regularization while maintaining stability.
+
+3. **Learnable Prototypes**: Uses softmax-normalized weighted means to compute class prototypes, allowing the model to emphasize informative support samples and de-emphasize outliers.
+
+4. **Cosine Cross-Attention**: Employs stable cosine-based attention mechanisms for query-support alignment, avoiding numerical instability common in standard softmax attention.
+
+5. **Hybrid Distance Metrics**: Supports Mahalanobis distance for non-spherical class structures alongside Euclidean and cityblock metrics.
+
+### VIC Regularization Components
+- **Variance (V)**: Enforces sufficient per-dimension variance to prevent feature collapse
+- **Invariance (I)**: Encourages feature invariance to transformations
+- **Covariance (C)**: Penalizes off-diagonal covariance to decorrelate feature dimensions
+
+### Algorithm Overview
+```
+For each episode:
+  1. Extract support and query features via backbone
+  2. Compute learnable weighted prototypes from support set
+  3. Apply multi-head cosine cross-attention between prototypes and queries
+  4. Classify queries using cosine linear head
+  5. Compute loss: L = L_CE + α·V + β·I + γ·C
+  6. Update VIC weights dynamically based on gradient magnitudes
+```
+
+### Expected Benefits
+- **Better Prototype Quality**: VIC regularization reduces intra-class variance while increasing inter-class separation
+- **Improved Stability**: Cosine attention provides more stable correlation maps, especially in 1-shot scenarios
+- **Adaptive Regularization**: Dynamic VIC weights automatically adjust to dataset characteristics and backbone statistics
+- **Cross-Domain Robustness**: Combination of techniques should generalize well across different few-shot benchmarks
+
+### Validation
+Run the validation script to verify the implementation:
+```bash
+python test_profoct.py
+```
+
+This tests all core components including VIC losses, dynamic weight updates, cosine attention, and end-to-end forward/backward passes.
 
 ## Experiments
 ### Dependencies environment
@@ -58,9 +104,10 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - Training and testing: `train_test.py`
 + **Configurations pool**:
     + Backbones: `Conv4`/`Conv6`/`ResNet18`/`ResNet34`
-    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`
+    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`/`ProFOCT_cosine`/`ProFOCT_softmax`
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
+      + `ProFOCT` is the new _Prototypical Feature-Optimized Cosine Transformer_ with VIC regularization
     + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
@@ -74,8 +121,18 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
 
   - For other parameters, please read `io_utils.py` for detail information.
++ **ProFOCT-specific parameters** (only applicable when using `ProFOCT_cosine` or `ProFOCT_softmax`):
+  - `--vic_alpha`: Initial variance regularization weight (default `0.5`)
+  - `--vic_beta`: Initial invariance regularization weight (default `9.0`)
+  - `--vic_gamma`: Initial covariance regularization weight (default `0.5`)
+  - `--dynamic_vic`: Enable dynamic VIC weight adaptation if `1`, static if `0` (default `1`)
+  - `--distance_metric`: Distance metric for prototype space: `euclidean`/`mahalanobis`/`cityblock` (default `euclidean`)
+  - `--use_vic_on_attention`: Apply VIC regularization to attention outputs if `1`, none if `0` (default `0`)
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
+  
+  For ProFOCT with dynamic VIC:  
+  `python train_test.py --method ProFOCT_cosine --dataset miniImagenet --backbone ResNet18 --n_way 5 --k_shot 5 --dynamic_vic 1 --wandb 1`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
