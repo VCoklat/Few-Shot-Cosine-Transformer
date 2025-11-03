@@ -171,8 +171,35 @@ class FewShotTransformer(MetaTemplate):
             x = attn_output + x
             x = self.FFN_forward(x) + x
 
-        # Output is the probabilistic prediction for each class
-        return self.final_linear_forward(x).squeeze()  # (q, n)
+        # x now contains refined prototypes: (1, n_way, d)
+        # We need to compute similarity scores between each query and each prototype
+        
+        # Project prototypes and queries through final layers
+        proto_features = self.final_linear_forward(x)  # (1, n_way, dim_head)
+        
+        # Process each query through the same layers
+        query_features = []
+        for i in range(z_query.shape[0]):
+            q_feat = self.final_linear_forward(z_query[i:i+1])  # (1, 1, dim_head)
+            query_features.append(q_feat)
+        query_features = torch.cat(query_features, dim=0)  # (n_way*n_query, 1, dim_head)
+        
+        # Compute scores: for each query, compute similarity with each prototype
+        proto_features = proto_features.squeeze(0)  # (n_way, dim_head)
+        query_features = query_features.squeeze(1)  # (n_way*n_query, dim_head)
+        
+        if self.variant == "cosine":
+            # Cosine similarity: normalize then compute dot product
+            proto_norm = F.normalize(proto_features, p=2, dim=1)  # (n_way, dim_head)
+            query_norm = F.normalize(query_features, p=2, dim=1)  # (n_way*n_query, dim_head)
+            scores = torch.matmul(query_norm, proto_norm.t())  # (n_way*n_query, n_way)
+            # Scale cosine similarity to make it compatible with cross-entropy
+            scores = scores * 10.0  # Temperature scaling
+        else:
+            # Euclidean distance (negative, so higher is better)
+            scores = -torch.cdist(query_features, proto_features, p=2)  # (n_way*n_query, n_way)
+        
+        return scores  # (n_way*n_query, n_way)
 
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
