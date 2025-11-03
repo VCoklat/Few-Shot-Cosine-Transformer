@@ -21,7 +21,13 @@ try:
     from methods.meta_template import MetaTemplate
     from methods.transformer import FewShotTransformer
     from methods.ProFOCT import ProFOCT
-    from torch.cuda.amp import autocast, GradScaler
+    # AMP imports with fallback for older PyTorch versions
+    try:
+        from torch.cuda.amp import autocast, GradScaler
+        AMP_AVAILABLE = True
+    except ImportError:
+        print("   ⚠️  AMP not available in this PyTorch version")
+        AMP_AVAILABLE = False
     print("✅ All modules imported successfully")
 except Exception as e:
     print(f"❌ Failed to import modules: {e}")
@@ -126,7 +132,9 @@ except Exception as e:
 # Test 4: Test automatic mixed precision (AMP)
 print("\n[Test 4] Testing automatic mixed precision (AMP)...")
 try:
-    if not torch.cuda.is_available():
+    if not AMP_AVAILABLE:
+        print("   ⚠️  AMP not available in this PyTorch version, skipping AMP test")
+    elif not torch.cuda.is_available():
         print("   ⚠️  CUDA not available, skipping AMP test")
     else:
         device = torch.device('cuda')

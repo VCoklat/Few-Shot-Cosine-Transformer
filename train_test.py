@@ -456,7 +456,8 @@ if __name__ == '__main__':
                 'vic_gamma': params.vic_gamma,
                 'dynamic_vic': bool(params.dynamic_vic),
                 'distance_metric': params.distance_metric,
-                'use_vic_on_attention': bool(params.use_vic_on_attention)
+                'use_vic_on_attention': bool(params.use_vic_on_attention),
+                'vic_attention_scale': params.vic_attention_scale
             }
             
             model = ProFOCT(feature_model, variant=variant, **few_shot_params, **profoct_params)
