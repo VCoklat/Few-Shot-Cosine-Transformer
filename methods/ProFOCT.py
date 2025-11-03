@@ -105,10 +105,19 @@ class ProFOCT(MetaTemplate):
         self.dynamic_vic = dynamic_vic
         self.vic_ema_decay = vic_ema_decay
         
-        # Initialize VIC weights with ProFONet's strong setting
+        # Store initial VIC weights for warmup
+        self.register_buffer('vic_alpha_init', torch.tensor(vic_alpha))
+        self.register_buffer('vic_beta_init', torch.tensor(vic_beta))
+        self.register_buffer('vic_gamma_init', torch.tensor(vic_gamma))
+        
+        # Initialize VIC weights (will be warmed up during training)
         self.register_buffer('vic_alpha', torch.tensor(vic_alpha))
         self.register_buffer('vic_beta', torch.tensor(vic_beta))
         self.register_buffer('vic_gamma', torch.tensor(vic_gamma))
+        
+        # Track training steps for warmup
+        self.register_buffer('train_steps', torch.tensor(0))
+        self.warmup_steps = 100  # Warmup VIC over first 100 training steps
         
         # For dynamic VIC: track gradient magnitudes with EMA
         if dynamic_vic:
@@ -119,6 +128,43 @@ class ProFOCT(MetaTemplate):
         # Loss function
         self.loss_fn = nn.CrossEntropyLoss()
         
+        # Initialize weights
+        self._init_weights()
+        
+        # Loss function
+        self.loss_fn = nn.CrossEntropyLoss()
+        
+        # Initialize weights
+        self._init_weights()
+        
+    def _init_weights(self):
+        """Initialize weights for better training stability."""
+        # Initialize proto_weight with small random values instead of all ones
+        # This helps with learning different importance for different support samples
+        nn.init.normal_(self.proto_weight, mean=1.0, std=0.01)
+        
+        # Initialize linear layers with Xavier initialization
+        for m in self.modules():
+            if isinstance(m, nn.Linear) and m not in [layer for layer in self.linear]:
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+    
+    def _warmup_vic_weights(self):
+        """Gradually increase VIC weights during warmup phase."""
+        if self.train_steps >= self.warmup_steps:
+            return  # Warmup complete
+        
+        # Linear warmup from 0 to target values
+        warmup_progress = float(self.train_steps) / self.warmup_steps
+        
+        self.vic_alpha = self.vic_alpha_init * warmup_progress
+        self.vic_beta = self.vic_beta_init * warmup_progress
+        self.vic_gamma = self.vic_gamma_init * warmup_progress
+        
+        # Increment step counter
+        self.train_steps += 1
+    
     def compute_variance_loss(self, z, eps=1e-4):
         """
         Variance regularization: enforces sufficient per-dimension variance.
@@ -308,6 +354,10 @@ class ProFOCT(MetaTemplate):
             accuracy: Training accuracy (scalar)
             loss: Total loss including VIC terms (scalar)
         """
+        # Apply VIC warmup in training mode
+        if self.training:
+            self._warmup_vic_weights()
+        
         # Extract features
         z_support, z_query = self.parse_feature(x, is_feature=False)
         
