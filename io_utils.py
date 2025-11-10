@@ -35,6 +35,8 @@ def parse_args():
     parser.add_argument('--optimization'    , type=str, default='AdamW', help='Optimization algorithms. Support Adam, AdamW, SGD')
     parser.add_argument('--wandb'           , type=int, default=0, help='[1:0] - [True:False]; Wandb Log, only for train.py and train_save_test.py')
     parser.add_argument('--datetime'        , default = str("{:%Y%m%d@%H%M%S}".format(datetime.datetime.now())), help='Execute time log')
+    parser.add_argument('--gradient_accumulation_steps', default=0, type=int, 
+                        help='Number of steps for gradient accumulation (0=auto: 4 for ResNet, 2 for others)')
 
     parser.add_argument('--save_freq'       , default=50, type=int, help='Save frequency')
     parser.add_argument('--num_epoch'       , default=50, type=int, help ='Stopping epoch')

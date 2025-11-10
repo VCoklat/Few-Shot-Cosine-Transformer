@@ -229,11 +229,19 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         raise ValueError('Unknown optimization, please define by yourself')
 
     max_acc = 0
+    
+    # Set gradient accumulation steps (higher for ResNet to reduce memory)
+    if params.gradient_accumulation_steps > 0:
+        accumulation_steps = params.gradient_accumulation_steps
+    else:
+        accumulation_steps = 4 if 'ResNet' in params.backbone else 2
+    
+    print(f"Using gradient accumulation with {accumulation_steps} steps")
 
     for epoch in range(num_epoch):
         model.train()
         model.train_loop(epoch, num_epoch, base_loader,
-                        params.wandb, optimizer)
+                        params.wandb, optimizer, accumulation_steps)
 
         with torch.no_grad():
             model.eval()

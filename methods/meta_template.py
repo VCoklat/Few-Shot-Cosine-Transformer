@@ -58,19 +58,37 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, accumulation_steps=2):
         avg_loss = 0
         avg_acc = []
+        
+        # Initialize GradScaler for automatic mixed precision
+        scaler = torch.cuda.amp.GradScaler()
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
                     self.n_way  = x.size(0)
                 
-                optimizer.zero_grad()
-                acc, loss = self.set_forward_loss(x = x.to(device))
-                loss.backward()
-                optimizer.step()
-                avg_loss += loss.item()
+                # Use automatic mixed precision for forward and backward pass
+                with torch.cuda.amp.autocast():
+                    acc, loss = self.set_forward_loss(x = x.to(device))
+                    # Scale loss for gradient accumulation
+                    loss = loss / accumulation_steps
+                
+                # Scaled backward pass
+                scaler.scale(loss).backward()
+                
+                # Only update weights every accumulation_steps
+                if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+                    scaler.step(optimizer)
+                    scaler.update()
+                    optimizer.zero_grad()
+                    
+                    # Clear cache after optimizer step
+                    torch.cuda.empty_cache()
+                
+                avg_loss += loss.item() * accumulation_steps  # Rescale loss for logging
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
