@@ -26,6 +26,7 @@ from io_utils import (get_assigned_file, get_best_file,
                       model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+from methods.enhanced_transformer import EnhancedFewShotTransformer
 import eval_utils
 
 global device
@@ -174,7 +175,7 @@ if __name__ == '__main__':
         testfile = configs.data_dir[params.dataset] + split + '.json'
 
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'FSCT_enhanced_cosine', 'FSCT_enhanced_softmax', 'CTX_softmax', 'CTX_cosine']:
        
         seed_func()
         
@@ -190,6 +191,24 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
             model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+        
+        elif params.method in ['FSCT_enhanced_cosine', 'FSCT_enhanced_softmax']:
+            # Enhanced version with VIC regularization and Mahalanobis classifier
+            variant = 'cosine' if params.method == 'FSCT_enhanced_cosine' else 'softmax'
+            
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+
+            model = EnhancedFewShotTransformer(
+                feature_model, variant=variant, 
+                depth=2, heads=4, dim_head=64, mlp_dim=512,
+                use_vic=True, use_mahalanobis=True,
+                vic_lambda_init=[9.0, 0.5, 0.5],
+                weight_controller='uncertainty',
+                **few_shot_params
+            )
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'

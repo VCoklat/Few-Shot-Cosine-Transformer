@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.enhanced_transformer import EnhancedFewShotTransformer
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -165,7 +166,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'FSCT_enhanced_cosine', 'FSCT_enhanced_softmax', 'CTX_softmax', 'CTX_cosine']:
 
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
@@ -190,6 +191,24 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
             model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+        
+        elif params.method in ['FSCT_enhanced_cosine', 'FSCT_enhanced_softmax']:
+            # Enhanced version with VIC regularization and Mahalanobis classifier
+            variant = 'cosine' if params.method == 'FSCT_enhanced_cosine' else 'softmax'
+            
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+
+            model = EnhancedFewShotTransformer(
+                feature_model, variant=variant, 
+                depth=2, heads=4, dim_head=64, mlp_dim=512,
+                use_vic=True, use_mahalanobis=True,
+                vic_lambda_init=[9.0, 0.5, 0.5],
+                weight_controller='uncertainty',
+                **few_shot_params
+            )
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
