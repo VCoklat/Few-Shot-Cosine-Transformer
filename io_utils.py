@@ -36,6 +36,12 @@ def parse_args():
     parser.add_argument('--wandb'           , type=int, default=0, help='[1:0] - [True:False]; Wandb Log, only for train.py and train_save_test.py')
     parser.add_argument('--datetime'        , default = str("{:%Y%m%d@%H%M%S}".format(datetime.datetime.now())), help='Execute time log')
 
+    # VIC Loss parameters
+    parser.add_argument('--use_vic_loss'    , type=int, default=0, help='[1:0] - [True:False]; Use VIC (Variance-Invariance-Covariance) loss for training')
+    parser.add_argument('--lambda_v'        , default=1.0, type=float, help='Weight for variance loss in VIC')
+    parser.add_argument('--lambda_i'        , default=1.0, type=float, help='Weight for invariance (CE) loss in VIC')
+    parser.add_argument('--lambda_c'        , default=0.04, type=float, help='Weight for covariance loss in VIC')
+
     parser.add_argument('--save_freq'       , default=50, type=int, help='Save frequency')
     parser.add_argument('--num_epoch'       , default=50, type=int, help ='Stopping epoch')
     parser.add_argument('--split'           , default='novel', help='base/val/novel, only for train.py and train_save_test.py')
