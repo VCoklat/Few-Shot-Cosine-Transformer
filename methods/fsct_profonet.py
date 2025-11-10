@@ -263,7 +263,7 @@ class FSCT_ProFONet(MetaTemplate):
         
         Args:
             z_support: Support set embeddings (n, k, d)
-            z_proto: Prototype embeddings (n, d)
+            z_proto: Prototype embeddings (1, n, d) or (n, d)
         
         Returns:
             v_loss: Variance loss
@@ -273,6 +273,11 @@ class FSCT_ProFONet(MetaTemplate):
         # E = concat([ZS.reshape(n*k, d), ZP])
         n, k, d = z_support.shape
         support_flat = z_support.reshape(n * k, d)
+        
+        # Ensure z_proto is 2D (n, d)
+        if z_proto.dim() == 3:
+            z_proto = z_proto.squeeze(0)  # (n, d)
+        
         embeddings = torch.cat([support_flat, z_proto], dim=0)  # (n*k + n, d)
         
         # Compute VIC losses
