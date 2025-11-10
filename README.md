@@ -14,9 +14,27 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - [Acknowledgment](#acknowledgment)
   - [Citation](#citation)
   - [Contact](#contact)
+
 ## Few-shot Cosine Transformer
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
+
+## VIC-Enhanced Training (NEW)
+
+**VIC (Variance-Invariance-Covariance) Loss** has been added to enhance few-shot learning performance. This extension combines three loss components:
+
+1. **Invariance Loss (L_I)**: Standard cross-entropy for classification
+2. **Variance Loss (L_V)**: Encourages compact class representations via hinge loss on standard deviation
+3. **Covariance Loss (L_C)**: Decorrelates feature dimensions to prevent informational collapse
+
+The VIC loss is optimized for training on GPUs with 8GB VRAM and can be easily enabled with command-line arguments. For detailed documentation and usage examples, see [VIC_LOSS_README.md](VIC_LOSS_README.md).
+
+**Quick start with VIC loss:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet \
+  --backbone ResNet18 --n_way 5 --k_shot 5 \
+  --use_vic_loss 1 --lambda_v 1.0 --lambda_i 1.0 --lambda_c 0.04
+```
 
 ## Experiments
 ### Dependencies environment
@@ -72,12 +90,21 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  - **VIC Loss parameters** (NEW):
+    - `--use_vic_loss`: enable VIC (Variance-Invariance-Covariance) loss if `1`, none if `0` (default `0`)
+    - `--lambda_v`: weight for variance loss in VIC (default `1.0`)
+    - `--lambda_i`: weight for invariance (CE) loss in VIC (default `1.0`)
+    - `--lambda_c`: weight for covariance loss in VIC (default `0.04`)
+    - See `VIC_LOSS_README.md` for detailed documentation
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
++ **Example with VIC Loss** (NEW):  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet18 --n_way 5 --k_shot 5 --use_vic_loss 1 --lambda_v 1.0 --lambda_i 1.0 --lambda_c 0.04`
 + **Bash script for multiple running**:
   + `source run_script.sh`
+  + For VIC-enhanced training examples: `source examples_vic_training.sh` (see examples only, edit to run)
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
   + All the method automatically push the training loss/val logs into WandB server. Set `--wandb 0` to turn it off
 + Result logs after testing will be saved in `record/results.txt`
