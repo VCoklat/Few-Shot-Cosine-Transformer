@@ -16,7 +16,24 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - [Contact](#contact)
 ## Few-shot Cosine Transformer
 
-![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
+![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
+
+### VIC Regularization with Dynamic Weighting (NEW)
+
+This implementation now includes **VIC (Variance-Invariance-Covariance) Regularization** with dynamic weight adjustment, inspired by ProFONet and VICReg. This enhancement:
+
+- **Improves accuracy** by creating more discriminative feature spaces through three complementary loss terms
+- **Prevents OOM** on limited VRAM (16GB) through mixed precision training and efficient implementation
+- **Adapts during training** via dynamic weight balancing that prevents loss imbalance
+- **Works seamlessly** with existing Cosine Transformer architecture
+
+For detailed information, usage examples, and parameters, see [VIC_REGULARIZATION.md](VIC_REGULARIZATION.md).
+
+Quick example with VIC regularization:
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet18 \
+    --n_way 5 --k_shot 5 --use_vic 1 --mixed_precision 1
+```
 
 ## Experiments
 ### Dependencies environment
@@ -72,6 +89,8 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  - `--use_vic`: enable VIC regularization with dynamic weighting if `1`, none if `0` (default `0`) - See [VIC_REGULARIZATION.md](VIC_REGULARIZATION.md)
+  - `--mixed_precision`: use mixed precision (FP16) training for memory efficiency if `1`, none if `0` (default `0`)
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
