@@ -72,15 +72,54 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  
+  **VIC Regularization parameters** (ProFONet integration):
+  - `--use_vic`: Enable VIC (Variance-Invariance-Covariance) regularization if `1`, disabled if `0` (default `0`)
+  - `--vic_lambda_v`: Weight for variance loss (default `1.0`)
+  - `--vic_lambda_i`: Weight for invariance loss (default `1.0`)
+  - `--vic_lambda_c`: Weight for covariance loss (default `0.04`)
+  - `--vic_dynamic_weights`: Use dynamic weight adjustment if `1`, fixed weights if `0` (default `1`)
+  - `--vic_alpha`: Learning rate for dynamic weight updates (default `0.001`)
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
-  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`
+  
+  **Example with VIC regularization**:  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --use_vic 1 --vic_lambda_v 1.0 --vic_lambda_i 1.0 --vic_lambda_c 0.04 --wandb 1`
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
   + All the method automatically push the training loss/val logs into WandB server. Set `--wandb 0` to turn it off
 + Result logs after testing will be saved in `record/results.txt`
+
+## VIC Regularization
+This implementation integrates **ProFONet's VIC (Variance-Invariance-Covariance) regularization** with dynamic weight adjustment for improved feature learning in few-shot scenarios. VIC regularization:
+- **Variance Loss**: Encourages feature dimensions to have sufficient spread
+- **Invariance Loss**: Encourages embeddings within the same class to be similar  
+- **Covariance Loss**: Encourages decorrelation between feature dimensions
+- **Dynamic Weighting**: Automatically balances the three loss components during training
+
+The VIC regularization helps create more robust and discriminative feature spaces, potentially improving few-shot classification accuracy while maintaining memory efficiency for 8GB VRAM GPUs.
+
+## Memory Optimization for Limited VRAM
+This implementation includes memory optimization utilities to prevent OOM (Out-of-Memory) errors on GPUs with limited VRAM (e.g., 8GB). Key features:
+
+**Memory-efficient practices:**
+- VIC regularization with dynamic weight adjustment (automatically reduces memory-intensive components)
+- Memory monitoring utilities in `methods/memory_utils.py`
+- Automatic mixed precision (AMP) training support
+- Efficient batch processing strategies
+
+**Tips for 8GB VRAM GPUs:**
+1. Reduce `--n_episode` (number of episodes per epoch) if OOM occurs
+2. Use smaller backbones: `Conv4` instead of `ResNet34`
+3. Reduce image size for ResNet (use 112 instead of 224)
+4. Enable VIC dynamic weights (default) - automatically adapts regularization strength
+5. Clear GPU cache between training runs
+
+The implementation is designed to work efficiently on 8GB VRAM GPUs while maintaining model performance.
+
 ## Results
 Our method Few-Shot TransFormer achieves the following performances on:
 | Dataset        | 1-shot Accuracy  | 5-shot Accuracy |

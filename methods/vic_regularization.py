@@ -61,7 +61,7 @@ class VICRegularization(nn.Module):
         """
         # Flatten if needed: (n_way, k_shot, d) -> (n_way * k_shot, d)
         if embeddings.dim() == 3:
-            embeddings = embeddings.view(-1, embeddings.size(-1))
+            embeddings = embeddings.reshape(-1, embeddings.size(-1))
         
         # Compute variance per dimension
         var = torch.var(embeddings, dim=0, unbiased=True)
@@ -110,7 +110,7 @@ class VICRegularization(nn.Module):
         """
         # Flatten if needed: (n_way, k_shot, d) -> (n_way * k_shot, d)
         if embeddings.dim() == 3:
-            embeddings = embeddings.view(-1, embeddings.size(-1))
+            embeddings = embeddings.reshape(-1, embeddings.size(-1))
         
         batch_size, d = embeddings.shape
         

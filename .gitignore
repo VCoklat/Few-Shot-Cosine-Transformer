@@ -3,3 +3,5 @@
 *__pycache__*
 wandb/
 *.swp
+test_vic_regularization.py
+test_integration_vic.py
