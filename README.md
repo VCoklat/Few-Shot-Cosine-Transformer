@@ -1,9 +1,35 @@
 # Enhancing Few-shot Image Classification with Cosine Transformer
+
 This repo contains the official implementation code for the paper [**Enhancing Few-shot Image Classification with Cosine Transformer**](https://ieeexplore.ieee.org/document/10190567/) (IEEE Access). In this project, we developed a transformer-based algorithm FS-CT for few-shot classification and cross-attention mechansim, where we proved that cosine similarity benefits attention mechanism and and improve few-shot algorithms across settings and datasets. In particular, with the proposed Cosine attention, we achieve a more stable and consistent output as correlation map between support and query feature and thus improve ViT-bases few-shot algorithms' performance greatly. 
+
+## 🆕 Hybrid FS-CT + ProFONet
+
+**NEW**: This repository now includes an enhanced implementation combining FS-CT with ProFONet's VIC (Variance-Invariance-Covariance) regularization for improved few-shot learning performance. This hybrid approach includes:
+
+- **VIC Regularization**: Prevents representation collapse and improves feature quality
+- **Dynamic Weight Adjustment**: Automatically adjusts regularization weights during training
+- **Memory Optimizations**: Gradient checkpointing, mixed precision training, and gradient clipping for efficient training on limited GPU memory
+
+📖 **[See detailed documentation →](HYBRID_FSCT_PROFONET.md)**
+
+### Quick Start with VIC Regularization
+
+```bash
+# Basic usage with VIC
+python train.py --method FSCT_cosine --use_vic 1 --n_way 5 --k_shot 5
+
+# Memory-optimized for 16GB VRAM
+python train.py --method FSCT_cosine --use_vic 1 --mixed_precision 1 \
+  --gradient_checkpointing 1 --n_query 10
+
+# View all configuration examples
+./run_hybrid_examples.sh
+```
 
 ## Table of Content  <!-- omit in toc -->
 
 - [Enhancing Few-shot Image Classification with Cosine Transformer](#enhancing-few-shot-image-classification-with-cosine-transformer)
+  - [🆕 Hybrid FS-CT + ProFONet](#-hybrid-fs-ct--profonet)
   - [Few-shot Cosine Transformer](#few-shot-cosine-transformer)
   - [Experiments](#experiments)
     - [Dependencies environment](#dependencies-environment)
