@@ -82,25 +82,34 @@ def pretty_print(res):
     print("=" * 50)
 
 def get_class_names_from_file(data_file, n_way=None):
-    """Extract class names from JSON data file"""
+    """
+    Generate class names for few-shot evaluation.
+    
+    In few-shot learning, each episode randomly samples n_way classes from the dataset,
+    and labels are re-mapped to 0, 1, ..., n_way-1 for each episode. Therefore, the
+    class names should be generic labels representing these positions, not specific
+    class names from the dataset (which vary across episodes).
+    """
     try:
         with open(data_file, 'r') as f:
             meta = json.load(f)
 
         unique_labels = np.unique(meta['image_labels']).tolist()
-
-        if 'class_names' in meta:
-            class_names = [meta['class_names'][str(label)] for label in unique_labels]
+        total_classes = len(unique_labels)
+        
+        # In few-shot learning, labels are re-mapped to 0 to n_way-1 for each episode
+        # Use generic names that represent the position/way rather than specific classes
+        if n_way:
+            class_names = [f"Way {i}" for i in range(n_way)]
         else:
-            class_names = [f"Class_{label}" for label in unique_labels]
-
-        if n_way and len(class_names) > n_way:
-            class_names = class_names[:n_way]
-
+            # If n_way is not specified, use all available classes
+            class_names = [f"Class {i}" for i in range(total_classes)]
+        
+        print(f"Dataset has {total_classes} classes total, using {len(class_names)} ways for evaluation")
         return class_names
     except Exception as e:
         print(f"Error extracting class names: {e}")
-        return [f"Class_{i}" for i in range(n_way)] if n_way else ["Class_0"]
+        return [f"Way {i}" for i in range(n_way)] if n_way else ["Class_0"]
 
 def get_system_metrics():
     """Get current system resource usage"""
@@ -492,163 +501,70 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         print()
     return model
 
-def validate_model(val_loader, model):
-    """Memory-optimized validation function"""
-    acc_list = []
+def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
+    """Enhanced testing function with optional comprehensive evaluation"""
+    if comprehensive and data_file:
+        # Get class names from data file
+        class_names = get_class_names_from_file(data_file, params.n_way)
+        
+        # Use eval_utils comprehensive evaluation
+        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
+        eval_utils.pretty_print(results)
+        
+        # Still return traditional accuracy metrics for backward compatibility
+        acc_mean = results['accuracy'] * 100  # Convert accuracy to percentage scale
+        acc_std = np.std([f1 * 100 for f1 in results['class_f1']])  # Std of class F1s
+        
+        return acc_mean, acc_std, results
+    else:
+        # Original direct_test functionality with F1 score calculation
+        acc = []
+        all_preds = []
+        all_labels = []
+        iter_num = len(test_loader)
+        
+        if iter_num == 0:
+            print("ERROR: Test loader is empty")
+            return 0.0, 0.0
 
-    with tqdm.tqdm(total=len(val_loader)) as pbar:
-        for i, (x, _) in enumerate(val_loader):
-            # Clear cache before processing
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            # Process in chunks to avoid OOM
-            if x.size(0) > 16:
-                chunk_size = 8
-                chunk_accs = []
-                for j in range(0, x.size(0), chunk_size):
-                    x_chunk = x[j:j+chunk_size].to(device)
-                    # Use mixed precision for validation
-                    with torch.cuda.amp.autocast():
-                        acc, _ = model.set_forward_loss(x_chunk)
-                    chunk_accs.append(acc)
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                avg_acc = np.mean(chunk_accs)
-            else:
-                x = x.to(device)
-                # Use mixed precision for validation
-                with torch.cuda.amp.autocast():
-                    avg_acc, _ = model.set_forward_loss(x)
-
-            acc_list.append(avg_acc * 100)
-            pbar.set_description(f'Val | Acc: {np.mean(acc_list):.2f}%')
-            pbar.update(1)
-
-    return np.mean(acc_list)
-
-def direct_test(test_loader, model, params):
-    """Memory-optimized testing function"""
-    acc = []
-
-    with tqdm.tqdm(total=len(test_loader)) as pbar:
-        for i, (x, _) in enumerate(test_loader):
-            # Clear cache before processing
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            # Process in smaller chunks to avoid OOM
-            if x.size(0) > 16:
-                scores_list = []
-                chunk_size = 8
-                for j in range(0, x.size(0), chunk_size):
-                    x_chunk = x[j:j+chunk_size].to(device)
-                    with torch.no_grad():
-                        # Use mixed precision for inference
-                        with torch.cuda.amp.autocast():
-                            scores_chunk = model.set_forward(x_chunk)
-                    scores_list.append(scores_chunk.cpu())
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                scores = torch.cat(scores_list, dim=0)
-            else:
-                with torch.no_grad():
-                    x = x.to(device)
-                    # Use mixed precision for inference
-                    with torch.cuda.amp.autocast():
-                        scores = model.set_forward(x)
-
-            pred = scores.data.cpu().numpy().argmax(axis=1)
-            y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
-            acc.append(np.mean(pred == y)*100)
-
-            pbar.set_description(
-                f'Test | Acc: {np.mean(acc):.2f}% | Mode: {"Advanced" if hasattr(model, "use_advanced_attention") and model.use_advanced_attention else "Basic"}')
-            pbar.update(1)
-
-    acc_all = np.asarray(acc)
-    acc_mean = np.mean(acc_all)
-    acc_std = np.std(acc_all)
-
-    return acc_mean, acc_std
-
-def analyze_dynamic_weights(model, val_loader):
-    """Analyze the learned dynamic weights"""
-    # Enable weight recording
-    for module in model.modules():
-        if isinstance(module, Attention):
-            if hasattr(module, 'record_weights'):
-                module.record_weights = True
-
-    # Run validation to collect weights
-    print("Collecting dynamic weight statistics...")
-    with torch.no_grad():
-        model.eval()
-        with tqdm.tqdm(total=min(50, len(val_loader))) as pbar:  # Limit to 50 batches for analysis
-            for i, (x, _) in enumerate(val_loader):
-                if i >= 50:  # Limit analysis to save time
-                    break
-
-                # Process in small chunks for memory efficiency
-                if x.size(0) > 8:
-                    chunk_size = 4
-                    for j in range(0, x.size(0), chunk_size):
-                        x_chunk = x[j:j+chunk_size].to(device)
-                        model.set_forward(x_chunk)
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                else:
-                    x = x.to(device)
-                    model.set_forward(x)
-
-                pbar.update(1)
-
-    # Analyze weights
-    print("\n" + "="*60)
-    print("DYNAMIC WEIGHT ANALYSIS")
-    print("="*60)
-
-    for i, module in enumerate(model.modules()):
-        if isinstance(module, Attention):
-            if hasattr(module, 'get_weight_stats'):
-                stats = module.get_weight_stats()
-                if stats:
-                    print(f"\nAttention Block {i} Weight Statistics:")
-                    print("-" * 40)
-
-                    if 'cosine_mean' in stats:  # 3-component format
-                        print(f"  Cosine weight: {stats['cosine_mean']:.4f} ± {stats['cosine_std']:.4f}")
-                        print(f"  Covariance weight: {stats['cov_mean']:.4f} ± {stats['cov_std']:.4f}")
-                        print(f"  Variance weight: {stats['var_mean']:.4f} ± {stats['var_std']:.4f}")
-
-                        print("\n Weight Distribution:")
-                        for comp in ['cosine', 'cov', 'var']:
-                            print(f"  {comp.capitalize()}:")
-                            hist = stats['histogram'][comp]
-                            for bin_idx, count in enumerate(hist):
-                                if count > 0:  # Only show non-zero bins
-                                    bin_start = bin_idx/10
-                                    bin_end = (bin_idx+1)/10
-                                    print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
-                    else:  # Legacy format
-                        print(f"  Mean: {stats['mean']:.4f}")
-                        print(f"  Std: {stats['std']:.4f}")
-                        print(f"  Range: [{stats['min']:.4f}, {stats['max']:.4f}]")
-
-                        print("\n Distribution:")
-                        for bin_idx, count in enumerate(stats['histogram']):
-                            if count > 0:  # Only show non-zero bins
-                                bin_start = bin_idx/10
-                                bin_end = (bin_idx+1)/10
-                                print(f"    {bin_start:.1f}-{bin_end:.1f}: {count}")
-
-                # Clear history and disable recording
-                if hasattr(module, 'clear_weight_history'):
-                    module.clear_weight_history()
-                if hasattr(module, 'record_weights'):
-                    module.record_weights = False
-
-    print("="*60)
+        with tqdm.tqdm(total=len(test_loader)) as pbar:
+            for i, (x, _) in enumerate(test_loader):
+                with torch.cuda.amp.autocast(enabled=True):
+                    scores = model.set_forward(x)
+                    pred = scores.data.cpu().numpy().argmax(axis=1)
+                    
+                    # Move computation to CPU and free GPU memory
+                    y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                    
+                    all_preds.extend(pred.tolist())
+                    all_labels.extend(y.tolist())
+                    
+                    acc.append(np.mean(pred == y)*100)
+                    
+                    # Clear unnecessary tensors
+                    del scores
+                    torch.cuda.empty_cache()
+                    
+                    pbar.set_description('Test | Acc {:.6f}'.format(np.mean(acc)))
+                    pbar.update(1)
+        
+        acc_all = np.asarray(acc)
+        acc_mean = np.mean(acc_all)
+        acc_std = np.std(acc_all)
+        
+        # Calculate and display per-class F1 scores
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+        class_f1 = f1_score(all_labels, all_preds, average=None)
+        macro_f1 = f1_score(all_labels, all_preds, average='macro')
+        
+        print(f"\n📊 F1 Score Results:")
+        print(f"Macro-F1: {macro_f1:.4f}")
+        print("\nPer-class F1 scores:")
+        for i, f1 in enumerate(class_f1):
+            print(f"  Class {i}: {f1:.4f}")
+        
+        return acc_mean, acc_std
 
 def seed_func():
     seed = 4040

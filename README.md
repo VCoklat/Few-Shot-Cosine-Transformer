@@ -37,6 +37,23 @@ This repo contains the official implementation code for the paper [**Enhancing F
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
 
+### NEW: Hybrid FS-CT + ProFONet Method
+
+We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
+- **Few-Shot Cosine Transformer** architecture with cosine attention
+- **VIC Regularization** (Variance-Invariance-Covariance) from ProFONet
+- **Dynamic Weight Scheduling** for adaptive regularization during training
+- **Memory optimizations** for 8GB VRAM constraint (gradient checkpointing, mixed precision)
+
+**Key improvements**:
+- Prevents representation collapse with VIC regularization
+- More stable training with dynamic weight adjustment
+- Optimized for limited GPU memory
+- Target: >20% accuracy improvement over baseline
+
+**Quick start**: See `FSCT_ProFONet_QUICKSTART.md` for usage examples.  
+**Full documentation**: See `FSCT_ProFONet_DOCUMENTATION.md` for algorithm details.
+
 ## Experiments
 ### Dependencies environment
   + `pip install -r requirements.txt`
@@ -76,10 +93,11 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - Testing only: `test.py` (does not support WandB )
   - Training and testing: `train_test.py`
 + **Configurations pool**:
-    + Backbones: `Conv4`/`Conv6`/`ResNet18`/`ResNet34`
-    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`
+    + Backbones: `Conv4`/`Conv6`/`ResNet12`/`ResNet18`/`ResNet34`
+    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`/`FSCT_ProFONet`
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
+      + `FSCT_ProFONet` is the **new hybrid method** combining Cosine Transformer with VIC Regularization
     + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
@@ -94,7 +112,10 @@ This repo contains the official implementation code for the paper [**Enhancing F
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
-  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`
++ **Example with new FSCT_ProFONet method**:  
+  `python train.py --method FSCT_ProFONet --dataset miniImagenet --backbone Conv4 --n_way 5 --k_shot 5 --n_query 10 --num_epoch 50`  
+  See `FSCT_ProFONet_QUICKSTART.md` for more details on the hybrid method.  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
