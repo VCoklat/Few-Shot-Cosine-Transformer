@@ -222,6 +222,7 @@ if __name__ == '__main__':
                 dynamic_weight=True,  # Enable dynamic weighting
                 label_smoothing=0.1,  # Add label smoothing for better generalization
                 attention_dropout=0.15,  # Add attention dropout
+                drop_path_rate=0.1,  # Add stochastic depth for regularization
                 **few_shot_params
             )
             

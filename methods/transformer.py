@@ -14,6 +14,20 @@ import IPython
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+def drop_path(x, drop_prob: float = 0., training: bool = False):
+    """
+    Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
+    This is the same as the DropConnect impl, but with a different name.
+    """
+    if drop_prob == 0. or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors
+    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+    random_tensor.floor_()  # binarize
+    output = x.div(keep_prob) * random_tensor
+    return output
+
 def cosine_distance(x1, x2, temperature=None):
     """
     Compute cosine distance with proper dimension handling and optional temperature scaling
@@ -84,7 +98,7 @@ class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax", 
                  depth=1, heads=8, dim_head=64, mlp_dim=512,
                  initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
-                 label_smoothing=0.1, attention_dropout=0.1):
+                 label_smoothing=0.1, attention_dropout=0.1, drop_path_rate=0.1):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
         # Add label smoothing for better generalization
         self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
@@ -102,6 +116,7 @@ class FewShotTransformer(MetaTemplate):
         self.gamma = 0.08  # Slightly stronger regularization for better feature discrimination
         self.epsilon = 1e-8
         self.attention_dropout = attention_dropout
+        self.drop_path_rate = drop_path_rate
 
         # Create attention module with dropout for better generalization
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
@@ -111,7 +126,8 @@ class FewShotTransformer(MetaTemplate):
                              n_way=n_way, k_shot=k_shot,
                              dropout=attention_dropout)
         self.sm = nn.Softmax(dim=-2)
-        self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+        # Initialize proto_weight with small random values for better gradient flow
+        self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.1 + 1.0)
         
         # Add dropout for FFN layers to improve generalization
         self.ffn_dropout = nn.Dropout(0.1)
@@ -161,24 +177,62 @@ class FewShotTransformer(MetaTemplate):
     def update_epoch(self, epoch):
         """Update epoch in attention module for adaptive gamma"""
         self.ATTN.update_epoch(epoch)
+    
+    def mixup_support(self, z_support, alpha=0.2):
+        """
+        Apply mixup augmentation to support set for better generalization
+        Args:
+            z_support: [n_way, k_shot, feat_dim]
+            alpha: mixup interpolation strength
+        Returns:
+            Mixed support features
+        """
+        if not self.training or alpha <= 0:
+            return z_support
+        
+        # Generate mixup coefficient
+        lam = np.random.beta(alpha, alpha)
+        
+        # Randomly shuffle support samples within each class
+        n_way, k_shot, feat_dim = z_support.shape
+        batch_size = n_way * k_shot
+        z_flat = z_support.view(batch_size, feat_dim)
+        
+        # Create random permutation
+        index = torch.randperm(batch_size).to(z_support.device)
+        
+        # Mix features
+        mixed_z = lam * z_flat + (1 - lam) * z_flat[index]
+        
+        # Reshape back
+        return mixed_z.view(n_way, k_shot, feat_dim)
 
     def set_forward(self, x, is_feature=False):
         z_support, z_query = self.parse_feature(x, is_feature)
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
+        
+        # Apply mixup augmentation during training for better generalization
+        if self.training:
+            z_support = self.mixup_support(z_support, alpha=0.2)
+        
         z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)  # (1, n, d)
         z_query = z_query.contiguous().reshape(self.n_way * self.n_query, -1).unsqueeze(1)  # (q, 1, d)
 
         x, query = z_proto, z_query
 
-        # Process through transformer layers
-        for _ in range(self.depth):
+        # Process through transformer layers with stochastic depth
+        for layer_idx in range(self.depth):
             # Pass additional parameters for attention mechanism switching
             attn_output = self.ATTN(q=x, k=query, v=query, 
                                   use_advanced=self.use_advanced_attention,
                                   gamma=self.gamma,
                                   epsilon=self.epsilon)
-            x = attn_output + x
-            x = self.FFN_forward(x) + x
+            # Apply drop path with layer-specific rate (increases with depth)
+            drop_prob = self.drop_path_rate * layer_idx / max(self.depth - 1, 1)
+            x = drop_path(attn_output, drop_prob, self.training) + x
+            
+            ffn_output = self.FFN_forward(x)
+            x = drop_path(ffn_output, drop_prob, self.training) + x
 
         # Output is the probabilistic prediction for each class
         return self.final_linear_forward(x).squeeze()  # (q, n)
