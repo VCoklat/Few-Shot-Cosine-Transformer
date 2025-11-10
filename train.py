@@ -46,19 +46,23 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         raise ValueError('Unknown optimization, please define by yourself')
 
     # Add learning rate scheduler for better convergence
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.01
+    # Use CosineAnnealingWarmRestarts for better convergence with periodic restarts
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=10,  # Initial restart period
+        T_mult=2,  # Double period after each restart
+        eta_min=params.learning_rate * 0.001  # Minimum LR is 0.1% of initial
     )
     
-    # Add warmup scheduler for first few epochs
-    warmup_epochs = min(5, num_epoch // 10)  # Warmup for first 5 epochs or 10% of training
+    # Extended warmup for more stable initialization
+    warmup_epochs = min(10, num_epoch // 5)  # Warmup for first 10 epochs or 20% of training
     
     max_acc = 0
 
     for epoch in range(num_epoch):
         model.train()
         
-        # Apply learning rate warmup
+        # Apply learning rate warmup for better initialization
         if epoch < warmup_epochs:
             warmup_factor = (epoch + 1) / warmup_epochs
             for param_group in optimizer.param_groups:
@@ -67,7 +71,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)
         
-        # Step the scheduler after warmup
+        # Step the scheduler after warmup period
         if epoch >= warmup_epochs:
             scheduler.step()
             
@@ -210,19 +214,20 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
             # Enhanced hyperparameters for >10% accuracy improvement
+            # Increased model capacity and improved regularization
             model = FewShotTransformer(
                 feature_model, 
                 variant=variant, 
-                depth=2,  # Increase depth from 1 to 2 for better feature learning
-                heads=12,  # Increase heads from 8 to 12 for richer attention patterns
-                dim_head=80,  # Increase from 64 to 80 for more capacity
-                mlp_dim=768,  # Increase from 512 to 768 for better transformation
+                depth=3,  # Increase depth from 2 to 3 for deeper feature hierarchy
+                heads=16,  # Increase heads from 12 to 16 for more diverse attention patterns
+                dim_head=96,  # Increase from 80 to 96 for greater representation capacity
+                mlp_dim=1024,  # Increase from 768 to 1024 for more expressive transformations
                 initial_cov_weight=0.55,  # Optimized covariance weight
                 initial_var_weight=0.2,  # Optimized variance weight
                 dynamic_weight=True,  # Enable dynamic weighting
-                label_smoothing=0.1,  # Add label smoothing for better generalization
-                attention_dropout=0.15,  # Add attention dropout
-                drop_path_rate=0.1,  # Add stochastic depth for regularization
+                label_smoothing=0.15,  # Increase from 0.1 to 0.15 for better generalization
+                attention_dropout=0.15,  # Keep attention dropout at 0.15
+                drop_path_rate=0.15,  # Increase from 0.1 to 0.15 for stronger regularization
                 **few_shot_params
             )
             

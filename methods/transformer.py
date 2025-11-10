@@ -100,7 +100,7 @@ class FewShotTransformer(MetaTemplate):
                  initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
                  label_smoothing=0.1, attention_dropout=0.1, drop_path_rate=0.1):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
-        # Add label smoothing for better generalization
+        # Enhanced label smoothing for better generalization
         self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         self.k_shot = k_shot
         self.variant = variant
@@ -113,7 +113,7 @@ class FewShotTransformer(MetaTemplate):
         self.use_advanced_attention = True  # Enable advanced attention from the start
 
         # Parameters for advanced attention mechanism - optimized for better performance
-        self.gamma = 0.08  # Slightly stronger regularization for better feature discrimination
+        self.gamma = 0.07  # Stronger regularization for better feature discrimination
         self.epsilon = 1e-8
         self.attention_dropout = attention_dropout
         self.drop_path_rate = drop_path_rate
@@ -130,10 +130,14 @@ class FewShotTransformer(MetaTemplate):
         self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.1 + 1.0)
         
         # Add dropout for FFN layers to improve generalization
-        self.ffn_dropout = nn.Dropout(0.1)
+        self.ffn_dropout = nn.Dropout(0.15)  # Increased from 0.1 to 0.15
+
+        # LayerScale for better gradient flow in deep networks
+        self.layer_scale_attn = nn.Parameter(torch.ones(dim) * 0.1)
+        self.layer_scale_ffn = nn.Parameter(torch.ones(dim) * 0.1)
 
         # Replace nn.Sequential with separate components to avoid lambda issues
-        # FFN components
+        # FFN components with Pre-LN for better training stability
         self.ffn_layernorm = nn.LayerNorm(dim)
         self.ffn_linear1 = nn.Linear(dim, mlp_dim)
         self.ffn_gelu = nn.GELU()
@@ -149,13 +153,16 @@ class FewShotTransformer(MetaTemplate):
             self.final_classifier = nn.Linear(dim_head, 1)
 
     def FFN_forward(self, x):
-        """Forward pass through FFN layers with dropout"""
+        """Forward pass through FFN layers with dropout and LayerScale"""
+        residual = x
         x = self.ffn_layernorm(x)
         x = self.ffn_linear1(x)
         x = self.ffn_gelu(x)
         x = self.ffn_dropout(x)  # Add dropout after activation
         x = self.ffn_linear2(x)
         x = self.ffn_dropout(x)  # Add dropout after final linear layer
+        # Apply LayerScale for better gradient flow
+        x = x * self.layer_scale_ffn
         return x
 
     def final_linear_forward(self, x):
@@ -178,12 +185,12 @@ class FewShotTransformer(MetaTemplate):
         """Update epoch in attention module for adaptive gamma"""
         self.ATTN.update_epoch(epoch)
     
-    def mixup_support(self, z_support, alpha=0.2):
+    def mixup_support(self, z_support, alpha=0.3):
         """
         Apply mixup augmentation to support set for better generalization
         Args:
             z_support: [n_way, k_shot, feat_dim]
-            alpha: mixup interpolation strength
+            alpha: mixup interpolation strength (increased from 0.2 to 0.3)
         Returns:
             Mixed support features
         """
@@ -211,22 +218,24 @@ class FewShotTransformer(MetaTemplate):
         z_support, z_query = self.parse_feature(x, is_feature)
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
         
-        # Apply mixup augmentation during training for better generalization
+        # Apply stronger mixup augmentation during training for better generalization
         if self.training:
-            z_support = self.mixup_support(z_support, alpha=0.2)
+            z_support = self.mixup_support(z_support, alpha=0.3)
         
         z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)  # (1, n, d)
         z_query = z_query.contiguous().reshape(self.n_way * self.n_query, -1).unsqueeze(1)  # (q, 1, d)
 
         x, query = z_proto, z_query
 
-        # Process through transformer layers with stochastic depth
+        # Process through transformer layers with stochastic depth and LayerScale
         for layer_idx in range(self.depth):
             # Pass additional parameters for attention mechanism switching
             attn_output = self.ATTN(q=x, k=query, v=query, 
                                   use_advanced=self.use_advanced_attention,
                                   gamma=self.gamma,
                                   epsilon=self.epsilon)
+            # Apply LayerScale before residual connection
+            attn_output = attn_output * self.layer_scale_attn
             # Apply drop path with layer-specific rate (increases with depth)
             drop_prob = self.drop_path_rate * layer_idx / max(self.depth - 1, 1)
             x = drop_path(attn_output, drop_prob, self.training) + x
@@ -268,16 +277,16 @@ class Attention(nn.Module):
         self.dropout = nn.Dropout(dropout)  # Add attention dropout
 
         # Solution 1: Temperature Scaling - Learnable temperature per head (optimized)
-        self.temperature = nn.Parameter(torch.ones(heads) * 0.4)  # Start with sharper attention
+        self.temperature = nn.Parameter(torch.ones(heads) * 0.35)  # Start with even sharper attention
         
         # Solution 5: EMA Smoothing - Track moving averages for stability (optimized)
-        self.ema_decay = 0.98  # Slightly faster adaptation for better responsiveness
+        self.ema_decay = 0.97  # Faster adaptation for better responsiveness
         self.register_buffer('var_ema', torch.ones(1))
         self.register_buffer('cov_ema', torch.ones(1))
         
         # Solution 2: Adaptive Gamma - Dynamic variance regularization (optimized)
-        self.gamma_start = 0.6  # Start with even stronger regularization
-        self.gamma_end = 0.03   # End with even weaker regularization for fine-tuning
+        self.gamma_start = 0.65  # Start with stronger regularization
+        self.gamma_end = 0.025   # End with weaker regularization for fine-tuning
         self.current_epoch = 0
         self.max_epochs = 50
 
