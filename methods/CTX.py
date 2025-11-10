@@ -12,6 +12,7 @@ import numpy as np
 import torch.nn.functional as F
 from abc import abstractmethod
 from methods.meta_template import MetaTemplate
+from methods.vic_regularization import VICRegularization
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
@@ -23,7 +24,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class CTX(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, heatmap=0, variant="softmax",
-                input_dim = 64, dim_attn=128):
+                input_dim = 64, dim_attn=128, use_vic=False, vic_lambda_v=1.0, 
+                vic_lambda_i=1.0, vic_lambda_c=0.04, vic_dynamic_weights=True, vic_alpha=0.001):
         super(CTX, self).__init__(model_func,  n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -33,8 +35,19 @@ class CTX(MetaTemplate):
         self.sm = nn.Softmax(dim=-1)
         self.dim_attn = dim_attn
         self.linear_attn = nn.Conv2d(input_dim, dim_attn, 1, bias=False)
+        
+        # VIC Regularization
+        self.use_vic = use_vic
+        if self.use_vic:
+            self.vic_reg = VICRegularization(
+                lambda_v=vic_lambda_v,
+                lambda_i=vic_lambda_i,
+                lambda_c=vic_lambda_c,
+                dynamic_weights=vic_dynamic_weights,
+                alpha=vic_alpha
+            )
 
-    def set_forward(self, x, is_feature=False):
+    def set_forward(self, x, is_feature=False, return_embeddings=False):
         """
         dimensions names:
         
@@ -47,6 +60,12 @@ class CTX(MetaTemplate):
         """
 
         z_support, z_query = self.parse_feature(x, is_feature)
+        
+        # Store original support embeddings for VIC regularization
+        if return_embeddings:
+            # Flatten spatial dimensions for VIC regularization
+            z_support_flat = rearrange(z_support, 'n k c h w -> n k (c h w)')
+        
         z_query, z_support = map(lambda t: rearrange(t, 'b n c h w -> (b n) c h w'), (z_query, z_support))
 
         query_q, query_v, support_k, support_v = map(lambda t: self.linear_attn(t),
@@ -73,16 +92,35 @@ class CTX(MetaTemplate):
         
         euclidean_dist = -((query_v - out) ** 2).sum(dim=-1) / (self.feat_dim[1] * self.feat_dim[2])
 
+        if return_embeddings:
+            return euclidean_dist, z_support_flat
         return euclidean_dist
 
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
         
-        scores = self.set_forward(x)
+        if self.use_vic:
+            scores, z_support = self.set_forward(x, return_embeddings=True)
+        else:
+            scores = self.set_forward(x)
 
-        loss = self.loss_fn(scores, target)
+        # Cross-entropy loss
+        ce_loss = self.loss_fn(scores, target)
+        
+        # VIC regularization loss
+        if self.use_vic and self.training:
+            vic_loss, vic_dict = self.vic_reg(z_support)
+            total_loss = ce_loss + vic_loss
+        else:
+            total_loss = ce_loss
+            vic_dict = {}
+        
         predict = torch.argmax(scores, dim=1)
         acc = (predict == target).sum().item() / target.size(0)
-        return acc, loss
+        
+        # Store VIC loss components for logging
+        self.last_vic_dict = vic_dict
+        
+        return acc, total_loss
     

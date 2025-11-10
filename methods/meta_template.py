@@ -70,13 +70,36 @@ class MetaTemplate(nn.Module):
                 acc, loss = self.set_forward_loss(x = x.to(device))
                 loss.backward()
                 optimizer.step()
+                
+                # Update VIC dynamic weights if applicable
+                if hasattr(self, 'use_vic') and self.use_vic and hasattr(self, 'vic_reg'):
+                    self.vic_reg.update_dynamic_weights()
+                
                 avg_loss += loss.item()
                 avg_acc.append(acc)
-                train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
-                    epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
+                
+                # Update progress bar
+                pbar_desc = 'Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
+                    epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1))
+                
+                # Add VIC loss info if available
+                if hasattr(self, 'last_vic_dict') and self.last_vic_dict:
+                    vic_total = self.last_vic_dict.get('vic_total', 0)
+                    pbar_desc += ' | VIC {:.4f}'.format(vic_total.item() if torch.is_tensor(vic_total) else vic_total)
+                
+                train_pbar.set_description(pbar_desc)
                 train_pbar.update(1)
+        
+        # Log to wandb
         if wandb_flag:
-            wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
+            log_dict = {"Loss": avg_loss/float(i + 1), 'Train Acc': np.mean(avg_acc) * 100}
+            
+            # Add VIC losses if available
+            if hasattr(self, 'last_vic_dict') and self.last_vic_dict:
+                for key, value in self.last_vic_dict.items():
+                    log_dict[f'VIC/{key}'] = value.item() if torch.is_tensor(value) else value
+            
+            wandb.log(log_dict, step=epoch + 1)
 
     def val_loop(self, val_loader, epoch, wandb_flag, record = None):
         correct =0

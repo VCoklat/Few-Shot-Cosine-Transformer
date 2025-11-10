@@ -5,6 +5,7 @@ import numpy as np
 import torch.nn.functional as F
 from abc import abstractmethod
 from methods.meta_template import MetaTemplate
+from methods.vic_regularization import VICRegularization
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
@@ -15,7 +16,9 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func,  n_way, k_shot, n_query, variant = "softmax",
-                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512):
+                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512,
+                use_vic=False, vic_lambda_v=1.0, vic_lambda_i=1.0, vic_lambda_c=0.04,
+                vic_dynamic_weights=True, vic_alpha=0.001):
         super(FewShotTransformer, self).__init__(model_func,  n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -42,7 +45,18 @@ class FewShotTransformer(MetaTemplate):
             CosineDistLinear(dim_head, 1) if variant == "cosine"
             else nn.Linear(dim_head, 1))
         
-    def set_forward(self, x, is_feature=False):
+        # VIC Regularization
+        self.use_vic = use_vic
+        if self.use_vic:
+            self.vic_reg = VICRegularization(
+                lambda_v=vic_lambda_v,
+                lambda_i=vic_lambda_i,
+                lambda_c=vic_lambda_c,
+                dynamic_weights=vic_dynamic_weights,
+                alpha=vic_alpha
+            )
+        
+    def set_forward(self, x, is_feature=False, return_embeddings=False):
 
         z_support, z_query = self.parse_feature(x, is_feature)
                 
@@ -58,17 +72,39 @@ class FewShotTransformer(MetaTemplate):
            x = self.FFN(x) + x
         
         # Output is the probabilistic prediction for each class
-        return self.linear(x).squeeze()                                                                # (q, n)
+        logits = self.linear(x).squeeze()                                                              # (q, n)
+        
+        if return_embeddings:
+            return logits, z_support
+        return logits
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
-        scores = self.set_forward(x)
         
-        loss = self.loss_fn(scores, target)
+        if self.use_vic:
+            scores, z_support = self.set_forward(x, return_embeddings=True)
+        else:
+            scores = self.set_forward(x)
+        
+        # Cross-entropy loss
+        ce_loss = self.loss_fn(scores, target)
+        
+        # VIC regularization loss
+        if self.use_vic and self.training:
+            vic_loss, vic_dict = self.vic_reg(z_support)
+            total_loss = ce_loss + vic_loss
+        else:
+            total_loss = ce_loss
+            vic_dict = {}
+        
         predict = torch.argmax(scores, dim = 1)
         acc = (predict == target).sum().item() / target.size(0)
-        return acc, loss
+        
+        # Store VIC loss components for logging
+        self.last_vic_dict = vic_dict
+        
+        return acc, total_loss
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant):

@@ -45,6 +45,15 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # VIC Regularization arguments
+    parser.add_argument('--use_vic'         , type=int, default=0, help='[1:0] - [True:False]; Enable VIC regularization')
+    parser.add_argument('--vic_lambda_v'    , type=float, default=1.0, help='VIC variance loss weight')
+    parser.add_argument('--vic_lambda_i'    , type=float, default=1.0, help='VIC invariance loss weight')
+    parser.add_argument('--vic_lambda_c'    , type=float, default=0.04, help='VIC covariance loss weight')
+    parser.add_argument('--vic_dynamic_weights', type=int, default=1, help='[1:0] - [True:False]; Use dynamic weight adjustment for VIC')
+    parser.add_argument('--vic_alpha'       , type=float, default=0.001, help='Learning rate for VIC dynamic weight updates')
+    
     return parser.parse_args()
 
 

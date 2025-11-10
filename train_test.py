@@ -362,6 +362,8 @@ if __name__ == '__main__':
             wandb_name += "_aug"
         if params.FETI and 'ResNet' in params.backbone:
             wandb_name += "_FETI"
+        if params.use_vic:
+            wandb_name += "_VIC"
         wandb_name += "_" + params.datetime
         wandb.init(project=project_name, name=wandb_name,
                   config=params, id=params.datetime)
@@ -405,6 +407,16 @@ if __name__ == '__main__':
 
         seed_func()
 
+        # VIC regularization parameters
+        vic_params = {
+            'use_vic': bool(params.use_vic),
+            'vic_lambda_v': params.vic_lambda_v,
+            'vic_lambda_i': params.vic_lambda_i,
+            'vic_lambda_c': params.vic_lambda_c,
+            'vic_dynamic_weights': bool(params.vic_dynamic_weights),
+            'vic_alpha': params.vic_alpha
+        }
+
         if params.method in ['FSCT_softmax', 'FSCT_cosine']:
             variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
             
@@ -413,7 +425,7 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
             
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params, **vic_params)
 
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
@@ -424,7 +436,7 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
             
-            model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+            model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params, **vic_params)
 
         else:
             raise ValueError('Unknown method')
@@ -438,6 +450,8 @@ if __name__ == '__main__':
             params.checkpoint_dir += '_aug'
         if params.FETI and 'ResNet' in params.backbone:
             params.checkpoint_dir += '_FETI'
+        if params.use_vic:
+            params.checkpoint_dir += '_VIC'
 
         params.checkpoint_dir += '_%dway_%dshot' % (
             params.n_way, params.k_shot)
