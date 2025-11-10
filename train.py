@@ -196,10 +196,16 @@ if __name__ == '__main__':
         if params.method in ['FSCT_softmax', 'FSCT_cosine']:
             variant = 'cosine' if params.method == 'FSCT_cosine' else 'softmax'
             
+            # Check for gradient checkpointing
+            use_grad_checkpoint = hasattr(params, 'gradient_checkpointing') and params.gradient_checkpointing
+            
             def feature_model():
                 if params.dataset in ['Omniglot', 'cross_char']:
                     params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+                if 'ResNet' in params.backbone:
+                    return model_dict[params.backbone](params.FETI, params.dataset, flatten=True, gradient_checkpointing=use_grad_checkpoint)
+                else:
+                    return model_dict[params.backbone](params.dataset, flatten=True)
 
             # Add VIC parameters if enabled
             vic_params = {}
@@ -218,10 +224,17 @@ if __name__ == '__main__':
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
             input_dim = 512 if "ResNet" in params.backbone else 64
+            
+            # Check for gradient checkpointing
+            use_grad_checkpoint = hasattr(params, 'gradient_checkpointing') and params.gradient_checkpointing
+            
             def feature_model():
                 if params.dataset in ['Omniglot', 'cross_char']:
                     params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
+                if 'ResNet' in params.backbone:
+                    return model_dict[params.backbone](params.FETI, params.dataset, flatten=False, gradient_checkpointing=use_grad_checkpoint)
+                else:
+                    return model_dict[params.backbone](params.dataset, flatten=False)
 
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
     else:

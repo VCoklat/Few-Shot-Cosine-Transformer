@@ -235,11 +235,12 @@ class ResNetModel():
         out = self.model(x)
         return out
 class ResNet(nn.Module):
-    def __init__(self, block, layers, flatten = False):
+    def __init__(self, block, layers, flatten = False, gradient_checkpointing=False):
         super(ResNet, self).__init__()
         dim = 7
         self.final_feat_dim = 512 * dim * dim if flatten else [512, dim, dim]
         self.initial_pool = False
+        self.gradient_checkpointing = gradient_checkpointing
         inplanes = self.inplanes = 64
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=5, stride=2, padding=1,
                                bias=False)
@@ -286,10 +287,18 @@ class ResNet(nn.Module):
         if self.initial_pool:
             x = self.maxpool(x)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        # Apply gradient checkpointing if enabled during training
+        if self.gradient_checkpointing and self.training:
+            from torch.utils.checkpoint import checkpoint
+            x = checkpoint(self.layer1, x, use_reentrant=False)
+            x = checkpoint(self.layer2, x, use_reentrant=False)
+            x = checkpoint(self.layer3, x, use_reentrant=False)
+            x = checkpoint(self.layer4, x, use_reentrant=False)
+        else:
+            x = self.layer1(x)
+            x = self.layer2(x)
+            x = self.layer3(x)
+            x = self.layer4(x)
 
         x = self.avgpool(x)
 
@@ -328,9 +337,9 @@ def Conv6SNP(dataset, flatten=True):
     return ConvNetSNopool(6, flatten)
 
 
-def ResNet12(FETI, dataset, flatten=True):
+def ResNet12(FETI, dataset, flatten=True, gradient_checkpointing=False):
     if FETI:
-        model = ResNet(BasicBlock, [2, 1, 1, 1], flatten)
+        model = ResNet(BasicBlock, [2, 1, 1, 1], flatten, gradient_checkpointing)
         pretrained_dict = pretrain_load(pretrained_path)
         model.load_state_dict(pretrained_dict['state_dict'], strict=False)
     else:
@@ -339,9 +348,9 @@ def ResNet12(FETI, dataset, flatten=True):
     return model
 
 
-def ResNet18(FETI, dataset, flatten=True):
+def ResNet18(FETI, dataset, flatten=True, gradient_checkpointing=False):
     if FETI:
-        model = ResNet(BasicBlock, [2, 2, 2, 2], flatten)
+        model = ResNet(BasicBlock, [2, 2, 2, 2], flatten, gradient_checkpointing)
         pretrained_dict = pretrain_load(pretrained_path)
         model.load_state_dict(pretrained_dict['state_dict'], strict=False)
     else:
@@ -349,9 +358,9 @@ def ResNet18(FETI, dataset, flatten=True):
     return model
 
 
-def ResNet34(FETI, dataset, flatten=True):
+def ResNet34(FETI, dataset, flatten=True, gradient_checkpointing=False):
     if FETI:
-        model = ResNet(BasicBlock, [3, 4, 6, 3], flatten)
+        model = ResNet(BasicBlock, [3, 4, 6, 3], flatten, gradient_checkpointing)
         pretrained_dict = pretrain_load(pretrained_path)
         model.load_state_dict(pretrained_dict['state_dict'], strict=False)
     else:
