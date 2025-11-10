@@ -45,13 +45,20 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
+    # Enable mixed precision training if using enhanced model
+    use_amp = hasattr(model, 'enable_amp') and model.enable_amp
+    scaler = torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
+    
+    if use_amp:
+        print("Mixed precision training enabled (AMP)")
+    
     max_acc = 0
 
     for epoch in range(num_epoch):
         model.train()
 
         model.train_loop(epoch, num_epoch, base_loader,
-                         params.wandb,  optimizer)
+                         params.wandb,  optimizer, scaler=scaler)
         with torch.no_grad():
             model.eval()
 

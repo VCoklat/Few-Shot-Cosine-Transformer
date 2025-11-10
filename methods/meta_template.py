@@ -58,18 +58,44 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, scaler=None):
         avg_loss = 0
         avg_acc = []
+        
+        # Check if we should use mixed precision
+        use_amp = scaler is not None and torch.cuda.is_available()
+        
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
                     self.n_way  = x.size(0)
                 
                 optimizer.zero_grad()
-                acc, loss = self.set_forward_loss(x = x.to(device))
-                loss.backward()
-                optimizer.step()
+                
+                # Mixed precision forward pass
+                if use_amp:
+                    with torch.cuda.amp.autocast():
+                        acc, loss = self.set_forward_loss(x = x.to(device))
+                    
+                    # Scale loss and backward
+                    scaler.scale(loss).backward()
+                    
+                    # Gradient clipping (optional but recommended)
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+                    
+                    # Optimizer step with scaler
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    acc, loss = self.set_forward_loss(x = x.to(device))
+                    loss.backward()
+                    
+                    # Gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+                    
+                    optimizer.step()
+                
                 avg_loss += loss.item()
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
