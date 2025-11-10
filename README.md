@@ -92,11 +92,24 @@ This optional enhancement can be enabled by setting `--lambda_V` and `--lambda_C
   - `--lambda_C`: weight for Covariance Loss (decorrelates feature dimensions, default `0.0`)
   - Note: Setting `lambda_V=0.0` and `lambda_C=0.0` maintains original training behavior
 
++ **Memory Optimization parameters** (for handling CUDA OOM errors):
+  - `--gradient_accumulation_steps`: number of gradient accumulation steps (default `0` for auto-detection)
+    - When set to `0`, automatically uses `4` for ResNet backbones and `2` for other backbones
+    - Higher values reduce memory usage but may slightly slow training
+    - Useful when training with large backbones (e.g., ResNet34) on GPUs with limited memory
+  - The implementation includes:
+    - **Automatic Mixed Precision (AMP)**: Uses FP16 for forward/backward passes to reduce memory by ~50%
+    - **Gradient Accumulation**: Splits backward pass into smaller chunks to reduce peak memory
+    - **Memory Clearing**: Explicitly clears CUDA cache after optimizer steps
+  - **Usage tip**: If you encounter CUDA Out of Memory errors, try increasing `--gradient_accumulation_steps` (e.g., `--gradient_accumulation_steps 8`)
+
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
 + **Example with VIC Loss**:  
-  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --n_way 5 --k_shot 5 --lambda_I 1.0 --lambda_V 0.5 --lambda_C 0.1`  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --n_way 5 --k_shot 5 --lambda_I 1.0 --lambda_V 0.5 --lambda_C 0.1`
++ **Example with Memory Optimization** (for CUDA OOM issues):  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --n_way 5 --k_shot 5 --gradient_accumulation_steps 8`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
