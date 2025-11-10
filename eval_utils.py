@@ -36,7 +36,7 @@ def evaluate(loader, model, n_way, class_names=None,
         accuracy          – overall accuracy
         macro_precision   – macro-averaged precision
         macro_recall      – macro-averaged recall
-        kappa             – Cohen's κ
+        kappa             – Cohen’s κ
         mcc               – Matthews Corr. Coef.
         top5_accuracy     – top-5 accuracy
         avg_inf_time      – mean inference time per episode (s)
@@ -48,7 +48,7 @@ def evaluate(loader, model, n_way, class_names=None,
 
     all_true, all_pred, all_scores, times = [], [], [], []
 
-    for x, _ in loader:                     # dataset's y is ignored
+    for x, _ in loader:                     # dataset’s y is ignored
         t0 = time.time()
 
         # forward pass in safe chunks
@@ -94,7 +94,7 @@ def evaluate(loader, model, n_way, class_names=None,
         kappa           = cohen_kappa_score(y_true, y_pred),
         mcc             = matthews_corrcoef(y_true, y_pred),
         top5_accuracy   = top_k_accuracy_score(
-                            y_true, y_scores, k=min(5, n_way), labels=list(range(n_way))
+                            y_true, y_scores, k=5, labels=list(range(n_way))
                           ),
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
@@ -125,7 +125,7 @@ def pretty_print(res: dict) -> None:
     print(f"\nAccuracy:          {res['accuracy']:.4f}")
     print(f"Macro Precision:   {res['macro_precision']:.4f}")
     print(f"Macro Recall:      {res['macro_recall']:.4f}")
-    print(f"Cohen's κ:         {res['kappa']:.4f}")
+    print(f"Cohen’s κ:         {res['kappa']:.4f}")
     print(f"Matthews CorrCoef: {res['mcc']:.4f}")
     print(f"Top-5 Accuracy:    {res['top5_accuracy']:.4f}")
 
