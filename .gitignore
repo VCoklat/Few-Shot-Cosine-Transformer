@@ -3,3 +3,5 @@
 *__pycache__*
 wandb/
 *.swp
+test_vic_loss.py
+test_fsct_vic.py
