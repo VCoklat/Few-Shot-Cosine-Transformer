@@ -69,6 +69,10 @@ class MetaTemplate(nn.Module):
                 optimizer.zero_grad()
                 acc, loss = self.set_forward_loss(x = x.to(device))
                 loss.backward()
+                
+                # Add gradient clipping for training stability and better convergence
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+                
                 optimizer.step()
                 avg_loss += loss.item()
                 avg_acc.append(acc)
