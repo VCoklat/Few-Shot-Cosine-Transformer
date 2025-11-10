@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.enhanced_transformer import EnhancedFewShotTransformer
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -165,7 +166,8 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 
+                        'FSCT_cosine_vic', 'FSCT_softmax_vic']:
 
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
@@ -190,6 +192,27 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
             model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            
+        elif params.method in ['FSCT_cosine_vic', 'FSCT_softmax_vic']:
+            variant = 'cosine' if 'cosine' in params.method else 'softmax'
+            
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+
+            # Enhanced model with VIC regularization and Mahalanobis classifier
+            model = EnhancedFewShotTransformer(
+                feature_model, 
+                variant=variant, 
+                depth=2,  # 2 encoder blocks as per spec
+                heads=4,  # 4 heads as per spec
+                dim_head=64,  # 64 per head as per spec
+                use_vic=True,
+                vic_weight_strategy='uncertainty',  # Use uncertainty weighting by default
+                enable_amp=True,  # Enable mixed precision
+                **few_shot_params
+            )
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
