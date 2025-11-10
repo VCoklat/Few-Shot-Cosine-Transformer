@@ -21,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description= 'few-shot script' )
     parser.add_argument('--dataset'         , default='miniImagenet', help='CIFAR/CUB/miniImagenet/cross/Omniglot/cross_char/Yoga/')
     parser.add_argument('--backbone'        , default='ResNet18',      help='backbone: Conv{4|6} / ResNet{12|18|34}')
-    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine') 
+    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine/DVFSCT_cosine') 
     parser.add_argument('--n_way'           , default=5, type=int,  help='number of categories')
     parser.add_argument('--n_query'         , default=16, type=int,  help='number of query samples per category')
     parser.add_argument('--k_shot'          , default=5, type=int,  help='number of labeled data per category') 
@@ -45,6 +45,10 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    parser.add_argument('--vic_lambda', type=float, default=0.1,
+                        help='VIC loss weight for DVFSCT method')
+    parser.add_argument('--use_mixed_precision', type=int, default=1,
+                        help='[1:0] - [True:False]; Use mixed precision (FP16) training for DVFSCT')
     return parser.parse_args()
 
 

@@ -18,6 +18,35 @@ This repo contains the official implementation code for the paper [**Enhancing F
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
 
+## Dynamic-VIC Few-Shot Cosine Transformer (DV-FSCT)
+
+**NEW!** We introduce **Dynamic-VIC FS-CT (DV-FSCT)**, a hybrid few-shot classification algorithm that enhances the baseline FS-CT with:
+
+### Key Features
+- **Dynamic-Weighted VIC Regularization**: Variance-Invariance-Covariance (VIC) loss with adaptive weights based on support sample hardness
+- **Prototypical Feature Space Optimization**: Learnable weighted prototypes with improved class representation
+- **Memory Efficient**: Mixed-precision training (FP16) and gradient checkpointing for GPU memory optimization
+- **Enhanced Performance**: Targets >20% accuracy improvement over baseline FS-CT
+
+### VIC Loss Components
+1. **Variance (V)**: Encourages feature diversity within dimensions
+2. **Invariance (I)**: Ensures robust classification through cross-entropy
+3. **Covariance (C)**: Promotes feature decorrelation via off-diagonal penalization
+
+Dynamic weights (α_V, α_I, α_C) adapt per episode based on hardness score: `h = 1 - max(cos(z_i, p_c))`, preventing representation collapse in low-shot scenarios.
+
+### Usage
+```bash
+python train_test.py --method DVFSCT_cosine --dataset miniImagenet --backbone ResNet18 \
+    --n_way 5 --k_shot 5 --vic_lambda 0.1 --use_mixed_precision 1
+```
+
+### Testing
+Run unit tests to validate the implementation:
+```bash
+python test_dv_fsct.py
+```
+
 ## Experiments
 ### Dependencies environment
   + `pip install -r requirements.txt`
@@ -58,9 +87,10 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - Training and testing: `train_test.py`
 + **Configurations pool**:
     + Backbones: `Conv4`/`Conv6`/`ResNet18`/`ResNet34`
-    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`
+    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`/`DVFSCT_cosine`
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
+      + `DVFSCT_cosine` is the **Dynamic-VIC Few-Shot Cosine Transformer** with VIC regularization (NEW!)
     + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
@@ -72,10 +102,14 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  - `--vic_lambda`: VIC loss weight for DVFSCT method (default `0.1`)
+  - `--use_mixed_precision`: use mixed precision (FP16) training for DVFSCT if `1`, none if `0` (default `1`)
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
++ **Example with DV-FSCT**:  
+  `python train_test.py --method DVFSCT_cosine --dataset miniImagenet --backbone ResNet18 --n_way 5 --k_shot 5 --vic_lambda 0.1 --use_mixed_precision 1 --wandb 1`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation

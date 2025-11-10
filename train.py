@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.dv_fsct import DVFSCT
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -165,7 +166,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'DVFSCT_cosine']:
 
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
@@ -200,6 +201,17 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
 
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+        
+        elif params.method == 'DVFSCT_cosine':
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+
+            model = DVFSCT(feature_model, 
+                          vic_lambda=params.vic_lambda,
+                          use_mixed_precision=bool(params.use_mixed_precision),
+                          **few_shot_params)
     else:
         raise ValueError('Unknown method')
 
