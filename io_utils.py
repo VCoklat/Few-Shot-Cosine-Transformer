@@ -45,6 +45,14 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # VIC loss weight parameters
+    parser.add_argument('--lambda_I', type=float, default=1.0, 
+                        help='Weight for Invariance Loss (standard cross-entropy)')
+    parser.add_argument('--lambda_V', type=float, default=0.0, 
+                        help='Weight for Variance Loss (encourages compactness of support embeddings)')
+    parser.add_argument('--lambda_C', type=float, default=0.0, 
+                        help='Weight for Covariance Loss (decorrelates feature dimensions)')
     return parser.parse_args()
 
 
