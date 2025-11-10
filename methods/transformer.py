@@ -83,9 +83,11 @@ def cosine_distance(x1, x2, temperature=None):
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax", 
                  depth=1, heads=8, dim_head=64, mlp_dim=512,
-                 initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False):
+                 initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
+                 label_smoothing=0.1, attention_dropout=0.1):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
-        self.loss_fn = nn.CrossEntropyLoss()
+        # Add label smoothing for better generalization
+        self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
@@ -96,18 +98,23 @@ class FewShotTransformer(MetaTemplate):
         self.accuracy_threshold = 30.0  # Lowered to enable advanced attention earlier
         self.use_advanced_attention = True  # Enable advanced attention from the start
 
-        # Parameters for advanced attention mechanism
-        self.gamma = 0.1  # Variance target as per paper (stronger regularization)
+        # Parameters for advanced attention mechanism - optimized for better performance
+        self.gamma = 0.08  # Slightly stronger regularization for better feature discrimination
         self.epsilon = 1e-8
+        self.attention_dropout = attention_dropout
 
-        # Create attention module
+        # Create attention module with dropout for better generalization
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
                              initial_cov_weight=initial_cov_weight,
                              initial_var_weight=initial_var_weight,
                              dynamic_weight=dynamic_weight,
-                             n_way=n_way, k_shot=k_shot)
+                             n_way=n_way, k_shot=k_shot,
+                             dropout=attention_dropout)
         self.sm = nn.Softmax(dim=-2)
         self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+        
+        # Add dropout for FFN layers to improve generalization
+        self.ffn_dropout = nn.Dropout(0.1)
 
         # Replace nn.Sequential with separate components to avoid lambda issues
         # FFN components
@@ -126,11 +133,13 @@ class FewShotTransformer(MetaTemplate):
             self.final_classifier = nn.Linear(dim_head, 1)
 
     def FFN_forward(self, x):
-        """Forward pass through FFN layers"""
+        """Forward pass through FFN layers with dropout"""
         x = self.ffn_layernorm(x)
         x = self.ffn_linear1(x)
         x = self.ffn_gelu(x)
+        x = self.ffn_dropout(x)  # Add dropout after activation
         x = self.ffn_linear2(x)
+        x = self.ffn_dropout(x)  # Add dropout after final linear layer
         return x
 
     def final_linear_forward(self, x):
@@ -191,7 +200,7 @@ class FewShotTransformer(MetaTemplate):
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6,
-                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5):
+                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5, dropout=0.0):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -202,18 +211,19 @@ class Attention(nn.Module):
         self.variant = variant
         self.n_way = n_way
         self.k_shot = k_shot
+        self.dropout = nn.Dropout(dropout)  # Add attention dropout
 
-        # Solution 1: Temperature Scaling - Learnable temperature per head
-        self.temperature = nn.Parameter(torch.ones(heads) * 0.5)
+        # Solution 1: Temperature Scaling - Learnable temperature per head (optimized)
+        self.temperature = nn.Parameter(torch.ones(heads) * 0.4)  # Start with sharper attention
         
-        # Solution 5: EMA Smoothing - Track moving averages for stability
-        self.ema_decay = 0.99
+        # Solution 5: EMA Smoothing - Track moving averages for stability (optimized)
+        self.ema_decay = 0.98  # Slightly faster adaptation for better responsiveness
         self.register_buffer('var_ema', torch.ones(1))
         self.register_buffer('cov_ema', torch.ones(1))
         
-        # Solution 2: Adaptive Gamma - Dynamic variance regularization
-        self.gamma_start = 0.5  # Start with stronger regularization
-        self.gamma_end = 0.05   # End with weaker regularization
+        # Solution 2: Adaptive Gamma - Dynamic variance regularization (optimized)
+        self.gamma_start = 0.6  # Start with even stronger regularization
+        self.gamma_end = 0.03   # End with even weaker regularization for fine-tuning
         self.current_epoch = 0
         self.max_epochs = 50
 
@@ -700,6 +710,8 @@ class Attention(nn.Module):
 
             # Now perform matrix multiplication: dots @ f_v
             out = torch.matmul(dots, f_v)  # [heads, batch, seq_q, head_dim]
+            # Apply attention dropout for regularization
+            out = self.dropout(out)
 
         else:  # self.variant == "softmax"
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale  # [heads, batch, seq_q, seq_k]
@@ -715,6 +727,8 @@ class Attention(nn.Module):
                     f_v = torch.cat([f_v, padding], dim=2)
 
             out = torch.matmul(self.sm(dots), f_v)  # [heads, batch, seq_q, head_dim]
+            # Apply attention dropout for regularization
+            out = self.dropout(out)
 
         # Rearrange back to original format
         out = rearrange(out, 'h b n d -> b n (h d)')  # [batch, seq_q, inner_dim]
