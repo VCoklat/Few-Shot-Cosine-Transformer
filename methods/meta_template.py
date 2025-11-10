@@ -58,25 +58,60 @@ class MetaTemplate(nn.Module):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer):
+    def train_loop(self, epoch, num_epoch, train_loader, wandb_flag, optimizer, scaler=None):
         avg_loss = 0
         avg_acc = []
+        avg_vic_v = 0
+        avg_vic_i = 0
+        avg_vic_c = 0
         with tqdm.tqdm(total = len(train_loader)) as train_pbar:
             for i, (x, _) in enumerate(train_loader):        
                 if self.change_way:
                     self.n_way  = x.size(0)
                 
                 optimizer.zero_grad()
-                acc, loss = self.set_forward_loss(x = x.to(device))
-                loss.backward()
-                optimizer.step()
+                
+                # Mixed precision forward pass
+                if scaler is not None:
+                    with torch.cuda.amp.autocast():
+                        result = self.set_forward_loss(x = x.to(device))
+                else:
+                    result = self.set_forward_loss(x = x.to(device))
+                
+                # Handle both old-style (acc, loss) and new-style (acc, loss, vic_dict) returns
+                if len(result) == 3:
+                    acc, loss, vic_dict = result
+                    avg_vic_v += vic_dict['variance'].item()
+                    avg_vic_i += vic_dict['invariance'].item()
+                    avg_vic_c += vic_dict['covariance'].item()
+                else:
+                    acc, loss = result
+                
+                # Mixed precision backward pass
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    optimizer.step()
+                
                 avg_loss += loss.item()
                 avg_acc.append(acc)
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)
+        
         if wandb_flag:
-            wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
+            log_dict = {"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100}
+            # Add VIC losses if available
+            if hasattr(self, 'use_vic') and self.use_vic:
+                log_dict.update({
+                    'VIC_Variance': avg_vic_v/float(i + 1),
+                    'VIC_Invariance': avg_vic_i/float(i + 1),
+                    'VIC_Covariance': avg_vic_c/float(i + 1)
+                })
+            wandb.log(log_dict, step=epoch + 1)
 
     def val_loop(self, val_loader, epoch, wandb_flag, record = None):
         correct =0

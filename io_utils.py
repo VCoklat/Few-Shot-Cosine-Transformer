@@ -45,6 +45,19 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # VIC Regularization parameters
+    parser.add_argument('--use_vic'         , type=int, default=0, help='[1:0] - [True:False]; Use VIC regularization from ProFONet')
+    parser.add_argument('--vic_lambda_v'    , default=1.0, type=float, help='Initial weight for variance loss in VIC')
+    parser.add_argument('--vic_lambda_i'    , default=1.0, type=float, help='Initial weight for invariance loss in VIC')
+    parser.add_argument('--vic_lambda_c'    , default=1.0, type=float, help='Initial weight for covariance loss in VIC')
+    parser.add_argument('--vic_epsilon'     , default=1e-4, type=float, help='Minimum variance threshold in VIC')
+    parser.add_argument('--vic_alpha'       , default=0.001, type=float, help='Learning rate for dynamic weight updates in VIC')
+    
+    # Memory optimization parameters
+    parser.add_argument('--mixed_precision' , type=int, default=0, help='[1:0] - [True:False]; Use mixed precision training (FP16) for memory efficiency')
+    parser.add_argument('--gradient_checkpoint', type=int, default=0, help='[1:0] - [True:False]; Use gradient checkpointing to reduce memory')
+    
     return parser.parse_args()
 
 

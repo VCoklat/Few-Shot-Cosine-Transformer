@@ -44,13 +44,23 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
+    # Mixed precision training for memory efficiency
+    scaler = None
+    if params.mixed_precision:
+        scaler = torch.cuda.amp.GradScaler()
+        print("Using mixed precision training (FP16)")
+    
     max_acc = 0
 
     for epoch in range(num_epoch):
         model.train()
+        
+        # Clear cache to prevent OOM
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         model.train_loop(epoch, num_epoch, base_loader,
-                         params.wandb,  optimizer)
+                         params.wandb,  optimizer, scaler)
         with torch.no_grad():
             model.eval()
 
@@ -189,7 +199,17 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            model = FewShotTransformer(
+                feature_model, 
+                variant=variant, 
+                use_vic=bool(params.use_vic),
+                vic_lambda_v=params.vic_lambda_v,
+                vic_lambda_i=params.vic_lambda_i,
+                vic_lambda_c=params.vic_lambda_c,
+                vic_epsilon=params.vic_epsilon,
+                vic_alpha=params.vic_alpha,
+                **few_shot_params
+            )
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
