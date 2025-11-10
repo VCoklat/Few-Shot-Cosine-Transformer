@@ -18,6 +18,19 @@ This repo contains the official implementation code for the paper [**Enhancing F
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
 
+### VIC-Enhanced Training (Optional)
+
+This implementation includes an optional **VIC (Variance-Invariance-Covariance) Injected ProtoLoss** training enhancement inspired by [ProFONet](https://arxiv.org/abs/2206.14387) and [VICReg](https://arxiv.org/abs/2105.04906). The VIC loss extends the standard episodic training with additional regularization terms:
+
+**Combined Loss**: `L_total = (λ_I × L_I) + (λ_V × L_V) + (λ_C × L_C)`
+
+Where:
+- **L_I (Invariance Loss)**: Standard categorical cross-entropy loss between predictions and true labels
+- **L_V (Variance Loss)**: Hinge loss on the standard deviation of support set embeddings per class, encouraging compact representations
+- **L_C (Covariance Loss)**: Covariance regularization on support embeddings to decorrelate feature dimensions and prevent informational collapse
+
+This optional enhancement can be enabled by setting `--lambda_V` and `--lambda_C` to non-zero values. By default (both at 0.0), the model trains with standard cross-entropy only, maintaining backward compatibility.
+
 ## Experiments
 ### Dependencies environment
   + `pip install -r requirements.txt`
@@ -72,10 +85,18 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  
++ **VIC Loss parameters** (for VIC-Enhanced training):
+  - `--lambda_I`: weight for Invariance Loss (standard cross-entropy, default `1.0`)
+  - `--lambda_V`: weight for Variance Loss (encourages compactness of support embeddings, default `0.0`)
+  - `--lambda_C`: weight for Covariance Loss (decorrelates feature dimensions, default `0.0`)
+  - Note: Setting `lambda_V=0.0` and `lambda_C=0.0` maintains original training behavior
 
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
++ **Example with VIC Loss**:  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --n_way 5 --k_shot 5 --lambda_I 1.0 --lambda_V 0.5 --lambda_C 0.1`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
