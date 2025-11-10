@@ -45,6 +45,15 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # Memory-efficient training options
+    parser.add_argument('--use_amp', type=int, default=0, 
+                        help='[1:0] - [True:False]; Use automatic mixed precision (AMP) for memory efficiency')
+    parser.add_argument('--use_checkpoint', type=int, default=0,
+                        help='[1:0] - [True:False]; Use gradient checkpointing in transformer blocks for memory efficiency')
+    parser.add_argument('--grad_clip', type=float, default=1.0,
+                        help='Gradient clipping norm (0 to disable)')
+    
     return parser.parse_args()
 
 

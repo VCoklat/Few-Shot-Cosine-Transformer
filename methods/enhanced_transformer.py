@@ -31,7 +31,8 @@ class EnhancedFewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, 
                  variant='cosine', depth=2, heads=4, dim_head=64, mlp_dim=512,
                  use_vic=True, use_mahalanobis=True, 
-                 vic_lambda_init=None, weight_controller='uncertainty'):
+                 vic_lambda_init=None, weight_controller='uncertainty',
+                 use_checkpoint=False):
         """
         Args:
             model_func: Feature extractor function
@@ -47,6 +48,7 @@ class EnhancedFewShotTransformer(MetaTemplate):
             use_mahalanobis: Use Mahalanobis classifier instead of cosine linear
             vic_lambda_init: Initial weights for VIC terms [λI, λV, λC]
             weight_controller: 'uncertainty' or 'gradnorm' or 'fixed'
+            use_checkpoint: Use gradient checkpointing for memory efficiency
         """
         super().__init__(model_func, n_way, k_shot, n_query)
         
@@ -55,6 +57,7 @@ class EnhancedFewShotTransformer(MetaTemplate):
         self.depth = depth
         self.use_vic = use_vic
         self.use_mahalanobis = use_mahalanobis
+        self.use_checkpoint = use_checkpoint
         
         dim = self.feat_dim
         
@@ -66,7 +69,8 @@ class EnhancedFewShotTransformer(MetaTemplate):
         # Cosine cross-attention blocks (2 encoder blocks)
         self.attention_blocks = nn.ModuleList([
             CosineTransformerBlock(dim, heads=heads, dim_head=dim_head, 
-                                  mlp_dim=mlp_dim, variant=variant)
+                                  mlp_dim=mlp_dim, variant=variant, 
+                                  use_checkpoint=use_checkpoint)
             for _ in range(depth)
         ])
         
@@ -244,9 +248,10 @@ class CosineTransformerBlock(nn.Module):
     - Feed-forward network with GELU
     - Layer normalization (pre-norm)
     - Residual connections
+    - Optional gradient checkpointing
     """
     
-    def __init__(self, dim, heads=4, dim_head=64, mlp_dim=512, variant='cosine'):
+    def __init__(self, dim, heads=4, dim_head=64, mlp_dim=512, variant='cosine', use_checkpoint=False):
         super().__init__()
         self.attention = CosineMultiHeadAttention(
             dim, heads=heads, dim_head=dim_head, variant=variant
@@ -254,6 +259,19 @@ class CosineTransformerBlock(nn.Module):
         self.ffn = FeedForward(dim, mlp_dim)
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
+        self.use_checkpoint = use_checkpoint
+    
+    def _forward_impl(self, Q, K, V):
+        """Actual forward implementation."""
+        # Pre-norm and attention with residual
+        attn_out = self.attention(self.norm1(Q), self.norm1(K), self.norm1(V))
+        Q = Q + attn_out
+        
+        # Pre-norm and FFN with residual
+        ffn_out = self.ffn(self.norm2(Q))
+        Q = Q + ffn_out
+        
+        return Q
     
     def forward(self, Q, K, V):
         """
@@ -265,15 +283,13 @@ class CosineTransformerBlock(nn.Module):
         Returns:
             output: (batch, n_q, dim)
         """
-        # Pre-norm and attention with residual
-        attn_out = self.attention(self.norm1(Q), self.norm1(K), self.norm1(V))
-        Q = Q + attn_out
-        
-        # Pre-norm and FFN with residual
-        ffn_out = self.ffn(self.norm2(Q))
-        Q = Q + ffn_out
-        
-        return Q
+        if self.use_checkpoint and self.training:
+            # Use gradient checkpointing to save memory during training
+            return torch.utils.checkpoint.checkpoint(
+                self._forward_impl, Q, K, V, use_reentrant=False
+            )
+        else:
+            return self._forward_impl(Q, K, V)
 
 
 class CosineMultiHeadAttention(nn.Module):

@@ -207,6 +207,7 @@ if __name__ == '__main__':
                 use_vic=True, use_mahalanobis=True,
                 vic_lambda_init=[9.0, 0.5, 0.5],
                 weight_controller='uncertainty',
+                use_checkpoint=False,  # Disable checkpointing during testing
                 **few_shot_params
             )
             
