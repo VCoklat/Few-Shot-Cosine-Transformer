@@ -32,7 +32,7 @@ class EnhancedFewShotTransformer(MetaTemplate):
                  variant='cosine', depth=2, heads=4, dim_head=64, mlp_dim=512,
                  use_vic=True, use_mahalanobis=True, 
                  vic_lambda_init=None, weight_controller='uncertainty',
-                 use_checkpoint=False):
+                 use_checkpoint=False, reduced_dim=512):
         """
         Args:
             model_func: Feature extractor function
@@ -49,6 +49,7 @@ class EnhancedFewShotTransformer(MetaTemplate):
             vic_lambda_init: Initial weights for VIC terms [λI, λV, λC]
             weight_controller: 'uncertainty' or 'gradnorm' or 'fixed'
             use_checkpoint: Use gradient checkpointing for memory efficiency
+            reduced_dim: Reduced dimension for Mahalanobis computation (default 512)
         """
         super().__init__(model_func, n_way, k_shot, n_query)
         
@@ -61,6 +62,20 @@ class EnhancedFewShotTransformer(MetaTemplate):
         
         dim = self.feat_dim
         
+        # Add dimensionality reduction for memory-efficient Mahalanobis computation
+        # This projects high-dimensional features (e.g., 25088 from ResNet34) to a lower dimension
+        if use_mahalanobis and dim > reduced_dim:
+            self.dim_reduction = nn.Sequential(
+                nn.Linear(dim, reduced_dim),
+                nn.LayerNorm(reduced_dim),
+                nn.ReLU()
+            )
+            # Use reduced dimension for subsequent layers
+            working_dim = reduced_dim
+        else:
+            self.dim_reduction = None
+            working_dim = dim
+        
         # Learnable weighted prototypes: per-class learnable shot weights
         # Initialize to zeros so softmax gives uniform weights initially
         self.proto_weight = nn.Parameter(torch.zeros(n_way, k_shot, 1))
@@ -68,7 +83,7 @@ class EnhancedFewShotTransformer(MetaTemplate):
         
         # Cosine cross-attention blocks (2 encoder blocks)
         self.attention_blocks = nn.ModuleList([
-            CosineTransformerBlock(dim, heads=heads, dim_head=dim_head, 
+            CosineTransformerBlock(working_dim, heads=heads, dim_head=dim_head, 
                                   mlp_dim=mlp_dim, variant=variant, 
                                   use_checkpoint=use_checkpoint)
             for _ in range(depth)
@@ -81,8 +96,8 @@ class EnhancedFewShotTransformer(MetaTemplate):
             # Fallback to cosine linear head
             from backbone import CosineDistLinear
             self.classifier = nn.Sequential(
-                nn.LayerNorm(dim),
-                nn.Linear(dim, dim_head),
+                nn.LayerNorm(working_dim),
+                nn.Linear(working_dim, dim_head),
                 CosineDistLinear(dim_head, 1) if variant == "cosine"
                 else nn.Linear(dim_head, 1)
             )
@@ -163,6 +178,14 @@ class EnhancedFewShotTransformer(MetaTemplate):
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1)
         
+        # Apply dimensionality reduction if needed
+        if self.dim_reduction is not None:
+            # Reduce dimensions for support and query
+            z_support_shape = z_support.shape
+            z_support = self.dim_reduction(z_support.view(-1, z_support.shape[-1]))
+            z_support = z_support.view(z_support_shape[0], z_support_shape[1], -1)
+            z_query = self.dim_reduction(z_query)
+        
         # Compute learnable weighted prototypes
         prototypes = self.compute_prototypes(z_support)  # (n_way, d)
         
@@ -197,6 +220,14 @@ class EnhancedFewShotTransformer(MetaTemplate):
         
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1)
+        
+        # Apply dimensionality reduction if needed
+        if self.dim_reduction is not None:
+            # Reduce dimensions for support and query
+            z_support_shape = z_support.shape
+            z_support = self.dim_reduction(z_support.view(-1, z_support.shape[-1]))
+            z_support = z_support.view(z_support_shape[0], z_support_shape[1], -1)
+            z_query = self.dim_reduction(z_query)
         
         # Compute learnable weighted prototypes
         prototypes = self.compute_prototypes(z_support)

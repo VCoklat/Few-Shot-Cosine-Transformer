@@ -45,7 +45,10 @@ class MahalanobisClassifier(nn.Module):
         # Compute sample covariance
         mean = support_embeddings.mean(dim=0, keepdim=True)
         centered = support_embeddings - mean
-        cov = (centered.T @ centered) / (k - 1 + self.eps)
+        
+        # Use more numerically stable covariance computation
+        # cov = (centered.T @ centered) / (k - 1 + self.eps)
+        cov = torch.mm(centered.T, centered) / (k - 1 + self.eps)
         
         # Determine shrinkage alpha
         if alpha is None:
@@ -55,17 +58,22 @@ class MahalanobisClassifier(nn.Module):
                 alpha = self.shrinkage_alpha
         
         # Apply shrinkage: Σ = (1-α)·S + α·I
-        identity = torch.eye(d, device=cov.device, dtype=cov.dtype)
-        shrunk_cov = (1 - alpha) * cov + alpha * identity
+        # Use in-place operations to save memory
+        shrunk_cov = cov.mul(1 - alpha)
+        shrunk_cov.diagonal().add_(alpha)
         
         # Compute inverse using Cholesky decomposition for stability
         try:
             L = torch.linalg.cholesky(shrunk_cov)
             inv_cov = torch.cholesky_inverse(L)
-        except RuntimeError:
+        except RuntimeError as e:
             # Fallback to adding more regularization
-            shrunk_cov = shrunk_cov + self.eps * identity
-            inv_cov = torch.linalg.inv(shrunk_cov)
+            shrunk_cov.diagonal().add_(self.eps)
+            try:
+                inv_cov = torch.linalg.inv(shrunk_cov)
+            except RuntimeError:
+                # If still failing, use pseudo-inverse as last resort
+                inv_cov = torch.linalg.pinv(shrunk_cov)
         
         return inv_cov
     
