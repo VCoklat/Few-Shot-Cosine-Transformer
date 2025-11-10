@@ -14,6 +14,24 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - [Acknowledgment](#acknowledgment)
   - [Citation](#citation)
   - [Contact](#contact)
+  
+## Enhanced Few-shot Cosine Transformer (EnhancedFSCT)
+
+**NEW**: We now provide an enhanced version of the Few-Shot Cosine Transformer that combines:
+- **Learnable Weighted Prototypes**: Dynamically learns optimal weights for support shots
+- **VIC Regularization**: Variance-Invariance-Covariance losses for better feature learning
+- **Mahalanobis Distance Classifier**: Uses class-specific covariance for robust classification
+- **Dynamic Loss Weighting**: Automatically balances multiple loss terms via uncertainty weighting
+- **Mixed Precision Training**: Memory-efficient training with automatic gradient scaling
+
+This enhanced version provides significant improvements over the baseline, especially on challenging few-shot scenarios. See [ENHANCED_FSCT_DOCUMENTATION.md](ENHANCED_FSCT_DOCUMENTATION.md) for detailed documentation.
+
+**Quick start**:
+```bash
+python train_test.py --method EnhancedFSCT --dataset miniImagenet --backbone ResNet18 \
+  --n_way 5 --k_shot 1 --use_amp 1 --use_uncertainty 1
+```
+
 ## Few-shot Cosine Transformer
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
@@ -58,9 +76,10 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - Training and testing: `train_test.py`
 + **Configurations pool**:
     + Backbones: `Conv4`/`Conv6`/`ResNet18`/`ResNet34`
-    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`
+    + Methods: `CTX_softmax`/`CTX_cosine`/`FSCT_softmax`/`FSCT_cosine`/`EnhancedFSCT`
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
+      + `EnhancedFSCT` is the **enhanced version with VIC regularization and Mahalanobis distance**
     + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
@@ -74,8 +93,22 @@ This repo contains the official implementation code for the paper [**Enhancing F
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
 
   - For other parameters, please read `io_utils.py` for detail information.
++ **EnhancedFSCT additional parameters** (see `ENHANCED_FSCT_DOCUMENTATION.md` for details):
+  - `--lambda_I`: weight for Invariance (classification) loss (default `9.0`)
+  - `--lambda_V`: weight for Variance loss (default `0.5`)
+  - `--lambda_C`: weight for Covariance loss (default `0.5`)
+  - `--use_uncertainty`: use uncertainty weighting for VIC losses (default `1`)
+  - `--use_gradnorm`: use GradNorm controller instead (default `0`)
+  - `--depth`: number of cosine encoder blocks (default `2`)
+  - `--heads`: number of attention heads (default `4`)
+  - `--dim_head`: dimension per attention head (default `64`)
+  - `--mlp_dim`: FFN hidden dimension (default `512`)
+  - `--use_amp`: use mixed precision training (default `0`)
+  - `--grad_clip`: gradient clipping norm (default `1.0`)
 + **Example**:  
-  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`
++ **EnhancedFSCT Example**:  
+  `python train_test.py --method EnhancedFSCT --dataset miniImagenet --backbone ResNet18 --n_way 5 --k_shot 1 --use_amp 1 --grad_clip 1.0 --use_uncertainty 1`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
