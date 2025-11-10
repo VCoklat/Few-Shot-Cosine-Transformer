@@ -67,7 +67,11 @@ class MetaTemplate(nn.Module):
                     self.n_way  = x.size(0)
                 
                 optimizer.zero_grad()
-                acc, loss = self.set_forward_loss(x = x.to(device))
+                # Pass epoch information for VIC dynamic weights
+                if hasattr(self, 'use_vic') and self.use_vic:
+                    acc, loss = self.set_forward_loss(x = x.to(device), current_epoch=epoch, total_epochs=num_epoch)
+                else:
+                    acc, loss = self.set_forward_loss(x = x.to(device))
                 loss.backward()
                 optimizer.step()
                 avg_loss += loss.item()

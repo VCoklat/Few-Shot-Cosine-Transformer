@@ -44,6 +44,13 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
+    # Mixed precision training setup
+    scaler = None
+    if hasattr(params, 'mixed_precision') and params.mixed_precision:
+        from torch.cuda.amp import GradScaler
+        scaler = GradScaler()
+        print("Mixed precision training enabled")
+
     max_acc = 0
 
     for epoch in range(num_epoch):
@@ -51,6 +58,11 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)
+        
+        # Apply gradient clipping if specified
+        if hasattr(params, 'gradient_clip') and params.gradient_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=params.gradient_clip)
+        
         with torch.no_grad():
             model.eval()
 
@@ -189,7 +201,19 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            # Add VIC parameters if enabled
+            vic_params = {}
+            if hasattr(params, 'use_vic') and params.use_vic:
+                vic_params = {
+                    'use_vic': True,
+                    'lambda_V_base': params.lambda_V_base,
+                    'lambda_I': params.lambda_I,
+                    'lambda_C_base': params.lambda_C_base,
+                    'vic_gamma': params.vic_gamma,
+                    'vic_epsilon': params.vic_epsilon
+                }
+            
+            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params, **vic_params)
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'

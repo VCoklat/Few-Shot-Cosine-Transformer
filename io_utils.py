@@ -45,6 +45,20 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # VIC Regularization parameters
+    parser.add_argument('--use_vic'         , type=int, default=0, help='[1:0] - [True:False]; Use VIC regularization')
+    parser.add_argument('--lambda_V_base'   , type=float, default=0.5, help='Base weight for variance regularization')
+    parser.add_argument('--lambda_I'        , type=float, default=9.0, help='Weight for invariance (classification) loss')
+    parser.add_argument('--lambda_C_base'   , type=float, default=0.5, help='Base weight for covariance regularization')
+    parser.add_argument('--vic_gamma'       , type=float, default=1.0, help='Gamma parameter for variance regularization')
+    parser.add_argument('--vic_epsilon'     , type=float, default=1e-6, help='Epsilon parameter for variance regularization')
+    
+    # Memory optimization parameters
+    parser.add_argument('--mixed_precision' , type=int, default=0, help='[1:0] - [True:False]; Use mixed precision training')
+    parser.add_argument('--gradient_checkpointing', type=int, default=0, help='[1:0] - [True:False]; Use gradient checkpointing')
+    parser.add_argument('--gradient_clip'   , type=float, default=1.0, help='Gradient clipping max norm (0 to disable)')
+    
     return parser.parse_args()
 
 

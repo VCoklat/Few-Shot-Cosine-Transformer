@@ -5,6 +5,7 @@ import numpy as np
 import torch.nn.functional as F
 from abc import abstractmethod
 from methods.meta_template import MetaTemplate
+from methods.vic_regularization import VICRegularization, DynamicVICWeights
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
@@ -15,7 +16,9 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func,  n_way, k_shot, n_query, variant = "softmax",
-                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512):
+                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512,
+                use_vic=False, lambda_V_base=0.5, lambda_I=9.0, lambda_C_base=0.5,
+                vic_gamma=1.0, vic_epsilon=1e-6):
         super(FewShotTransformer, self).__init__(model_func,  n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -42,12 +45,31 @@ class FewShotTransformer(MetaTemplate):
             CosineDistLinear(dim_head, 1) if variant == "cosine"
             else nn.Linear(dim_head, 1))
         
+        # VIC Regularization components
+        self.use_vic = use_vic
+        if self.use_vic:
+            self.vic_reg = VICRegularization(gamma=vic_gamma, epsilon=vic_epsilon)
+            self.vic_weights = DynamicVICWeights(
+                lambda_V_base=lambda_V_base,
+                lambda_I=lambda_I,
+                lambda_C_base=lambda_C_base
+            )
+        
+        # Store embeddings for VIC regularization
+        self.z_support_cache = None
+        self.z_proto_cache = None
+        
     def set_forward(self, x, is_feature=False):
 
         z_support, z_query = self.parse_feature(x, is_feature)
                 
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
         z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+        
+        # Cache embeddings for VIC regularization if enabled
+        if self.use_vic and self.training:
+            self.z_support_cache = z_support
+            self.z_proto_cache = z_proto.squeeze(0)  # (n, d)
         
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
 
@@ -60,12 +82,37 @@ class FewShotTransformer(MetaTemplate):
         # Output is the probabilistic prediction for each class
         return self.linear(x).squeeze()                                                                # (q, n)
     
-    def set_forward_loss(self, x):
+    def set_forward_loss(self, x, current_epoch=0, total_epochs=50):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))  # this is the target groundtruth
         scores = self.set_forward(x)
         
-        loss = self.loss_fn(scores, target)
+        # Invariance loss (classification loss)
+        loss_ce = self.loss_fn(scores, target)
+        
+        # Add VIC regularization if enabled
+        if self.use_vic and self.training and self.z_support_cache is not None:
+            # Get dynamic weights
+            weights = self.vic_weights.get_weights(current_epoch, total_epochs)
+            
+            # Concatenate support embeddings and prototypes
+            # z_support_cache: (n, k, d), z_proto_cache: (n, d)
+            z_support_flat = self.z_support_cache.view(-1, self.z_support_cache.size(-1))  # (n*k, d)
+            embeddings = torch.cat([z_support_flat, self.z_proto_cache], dim=0)  # (n*k + n, d)
+            
+            # Compute VIC losses
+            vic_losses = self.vic_reg(embeddings)
+            
+            # Combined loss with dynamic weights
+            loss = (weights['lambda_I'] * loss_ce + 
+                   weights['lambda_V'] * vic_losses['variance_loss'] +
+                   weights['lambda_C'] * vic_losses['covariance_loss'])
+            
+            # Normalize by invariance weight to keep loss scale similar
+            loss = loss / weights['lambda_I']
+        else:
+            loss = loss_ce
+        
         predict = torch.argmax(scores, dim = 1)
         acc = (predict == target).sum().item() / target.size(0)
         return acc, loss
