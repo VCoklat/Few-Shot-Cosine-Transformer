@@ -60,13 +60,18 @@ class VICRegularization(nn.Module):
         # Compute covariance matrix
         cov_matrix = (embeddings_centered.T @ embeddings_centered) / (m - 1)  # Shape: (d, d)
         
-        # Extract off-diagonal elements and compute their squared sum
-        # Create mask for off-diagonal elements
-        mask = ~torch.eye(d, dtype=torch.bool, device=embeddings.device)
-        off_diagonal = cov_matrix[mask]
+        # Memory-efficient computation of off-diagonal squared sum
+        # Instead of extracting all off-diagonal elements (which creates a large tensor),
+        # compute: sum(all_elements^2) - sum(diagonal_elements^2)
+        # Then divide by number of off-diagonal elements (d^2 - d)
+        cov_matrix_sq = cov_matrix ** 2
+        total_sq_sum = cov_matrix_sq.sum()
+        diagonal_sq_sum = torch.diagonal(cov_matrix_sq).sum()
+        off_diagonal_sq_sum = total_sq_sum - diagonal_sq_sum
         
-        # Compute loss as mean squared off-diagonal values
-        c_loss = torch.mean(off_diagonal ** 2)
+        # Number of off-diagonal elements is d^2 - d = d * (d - 1)
+        num_off_diagonal = d * (d - 1)
+        c_loss = off_diagonal_sq_sum / num_off_diagonal
         
         return c_loss
     
