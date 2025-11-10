@@ -68,9 +68,11 @@ class VICRegularization(nn.Module):
         """
         # Reshape if needed to (batch, dim)
         if embeddings.dim() == 3:
-            embeddings = embeddings.view(-1, embeddings.size(-1))
+            batch_size, num_samples, dim = embeddings.shape
+            embeddings = embeddings.reshape(-1, dim)
         
         # Compute variance along batch dimension for each feature
+        # Use online algorithm to save memory
         var = torch.var(embeddings, dim=0, unbiased=False)
         
         # Encourage variance to be above epsilon
@@ -116,21 +118,20 @@ class VICRegularization(nn.Module):
         """
         # Reshape if needed to (batch, dim)
         if embeddings.dim() == 3:
-            embeddings = embeddings.view(-1, embeddings.size(-1))
+            batch_size_3d, num_samples, dim = embeddings.shape
+            embeddings = embeddings.reshape(-1, dim)
         
         batch_size, dim = embeddings.shape
         
         # Center the embeddings
         embeddings_centered = embeddings - embeddings.mean(dim=0, keepdim=True)
         
-        # Compute covariance matrix
+        # Compute covariance matrix more efficiently
         cov = torch.mm(embeddings_centered.T, embeddings_centered) / (batch_size - 1)
         
-        # Off-diagonal covariance
-        off_diag = cov - torch.diag(torch.diag(cov))
-        
-        # Sum of squared off-diagonal elements
-        loss = torch.sum(off_diag ** 2)
+        # Off-diagonal covariance (more memory efficient)
+        # Instead of creating a full diagonal matrix, just subtract diagonal elements
+        loss = (torch.sum(cov ** 2) - torch.sum(torch.diag(cov) ** 2))
         
         return loss
     
@@ -152,16 +153,13 @@ class VICRegularization(nn.Module):
         
         # If query embeddings provided, add their contribution (transductive)
         if query_embeddings is not None:
-            v_loss += self.variance_loss(query_embeddings)
+            v_loss = (v_loss + self.variance_loss(query_embeddings)) / 2.0
             # Covariance on queries
             if query_embeddings.dim() == 3:
-                c_loss += self.covariance_loss(query_embeddings.view(-1, query_embeddings.size(-1)))
+                query_flat = query_embeddings.reshape(-1, query_embeddings.size(-1))
             else:
-                c_loss += self.covariance_loss(query_embeddings)
-            
-            # Average the losses
-            v_loss /= 2.0
-            c_loss /= 2.0
+                query_flat = query_embeddings
+            c_loss = (c_loss + self.covariance_loss(query_flat)) / 2.0
         
         # Clamp weights to prevent extreme values
         lambda_v = torch.clamp(self.lambda_v, self.min_weight, self.max_weight)
@@ -173,10 +171,11 @@ class VICRegularization(nn.Module):
         
         # Update running statistics (for monitoring)
         if self.training:
-            self.running_v_loss = 0.9 * self.running_v_loss + 0.1 * v_loss.detach()
-            self.running_i_loss = 0.9 * self.running_i_loss + 0.1 * i_loss.detach()
-            self.running_c_loss = 0.9 * self.running_c_loss + 0.1 * c_loss.detach()
-            self.update_count += 1
+            with torch.no_grad():
+                self.running_v_loss = 0.9 * self.running_v_loss + 0.1 * v_loss.detach()
+                self.running_i_loss = 0.9 * self.running_i_loss + 0.1 * i_loss.detach()
+                self.running_c_loss = 0.9 * self.running_c_loss + 0.1 * c_loss.detach()
+                self.update_count += 1
         
         return {
             'total': total_loss,

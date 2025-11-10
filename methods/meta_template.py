@@ -98,6 +98,11 @@ class MetaTemplate(nn.Module):
                 
                 avg_loss += loss.item()
                 avg_acc.append(acc)
+                
+                # Clear GPU cache periodically to prevent OOM
+                if (i + 1) % 10 == 0 and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
                 train_pbar.set_description('Epoch {:03d}/{:03d} | Acc {:.6f}  | Loss {:.6f}'.format(
                     epoch + 1, num_epoch, np.mean(avg_acc) * 100, avg_loss/float(i+1)))
                 train_pbar.update(1)

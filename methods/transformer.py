@@ -9,6 +9,7 @@ from methods.vic_regularization import VICRegularization
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from backbone import CosineDistLinear
+from torch.utils.checkpoint import checkpoint
 import pdb
 import IPython
 
@@ -18,7 +19,7 @@ class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func,  n_way, k_shot, n_query, variant = "softmax",
                 depth = 1, heads = 8, dim_head = 64, mlp_dim = 512,
                 use_vic=False, vic_lambda_v=1.0, vic_lambda_i=1.0, vic_lambda_c=1.0,
-                vic_epsilon=1e-4, vic_alpha=0.001):
+                vic_epsilon=1e-4, vic_alpha=0.001, gradient_checkpoint=False):
         super(FewShotTransformer, self).__init__(model_func,  n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -26,6 +27,7 @@ class FewShotTransformer(MetaTemplate):
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
+        self.gradient_checkpoint = gradient_checkpoint
         dim = self.feat_dim
 
         self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
@@ -56,6 +58,12 @@ class FewShotTransformer(MetaTemplate):
                 alpha=vic_alpha
             )
         
+    def _transformer_block(self, x, query):
+        """Single transformer block for gradient checkpointing."""
+        x = self.ATTN(q = x, k = query, v = query) + x
+        x = self.FFN(x) + x
+        return x
+    
     def set_forward(self, x, is_feature=False):
 
         z_support, z_query = self.parse_feature(x, is_feature)
@@ -67,17 +75,23 @@ class FewShotTransformer(MetaTemplate):
 
         x, query = z_proto, z_query
         
-        for _ in range(self.depth):
-           x = self.ATTN(q = x, k = query, v = query) + x
-           x = self.FFN(x) + x
+        # Use gradient checkpointing if enabled to save memory
+        if self.gradient_checkpoint and self.training:
+            for _ in range(self.depth):
+                x = checkpoint(self._transformer_block, x, query, use_reentrant=False)
+        else:
+            for _ in range(self.depth):
+                x = self.ATTN(q = x, k = query, v = query) + x
+                x = self.FFN(x) + x
         
         # Output is the probabilistic prediction for each class
         scores = self.linear(x).squeeze()                                                                # (q, n)
         
-        # Store embeddings for VIC loss computation if needed
+        # Store embeddings for VIC loss computation if needed (detached to save memory)
         if self.use_vic and self.training:
-            self.z_support_cache = z_support
-            self.z_query_cache = z_query.squeeze(1)  # Remove the dimension added for attention
+            # Detach to avoid keeping computation graph in cache
+            self.z_support_cache = z_support.detach()
+            self.z_query_cache = z_query.squeeze(1).detach()  # Remove the dimension added for attention
         
         return scores
     

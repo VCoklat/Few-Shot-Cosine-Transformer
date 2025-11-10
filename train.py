@@ -208,6 +208,7 @@ if __name__ == '__main__':
                 vic_lambda_c=params.vic_lambda_c,
                 vic_epsilon=params.vic_epsilon,
                 vic_alpha=params.vic_alpha,
+                gradient_checkpoint=bool(params.gradient_checkpoint),
                 **few_shot_params
             )
             
