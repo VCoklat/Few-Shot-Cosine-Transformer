@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.enhanced_fsct import EnhancedFSCT
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -44,13 +45,24 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
+    # Mixed precision training setup
+    use_amp = hasattr(params, 'use_amp') and params.use_amp
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    grad_clip = params.grad_clip if hasattr(params, 'grad_clip') else None
+    
     max_acc = 0
 
     for epoch in range(num_epoch):
         model.train()
 
-        model.train_loop(epoch, num_epoch, base_loader,
-                         params.wandb,  optimizer)
+        # Pass scaler and grad_clip if using EnhancedFSCT
+        if hasattr(model, 'train_loop_with_amp'):
+            model.train_loop_with_amp(epoch, num_epoch, base_loader,
+                             params.wandb, optimizer, scaler, grad_clip)
+        else:
+            model.train_loop(epoch, num_epoch, base_loader,
+                             params.wandb, optimizer)
+        
         with torch.no_grad():
             model.eval()
 
@@ -165,7 +177,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'EnhancedFSCT']:
 
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
@@ -200,6 +212,27 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
 
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+        
+        elif params.method == 'EnhancedFSCT':
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+            
+            # Extract EnhancedFSCT specific parameters
+            enhanced_params = {
+                'depth': params.depth if hasattr(params, 'depth') else 2,
+                'heads': params.heads if hasattr(params, 'heads') else 4,
+                'dim_head': params.dim_head if hasattr(params, 'dim_head') else 64,
+                'mlp_dim': params.mlp_dim if hasattr(params, 'mlp_dim') else 512,
+                'lambda_I': params.lambda_I if hasattr(params, 'lambda_I') else 9.0,
+                'lambda_V': params.lambda_V if hasattr(params, 'lambda_V') else 0.5,
+                'lambda_C': params.lambda_C if hasattr(params, 'lambda_C') else 0.5,
+                'use_uncertainty_weighting': bool(params.use_uncertainty) if hasattr(params, 'use_uncertainty') else True,
+                'use_gradnorm': bool(params.use_gradnorm) if hasattr(params, 'use_gradnorm') else False,
+            }
+            
+            model = EnhancedFSCT(feature_model, **few_shot_params, **enhanced_params)
     else:
         raise ValueError('Unknown method')
 

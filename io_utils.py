@@ -21,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description= 'few-shot script' )
     parser.add_argument('--dataset'         , default='miniImagenet', help='CIFAR/CUB/miniImagenet/cross/Omniglot/cross_char/Yoga/')
     parser.add_argument('--backbone'        , default='ResNet18',      help='backbone: Conv{4|6} / ResNet{12|18|34}')
-    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine') 
+    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine/EnhancedFSCT') 
     parser.add_argument('--n_way'           , default=5, type=int,  help='number of categories')
     parser.add_argument('--n_query'         , default=16, type=int,  help='number of query samples per category')
     parser.add_argument('--k_shot'          , default=5, type=int,  help='number of labeled data per category') 
@@ -45,6 +45,20 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    
+    # Enhanced FSCT parameters
+    parser.add_argument('--lambda_I'        , default=9.0, type=float, help='Initial weight for Invariance (classification) loss')
+    parser.add_argument('--lambda_V'        , default=0.5, type=float, help='Initial weight for Variance loss')
+    parser.add_argument('--lambda_C'        , default=0.5, type=float, help='Initial weight for Covariance loss')
+    parser.add_argument('--use_uncertainty' , type=int, default=1, help='[1:0] - [True:False]; Use uncertainty weighting for VIC losses')
+    parser.add_argument('--use_gradnorm'    , type=int, default=0, help='[1:0] - [True:False]; Use GradNorm controller for VIC losses')
+    parser.add_argument('--depth'           , default=2, type=int, help='Number of cosine encoder blocks')
+    parser.add_argument('--heads'           , default=4, type=int, help='Number of attention heads')
+    parser.add_argument('--dim_head'        , default=64, type=int, help='Dimension per attention head')
+    parser.add_argument('--mlp_dim'         , default=512, type=int, help='FFN hidden dimension')
+    parser.add_argument('--use_amp'         , type=int, default=0, help='[1:0] - [True:False]; Use mixed precision training')
+    parser.add_argument('--grad_clip'       , default=1.0, type=float, help='Gradient clipping norm')
+    
     return parser.parse_args()
 
 
