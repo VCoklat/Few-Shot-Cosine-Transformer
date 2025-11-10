@@ -27,6 +27,7 @@ from io_utils import (get_assigned_file, get_best_file,
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
 from methods.transformer import Attention
+from methods.fsct_profonet import FSCT_ProFONet
 
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -165,7 +166,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'FSCT_ProFONet']:
 
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
@@ -200,6 +201,30 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
 
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+        
+        elif params.method == 'FSCT_ProFONet':
+            # Hybrid FS-CT + ProFONet method
+            def feature_model():
+                if params.dataset in ['Omniglot', 'cross_char']:
+                    params.backbone = change_model(params.backbone)
+                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+            
+            # Use optimized parameters for 8GB VRAM
+            model = FSCT_ProFONet(
+                feature_model,
+                variant='cosine',
+                depth=1,
+                heads=4,
+                dim_head=160,
+                mlp_dim=512,
+                dropout=0.0,
+                lambda_V_base=0.5,
+                lambda_I=9.0,
+                lambda_C_base=0.5,
+                gradient_checkpointing=True if torch.cuda.is_available() else False,
+                mixed_precision=True if torch.cuda.is_available() else False,
+                **few_shot_params
+            )
     else:
         raise ValueError('Unknown method')
 
