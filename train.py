@@ -50,17 +50,23 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.01
     )
     
-    # Add warmup scheduler for first few epochs
-    warmup_epochs = min(5, num_epoch // 10)  # Warmup for first 5 epochs or 10% of training
+    # Dataset-specific warmup: fine-grained datasets need longer warmup
+    if params.dataset in ['CUB', 'Yoga']:
+        warmup_epochs = min(8, num_epoch // 8)  # Longer warmup for fine-grained datasets
+    else:
+        warmup_epochs = min(5, num_epoch // 10)  # Standard warmup
     
     max_acc = 0
 
     for epoch in range(num_epoch):
         model.train()
         
-        # Apply learning rate warmup
+        # Apply learning rate warmup with dataset-specific adjustment
         if epoch < warmup_epochs:
             warmup_factor = (epoch + 1) / warmup_epochs
+            # Fine-grained datasets start with even lower learning rate
+            if params.dataset in ['CUB', 'Yoga']:
+                warmup_factor = warmup_factor * 0.8  # 80% of target LR during warmup
             for param_group in optimizer.param_groups:
                 param_group['lr'] = params.learning_rate * warmup_factor
 
