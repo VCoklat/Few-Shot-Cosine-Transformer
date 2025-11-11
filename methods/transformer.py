@@ -682,6 +682,29 @@ class Attention(nn.Module):
         f_k = rearrange(f_k, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_k, head_dim]
         f_v = rearrange(f_v, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_v, head_dim]
 
+        # CRITICAL FIX: Handle batch dimension mismatch between q and k/v
+        # In few-shot learning, q (support) may have batch=1 while k,v (queries) have batch=n_way*n_query
+        # The attention computation will broadcast, so we need to align k and v accordingly
+        if f_q.shape[1] != f_k.shape[1]:
+            # Batch dimensions differ - need to handle cross-attention scenario
+            batch_q, batch_k = f_q.shape[1], f_k.shape[1]
+            seq_q, seq_k = f_q.shape[2], f_k.shape[2]
+            
+            # When q has batch=1 and k has batch>1, we're doing cross-attention
+            # The attention weights will have shape [heads, batch_k, seq_q, seq_k]
+            # So we need to expand f_k and f_v to align with this
+            if batch_q == 1 and batch_k > 1:
+                # Expand f_k and f_v by repeating along batch dimension for proper attention
+                # However, for cross-attention, we want k to attend to all of q's sequences
+                # So we reshape: k from [heads, batch_k, seq_k, dim] to [heads, 1, batch_k*seq_k, dim]
+                # This way the attention will properly compute over all k sequences
+                f_k = f_k.permute(0, 1, 2, 3).contiguous().view(f_k.shape[0], 1, batch_k * seq_k, f_k.shape[3])
+                f_v = f_v.permute(0, 1, 2, 3).contiguous().view(f_v.shape[0], 1, batch_k * seq_k, f_v.shape[3])
+            elif batch_k == 1 and batch_q > 1:
+                # Reverse case: expand k and v to match q's batch dimension
+                f_k = f_k.expand(-1, batch_q, -1, -1)
+                f_v = f_v.expand(-1, batch_q, -1, -1)
+
         if self.variant == "cosine":
             # Solution 1: Calculate cosine similarity with temperature scaling
             # f_k.transpose(-1, -2) gives us [heads, batch, head_dim, seq_k]
