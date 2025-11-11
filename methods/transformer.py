@@ -516,30 +516,29 @@ class Attention(nn.Module):
 
     def advanced_attention_components(self, f_q, f_k, gamma=1.0, epsilon=1e-8):
         """
-        FIXED: Advanced attention mechanism with proper tensor dimension handling
-        This version resolves the RuntimeError: shape '[8, 1, 64]' is invalid for input of size 40960
+        FIXED: Advanced attention mechanism with proper cross-attention support
+        Handles cases where f_q and f_k have different batch dimensions (cross-attention)
         """
         # Determine the input format and handle different tensor shapes
         if len(f_q.shape) == 4:
-            # Input format: [h, q, n, d] from rearrange operation
-            heads, batch_size, seq_q, dim = f_q.shape
-            _, _, seq_k, _ = f_k.shape
+            # Input format: [h, batch, seq, d] from rearrange operation
+            heads_q, batch_size_q, seq_q, dim_q = f_q.shape
+            heads_k, batch_size_k, seq_k, dim_k = f_k.shape
 
-            # Dynamic calculation of sequence length k based on total elements
-            total_elements_k = f_k.numel()
-            expected_elements_k = heads * batch_size * seq_k * dim
+            # Validate that dimensions are compatible
+            if heads_q != heads_k or dim_q != dim_k:
+                print(f"Incompatible heads or dimensions: f_q heads={heads_q}, dim={dim_q}; f_k heads={heads_k}, dim={dim_k}")
+                return self.basic_attention_components(f_q, f_k)
 
-            if total_elements_k != expected_elements_k:
-                # Recalculate seq_k dynamically
-                seq_k = total_elements_k // (heads * batch_size * dim)
-                if seq_k * heads * batch_size * dim != total_elements_k:
-                    print(f"Cannot resolve tensor reshape: f_k has {total_elements_k} elements")
-                    return self.basic_attention_components(f_q, f_k)
-
-            # Safely reshape for processing: (heads*batch, seq, dim)
+            # Handle cross-attention: different batch sizes
+            # For cross-attention, we compute variance/covariance for each batch separately
+            # then broadcast/expand to match the output shape
+            
+            # Safely reshape for processing
             try:
-                f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
-                f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
+                # Reshape each tensor using its own batch size
+                f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size_q * heads_q, seq_q, dim_q)
+                f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size_k * heads_k, seq_k, dim_k)
             except RuntimeError as e:
                 print(f"Error reshaping tensors: {e}")
                 # Return safe fallback using basic attention components instead
@@ -551,17 +550,27 @@ class Attention(nn.Module):
             return self.basic_attention_components(f_q, f_k)
 
         # Compute components with memory optimization
+        # For cross-attention, we need to compute attention between q and k samples
+        # Output shape should be [heads, batch_q, seq_q, seq_k] (after broadcasting)
+        # But since batch dimensions may differ, we use basic attention for cross-attention
+        
+        # Check if this is self-attention (same batch size) or cross-attention (different batch sizes)
+        if batch_size_q != batch_size_k:
+            # Cross-attention case: Fall back to basic attention which handles broadcasting correctly
+            return self.basic_attention_components(f_q, f_k)
+        
+        # Self-attention case: Proceed with advanced components
         var_component_list = []
         cov_component_list = []
 
         # OPTIMIZED: Better adaptive chunk size based on dimension and memory
-        total_samples = batch_size * heads
+        total_samples = batch_size_q * heads_q
         # More conservative chunk sizes to prevent OOM
-        if dim > 512:
+        if dim_q > 512:
             chunk_size = 1  # Process one sample at a time for very large dimensions
-        elif dim > 256:
+        elif dim_q > 256:
             chunk_size = 1  # Still very conservative
-        elif dim > 128:
+        elif dim_q > 128:
             chunk_size = min(2, total_samples)  # Very small chunks for large dimensions
         else:
             chunk_size = min(4, total_samples)  # Moderate chunks for normal dimensions
@@ -594,13 +603,13 @@ class Attention(nn.Module):
                     torch.cuda.empty_cache()
 
             # Combine results and reshape back to original format
-            var_component = torch.cat(var_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
-            cov_component = torch.cat(cov_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
+            var_component = torch.cat(var_component_list, dim=0).view(batch_size_q, heads_q, seq_q, seq_k)
+            cov_component = torch.cat(cov_component_list, dim=0).view(batch_size_q, heads_q, seq_q, seq_k)
 
             # Clear intermediate lists to free memory
             del var_component_list, cov_component_list, f_q_reshaped, f_k_reshaped
 
-            # Permute back to match f_q/f_k format [h, q, n, d] -> [h, q, n, m]
+            # Permute back to match f_q/f_k format [batch, heads, seq_q, seq_k] -> [heads, batch, seq_q, seq_k]
             var_component = var_component.permute(1, 0, 2, 3)
             cov_component = cov_component.permute(1, 0, 2, 3)
             
@@ -752,42 +761,15 @@ class Attention(nn.Module):
                        cov_weight * cov_component +
                        var_weight * var_component)
 
-            # CRITICAL FIX: Ensure f_v has the correct sequence dimension to match dots
-            # dots shape: [heads, batch, seq_q, seq_k] 
-            # f_v shape should be: [heads, batch, seq_v, head_dim] where seq_v = seq_k
-
-            # Check if sequence dimensions match for matrix multiplication
-            if f_v.shape[2] != dots.shape[3]:  # seq_v != seq_k
-                print(f"Warning: Sequence dimension mismatch - dots expects seq_k={dots.shape[3]} but f_v has seq_v={f_v.shape[2]}")
-
-                # If k and v come from the same input (self-attention case), they should have same seq length
-                # Adjust f_v to match the expected sequence length
-                if dots.shape[3] < f_v.shape[2]:
-                    # Truncate f_v
-                    f_v = f_v[:, :, :dots.shape[3], :]
-                elif dots.shape[3] > f_v.shape[2]:
-                    # Pad f_v with zeros or repeat last elements
-                    pad_size = dots.shape[3] - f_v.shape[2]
-                    padding = f_v[:, :, -1:, :].expand(-1, -1, pad_size, -1)  # Repeat last element
-                    f_v = torch.cat([f_v, padding], dim=2)
-
-            # Now perform matrix multiplication: dots @ f_v
+            # Perform matrix multiplication: dots @ f_v
+            # dots shape: [heads, batch, seq_q, seq_k]
+            # f_v shape: [heads, batch, seq_v, head_dim] where seq_v should equal seq_k
             out = torch.matmul(dots, f_v)  # [heads, batch, seq_q, head_dim]
             # Apply attention dropout for regularization
             out = self.dropout(out)
 
         else:  # self.variant == "softmax"
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale  # [heads, batch, seq_q, seq_k]
-
-            # Same fix for softmax variant
-            if f_v.shape[2] != dots.shape[3]:  # seq_v != seq_k
-                print(f"Warning: Sequence dimension mismatch in softmax - adjusting f_v")
-                if dots.shape[3] < f_v.shape[2]:
-                    f_v = f_v[:, :, :dots.shape[3], :]
-                elif dots.shape[3] > f_v.shape[2]:
-                    pad_size = dots.shape[3] - f_v.shape[2]
-                    padding = f_v[:, :, -1:, :].expand(-1, -1, pad_size, -1)
-                    f_v = torch.cat([f_v, padding], dim=2)
 
             out = torch.matmul(self.sm(dots), f_v)  # [heads, batch, seq_q, head_dim]
             # Apply attention dropout for regularization
