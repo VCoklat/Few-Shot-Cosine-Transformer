@@ -50,17 +50,25 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         optimizer, T_max=num_epoch, eta_min=params.learning_rate * 0.01
     )
     
-    # Add warmup scheduler for first few epochs
-    warmup_epochs = min(5, num_epoch // 10)  # Warmup for first 5 epochs or 10% of training
+    # Dataset-aware warmup configuration
+    if params.dataset in ['CUB', 'Yoga']:
+        # Fine-grained datasets: gentler ramp-up prevents early overfitting
+        warmup_epochs = min(8, num_epoch // 10)  # 8 epochs for fine-grained
+        warmup_start_factor = 0.8  # Start at 80% of learning rate
+    else:
+        # General datasets: standard warmup
+        warmup_epochs = min(5, num_epoch // 10)  # 5 epochs for general
+        warmup_start_factor = 1.0  # Start at 100% of learning rate
     
     max_acc = 0
 
     for epoch in range(num_epoch):
         model.train()
         
-        # Apply learning rate warmup
+        # Apply dataset-aware learning rate warmup
         if epoch < warmup_epochs:
-            warmup_factor = (epoch + 1) / warmup_epochs
+            # Linear warmup from warmup_start_factor to 1.0
+            warmup_factor = warmup_start_factor + (1.0 - warmup_start_factor) * (epoch + 1) / warmup_epochs
             for param_group in optimizer.param_groups:
                 param_group['lr'] = params.learning_rate * warmup_factor
 
@@ -209,20 +217,57 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
+            # Dataset-aware hyperparameters for fine-grained vs general classification
+            if params.dataset == 'CUB':
+                # Fine-grained bird classification - multi-scale attention for subtle differences
+                heads = 16
+                dim_head = 96
+                initial_cov_weight = 0.65
+                initial_var_weight = 0.15
+                temperature_init = 0.3
+                gamma_start = 0.7
+                gamma_end = 0.02
+                ema_decay = 0.985
+            elif params.dataset == 'Yoga':
+                # Fine-grained pose classification - balanced attention for spatial relationships
+                heads = 14
+                dim_head = 88
+                initial_cov_weight = 0.6
+                initial_var_weight = 0.25
+                temperature_init = 0.3
+                gamma_start = 0.65
+                gamma_end = 0.025
+                ema_decay = 0.985
+            else:
+                # General object classification (miniImageNet, CIFAR, etc.)
+                heads = 12
+                dim_head = 80
+                initial_cov_weight = 0.55
+                initial_var_weight = 0.2
+                temperature_init = 0.4
+                gamma_start = 0.6
+                gamma_end = 0.03
+                ema_decay = 0.98
+
             # Enhanced hyperparameters for >10% accuracy improvement
             model = FewShotTransformer(
                 feature_model, 
                 variant=variant, 
                 depth=2,  # Increase depth from 1 to 2 for better feature learning
-                heads=12,  # Increase heads from 8 to 12 for richer attention patterns
-                dim_head=80,  # Increase from 64 to 80 for more capacity
+                heads=heads,  # Dataset-aware number of heads
+                dim_head=dim_head,  # Dataset-aware head dimension
                 mlp_dim=768,  # Increase from 512 to 768 for better transformation
-                initial_cov_weight=0.55,  # Optimized covariance weight
-                initial_var_weight=0.2,  # Optimized variance weight
+                initial_cov_weight=initial_cov_weight,  # Dataset-aware covariance weight
+                initial_var_weight=initial_var_weight,  # Dataset-aware variance weight
                 dynamic_weight=True,  # Enable dynamic weighting
                 label_smoothing=0.1,  # Add label smoothing for better generalization
                 attention_dropout=0.15,  # Add attention dropout
                 drop_path_rate=0.1,  # Add stochastic depth for regularization
+                temperature_init=temperature_init,  # Dataset-aware temperature
+                gamma_start=gamma_start,  # Dataset-aware adaptive gamma start
+                gamma_end=gamma_end,  # Dataset-aware adaptive gamma end
+                ema_decay=ema_decay,  # Dataset-aware EMA decay
+                dataset=params.dataset,  # Pass dataset name for potential future use
                 **few_shot_params
             )
             

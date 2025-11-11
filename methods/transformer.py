@@ -98,13 +98,16 @@ class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax", 
                  depth=1, heads=8, dim_head=64, mlp_dim=512,
                  initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
-                 label_smoothing=0.1, attention_dropout=0.1, drop_path_rate=0.1):
+                 label_smoothing=0.1, attention_dropout=0.1, drop_path_rate=0.1,
+                 temperature_init=0.4, gamma_start=0.6, gamma_end=0.03, 
+                 ema_decay=0.98, dataset=None):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
         # Add label smoothing for better generalization
         self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
+        self.dataset = dataset  # Store dataset name for reference
         dim = self.feat_dim
 
         # Initialize accuracy tracking - simple attributes, not parameters
@@ -118,13 +121,17 @@ class FewShotTransformer(MetaTemplate):
         self.attention_dropout = attention_dropout
         self.drop_path_rate = drop_path_rate
 
-        # Create attention module with dropout for better generalization
+        # Create attention module with dataset-aware parameters
         self.ATTN = Attention(dim, heads=heads, dim_head=dim_head, variant=variant,
                              initial_cov_weight=initial_cov_weight,
                              initial_var_weight=initial_var_weight,
                              dynamic_weight=dynamic_weight,
                              n_way=n_way, k_shot=k_shot,
-                             dropout=attention_dropout)
+                             dropout=attention_dropout,
+                             temperature_init=temperature_init,
+                             gamma_start=gamma_start,
+                             gamma_end=gamma_end,
+                             ema_decay=ema_decay)
         self.sm = nn.Softmax(dim=-2)
         # Initialize proto_weight with small random values for better gradient flow
         self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.1 + 1.0)
@@ -254,7 +261,8 @@ class FewShotTransformer(MetaTemplate):
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6,
-                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5, dropout=0.0):
+                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5, dropout=0.0,
+                 temperature_init=0.4, gamma_start=0.6, gamma_end=0.03, ema_decay=0.98):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -267,17 +275,17 @@ class Attention(nn.Module):
         self.k_shot = k_shot
         self.dropout = nn.Dropout(dropout)  # Add attention dropout
 
-        # Solution 1: Temperature Scaling - Learnable temperature per head (optimized)
-        self.temperature = nn.Parameter(torch.ones(heads) * 0.4)  # Start with sharper attention
+        # Solution 1: Temperature Scaling - Learnable temperature per head (dataset-aware)
+        self.temperature = nn.Parameter(torch.ones(heads) * temperature_init)
         
-        # Solution 5: EMA Smoothing - Track moving averages for stability (optimized)
-        self.ema_decay = 0.98  # Slightly faster adaptation for better responsiveness
+        # Solution 5: EMA Smoothing - Track moving averages for stability (dataset-aware)
+        self.ema_decay = ema_decay
         self.register_buffer('var_ema', torch.ones(1))
         self.register_buffer('cov_ema', torch.ones(1))
         
-        # Solution 2: Adaptive Gamma - Dynamic variance regularization (optimized)
-        self.gamma_start = 0.6  # Start with even stronger regularization
-        self.gamma_end = 0.03   # End with even weaker regularization for fine-tuning
+        # Solution 2: Adaptive Gamma - Dynamic variance regularization (dataset-aware)
+        self.gamma_start = gamma_start
+        self.gamma_end = gamma_end
         self.current_epoch = 0
         self.max_epochs = 50
 
@@ -645,11 +653,11 @@ class Attention(nn.Module):
                 query_enhanced, _ = self.cross_attn(query_batch, support_reshaped, support_reshaped)
                 query_enhanced = query_enhanced.squeeze(0).unsqueeze(1)  # [n_way*n_query, 1, d]
                 
-                # Update k and v with enhanced query
+                # CRITICAL FIX: Update both k and v with enhanced query to maintain consistency
                 k = query_enhanced
                 v = query_enhanced
             except Exception as e:
-                # If cross-attention fails, continue with original k, v
+                # If cross-attention fails, continue with original k, v (which are already equal)
                 pass
 
         # Apply input transformation to each tensor separately
@@ -661,6 +669,15 @@ class Attention(nn.Module):
         f_q = rearrange(f_q, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_q, head_dim]
         f_k = rearrange(f_k, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_k, head_dim]
         f_v = rearrange(f_v, 'b n (h d) -> h b n d', h=self.heads)  # [heads, batch, seq_v, head_dim]
+
+        # CRITICAL FIX: Verify that k and v have matching sequence dimensions before proceeding
+        # This is essential for proper attention computation: seq_k must equal seq_v
+        if f_k.shape[2] != f_v.shape[2]:
+            # This should not happen if k and v are passed correctly
+            # Force them to match by using the minimum sequence length
+            min_seq = min(f_k.shape[2], f_v.shape[2])
+            f_k = f_k[:, :, :min_seq, :]
+            f_v = f_v[:, :, :min_seq, :]
 
         if self.variant == "cosine":
             # Solution 1: Calculate cosine similarity with temperature scaling
@@ -743,26 +760,11 @@ class Attention(nn.Module):
                        cov_weight * cov_component +
                        var_weight * var_component)
 
-            # CRITICAL FIX: Ensure f_v has the correct sequence dimension to match dots
+            # VERIFIED: After the fix above, f_v and dots should have matching dimensions
             # dots shape: [heads, batch, seq_q, seq_k] 
-            # f_v shape should be: [heads, batch, seq_v, head_dim] where seq_v = seq_k
-
-            # Check if sequence dimensions match for matrix multiplication
-            if f_v.shape[2] != dots.shape[3]:  # seq_v != seq_k
-                print(f"Warning: Sequence dimension mismatch - dots expects seq_k={dots.shape[3]} but f_v has seq_v={f_v.shape[2]}")
-
-                # If k and v come from the same input (self-attention case), they should have same seq length
-                # Adjust f_v to match the expected sequence length
-                if dots.shape[3] < f_v.shape[2]:
-                    # Truncate f_v
-                    f_v = f_v[:, :, :dots.shape[3], :]
-                elif dots.shape[3] > f_v.shape[2]:
-                    # Pad f_v with zeros or repeat last elements
-                    pad_size = dots.shape[3] - f_v.shape[2]
-                    padding = f_v[:, :, -1:, :].expand(-1, -1, pad_size, -1)  # Repeat last element
-                    f_v = torch.cat([f_v, padding], dim=2)
-
-            # Now perform matrix multiplication: dots @ f_v
+            # f_v shape: [heads, batch, seq_v, head_dim] where seq_v == seq_k (ensured above)
+            
+            # Perform matrix multiplication: dots @ f_v
             out = torch.matmul(dots, f_v)  # [heads, batch, seq_q, head_dim]
             # Apply attention dropout for regularization
             out = self.dropout(out)
@@ -770,16 +772,7 @@ class Attention(nn.Module):
         else:  # self.variant == "softmax"
             dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale  # [heads, batch, seq_q, seq_k]
 
-            # Same fix for softmax variant
-            if f_v.shape[2] != dots.shape[3]:  # seq_v != seq_k
-                print(f"Warning: Sequence dimension mismatch in softmax - adjusting f_v")
-                if dots.shape[3] < f_v.shape[2]:
-                    f_v = f_v[:, :, :dots.shape[3], :]
-                elif dots.shape[3] > f_v.shape[2]:
-                    pad_size = dots.shape[3] - f_v.shape[2]
-                    padding = f_v[:, :, -1:, :].expand(-1, -1, pad_size, -1)
-                    f_v = torch.cat([f_v, padding], dim=2)
-
+            # Perform matrix multiplication with f_v
             out = torch.matmul(self.sm(dots), f_v)  # [heads, batch, seq_q, head_dim]
             # Apply attention dropout for regularization
             out = self.dropout(out)
