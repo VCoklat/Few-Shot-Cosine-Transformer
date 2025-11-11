@@ -98,13 +98,14 @@ class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, variant="softmax", 
                  depth=1, heads=8, dim_head=64, mlp_dim=512,
                  initial_cov_weight=0.3, initial_var_weight=0.5, dynamic_weight=False,
-                 label_smoothing=0.1, attention_dropout=0.1, drop_path_rate=0.1):
+                 label_smoothing=0.1, attention_dropout=0.1, drop_path_rate=0.1, dataset=None):
         super(FewShotTransformer, self).__init__(model_func, n_way, k_shot, n_query)
         # Add label smoothing for better generalization
         self.loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
+        self.dataset = dataset
         dim = self.feat_dim
 
         # Initialize accuracy tracking - simple attributes, not parameters
@@ -124,7 +125,8 @@ class FewShotTransformer(MetaTemplate):
                              initial_var_weight=initial_var_weight,
                              dynamic_weight=dynamic_weight,
                              n_way=n_way, k_shot=k_shot,
-                             dropout=attention_dropout)
+                             dropout=attention_dropout,
+                             dataset=dataset)
         self.sm = nn.Softmax(dim=-2)
         # Initialize proto_weight with small random values for better gradient flow
         self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.1 + 1.0)
@@ -254,7 +256,7 @@ class FewShotTransformer(MetaTemplate):
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head, variant, initial_cov_weight=0.6,
-                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5, dropout=0.0):
+                 initial_var_weight=0.2, dynamic_weight=False, n_way=5, k_shot=5, dropout=0.0, dataset=None):
         super().__init__()
         inner_dim = heads * dim_head
         project_out = not(heads == 1 and dim_head == dim)
@@ -265,19 +267,37 @@ class Attention(nn.Module):
         self.variant = variant
         self.n_way = n_way
         self.k_shot = k_shot
+        self.dataset = dataset
         self.dropout = nn.Dropout(dropout)  # Add attention dropout
 
-        # Solution 1: Temperature Scaling - Learnable temperature per head (optimized)
-        self.temperature = nn.Parameter(torch.ones(heads) * 0.4)  # Start with sharper attention
+        # Solution 1: Temperature Scaling - Dataset-specific initialization
+        # Fine-grained datasets (CUB, Yoga) need sharper initial attention
+        if dataset in ['CUB', 'Yoga']:
+            init_temp = 0.3  # Sharper attention for fine-grained features
+        else:
+            init_temp = 0.4  # Standard for general datasets
+        self.temperature = nn.Parameter(torch.ones(heads) * init_temp)
         
-        # Solution 5: EMA Smoothing - Track moving averages for stability (optimized)
-        self.ema_decay = 0.98  # Slightly faster adaptation for better responsiveness
+        # Solution 5: EMA Smoothing - Dataset-specific decay rates
+        # Fine-grained datasets benefit from slower EMA for stability
+        if dataset in ['CUB', 'Yoga']:
+            self.ema_decay = 0.985  # Faster adaptation for fine-grained features
+        else:
+            self.ema_decay = 0.98  # Standard adaptation rate
         self.register_buffer('var_ema', torch.ones(1))
         self.register_buffer('cov_ema', torch.ones(1))
         
-        # Solution 2: Adaptive Gamma - Dynamic variance regularization (optimized)
-        self.gamma_start = 0.6  # Start with even stronger regularization
-        self.gamma_end = 0.03   # End with even weaker regularization for fine-tuning
+        # Solution 2: Adaptive Gamma - Dataset-specific schedules
+        # Fine-grained datasets need stronger initial regularization
+        if dataset == 'CUB':
+            self.gamma_start = 0.7  # Stronger for bird classification
+            self.gamma_end = 0.02   # Very weak for fine-tuning
+        elif dataset == 'Yoga':
+            self.gamma_start = 0.65  # Strong for pose variations
+            self.gamma_end = 0.025   # Weak for fine-tuning
+        else:
+            self.gamma_start = 0.6  # Standard
+            self.gamma_end = 0.03   # Standard
         self.current_epoch = 0
         self.max_epochs = 50
 

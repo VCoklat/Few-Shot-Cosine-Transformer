@@ -209,22 +209,62 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            # Enhanced hyperparameters for >10% accuracy improvement
-            model = FewShotTransformer(
-                feature_model, 
-                variant=variant, 
-                depth=2,  # Increase depth from 1 to 2 for better feature learning
-                heads=12,  # Increase heads from 8 to 12 for richer attention patterns
-                dim_head=80,  # Increase from 64 to 80 for more capacity
-                mlp_dim=768,  # Increase from 512 to 768 for better transformation
-                initial_cov_weight=0.55,  # Optimized covariance weight
-                initial_var_weight=0.2,  # Optimized variance weight
-                dynamic_weight=True,  # Enable dynamic weighting
-                label_smoothing=0.1,  # Add label smoothing for better generalization
-                attention_dropout=0.15,  # Add attention dropout
-                drop_path_rate=0.1,  # Add stochastic depth for regularization
-                **few_shot_params
-            )
+            # Dataset-specific hyperparameters for optimal performance
+            # CUB and Yoga need different settings than miniImageNet and CIFAR
+            if params.dataset == 'CUB':
+                # CUB: Fine-grained bird classification - needs attention to subtle features
+                model = FewShotTransformer(
+                    feature_model, 
+                    variant=variant, 
+                    depth=2,  # Deeper for fine-grained features
+                    heads=16,  # More heads for multi-scale feature extraction
+                    dim_head=96,  # Higher capacity for subtle differences
+                    mlp_dim=1024,  # Larger MLP for complex transformations
+                    initial_cov_weight=0.65,  # Higher covariance for inter-feature relationships
+                    initial_var_weight=0.15,  # Lower variance for fine-grained stability
+                    dynamic_weight=True,
+                    label_smoothing=0.05,  # Less smoothing for precise classification
+                    attention_dropout=0.1,  # Lower dropout to preserve fine details
+                    drop_path_rate=0.05,  # Lower drop path for stability
+                    dataset='CUB',  # Pass dataset for attention-specific tuning
+                    **few_shot_params
+                )
+            elif params.dataset == 'Yoga':
+                # Yoga: Pose classification - needs spatial understanding and pose variation handling
+                model = FewShotTransformer(
+                    feature_model, 
+                    variant=variant, 
+                    depth=2,  # Deeper for pose understanding
+                    heads=14,  # More heads for spatial relationships
+                    dim_head=88,  # Good capacity for pose features
+                    mlp_dim=896,  # Strong transformation capability
+                    initial_cov_weight=0.6,  # Balanced covariance for pose relationships
+                    initial_var_weight=0.25,  # Higher variance for pose variations
+                    dynamic_weight=True,
+                    label_smoothing=0.08,  # Moderate smoothing for pose variations
+                    attention_dropout=0.12,  # Moderate dropout
+                    drop_path_rate=0.08,  # Moderate drop path
+                    dataset='Yoga',  # Pass dataset for attention-specific tuning
+                    **few_shot_params
+                )
+            else:
+                # miniImageNet, CIFAR: General object classification - keep proven settings
+                model = FewShotTransformer(
+                    feature_model, 
+                    variant=variant, 
+                    depth=2,  # Increase depth from 1 to 2 for better feature learning
+                    heads=12,  # Increase heads from 8 to 12 for richer attention patterns
+                    dim_head=80,  # Increase from 64 to 80 for more capacity
+                    mlp_dim=768,  # Increase from 512 to 768 for better transformation
+                    initial_cov_weight=0.55,  # Optimized covariance weight
+                    initial_var_weight=0.2,  # Optimized variance weight
+                    dynamic_weight=True,  # Enable dynamic weighting
+                    label_smoothing=0.1,  # Add label smoothing for better generalization
+                    attention_dropout=0.15,  # Add attention dropout
+                    drop_path_rate=0.1,  # Add stochastic depth for regularization
+                    dataset=params.dataset,  # Pass dataset for attention-specific tuning
+                    **few_shot_params
+                )
             
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
