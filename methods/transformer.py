@@ -517,28 +517,23 @@ class Attention(nn.Module):
         """
         FIXED: Advanced attention mechanism with proper tensor dimension handling
         This version resolves the RuntimeError: shape '[8, 1, 64]' is invalid for input of size 40960
+        and handles cases where f_q and f_k have different batch dimensions
         """
         # Determine the input format and handle different tensor shapes
         if len(f_q.shape) == 4:
             # Input format: [h, q, n, d] from rearrange operation
-            heads, batch_size, seq_q, dim = f_q.shape
-            _, _, seq_k, _ = f_k.shape
+            heads, batch_size_q, seq_q, dim = f_q.shape
+            _, batch_size_k, seq_k, _ = f_k.shape
 
-            # Dynamic calculation of sequence length k based on total elements
-            total_elements_k = f_k.numel()
-            expected_elements_k = heads * batch_size * seq_k * dim
-
-            if total_elements_k != expected_elements_k:
-                # Recalculate seq_k dynamically
-                seq_k = total_elements_k // (heads * batch_size * dim)
-                if seq_k * heads * batch_size * dim != total_elements_k:
-                    print(f"Cannot resolve tensor reshape: f_k has {total_elements_k} elements")
-                    return self.basic_attention_components(f_q, f_k)
-
+            # CRITICAL FIX: Handle different batch dimensions for f_q and f_k
+            # When q is support prototypes [heads, 1, n_way, d] and k is queries [heads, n_way*n_query, 1, d],
+            # they have different batch dimensions (1 vs n_way*n_query)
+            # We need to broadcast the results to match the larger batch dimension
+            
             # Safely reshape for processing: (heads*batch, seq, dim)
             try:
-                f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_q, dim)
-                f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size * heads, seq_k, dim)
+                f_q_reshaped = f_q.permute(1, 0, 2, 3).contiguous().view(batch_size_q * heads, seq_q, dim)
+                f_k_reshaped = f_k.permute(1, 0, 2, 3).contiguous().view(batch_size_k * heads, seq_k, dim)
             except RuntimeError as e:
                 print(f"Error reshaping tensors: {e}")
                 # Return safe fallback using basic attention components instead
@@ -549,12 +544,17 @@ class Attention(nn.Module):
             # Return safe fallback
             return self.basic_attention_components(f_q, f_k)
 
-        # Compute components with memory optimization
+        # CRITICAL FIX: When batch dimensions differ between f_q and f_k, 
+        # use basic attention components which handles broadcasting correctly
+        if batch_size_q != batch_size_k:
+            return self.basic_attention_components(f_q, f_k)
+        
+        # Compute components with memory optimization (when batch dimensions match)
         var_component_list = []
         cov_component_list = []
 
         # OPTIMIZED: Better adaptive chunk size based on dimension and memory
-        total_samples = batch_size * heads
+        total_samples = batch_size_q * heads
         # More conservative chunk sizes to prevent OOM
         if dim > 512:
             chunk_size = 1  # Process one sample at a time for very large dimensions
@@ -593,8 +593,8 @@ class Attention(nn.Module):
                     torch.cuda.empty_cache()
 
             # Combine results and reshape back to original format
-            var_component = torch.cat(var_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
-            cov_component = torch.cat(cov_component_list, dim=0).view(batch_size, heads, seq_q, seq_k)
+            var_component = torch.cat(var_component_list, dim=0).view(batch_size_q, heads, seq_q, seq_k)
+            cov_component = torch.cat(cov_component_list, dim=0).view(batch_size_q, heads, seq_q, seq_k)
 
             # Clear intermediate lists to free memory
             del var_component_list, cov_component_list, f_q_reshaped, f_k_reshaped
