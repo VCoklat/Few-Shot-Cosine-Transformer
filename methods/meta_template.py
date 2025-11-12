@@ -83,15 +83,28 @@ class MetaTemplate(nn.Module):
             wandb.log({"Loss": avg_loss/float(i + 1),'Train Acc': np.mean(avg_acc) * 100},  step=epoch + 1)
 
     def val_loop(self, val_loader, epoch, wandb_flag, record = None):
+        from sklearn.metrics import f1_score
+        
         correct =0
         count = 0
         acc_all = []
+        all_preds = []
+        all_labels = []
         
         iter_num = len(val_loader)
         with tqdm.tqdm(total=len(val_loader)) as val_pbar:
             for i, (x,_) in enumerate(val_loader):
                 if self.change_way:
                     self.n_way  = x.size(0)
+                
+                # Get predictions for F1 score calculation
+                scores = self.set_forward(x)
+                pred = scores.data.cpu().numpy().argmax(axis=1)
+                y = np.repeat(range(self.n_way), self.n_query)
+                
+                all_preds.extend(pred.tolist())
+                all_labels.extend(y.tolist())
+                
                 correct_this, count_this = self.correct(x)
                 acc_all.append(correct_this / count_this * 100)
                 val_pbar.set_description('Validation    | Acc {:.6f}'.format(np.mean(acc_all)))
@@ -100,8 +113,21 @@ class MetaTemplate(nn.Module):
         acc_all  = np.asarray(acc_all)
         acc_mean = np.mean(acc_all)
         acc_std  = np.std(acc_all)
-        if wandb_flag:
-            wandb.log({'Val Acc': acc_mean},  step = epoch + 1)
+        
+        # Calculate and display per-class F1 scores
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+        class_f1 = f1_score(all_labels, all_preds, average=None)
+        macro_f1 = f1_score(all_labels, all_preds, average='macro')
+        
         print('Val Acc = %4.2f%% +- %4.2f%%' %(  acc_mean, 1.96* acc_std/np.sqrt(iter_num)))
+        print(f"\n📊 Validation F1 Score Results:")
+        print(f"Macro-F1: {macro_f1:.4f}")
+        print("\nPer-class F1 scores:")
+        for i, f1 in enumerate(class_f1):
+            print(f"  Class {i}: {f1:.4f}")
+        
+        if wandb_flag:
+            wandb.log({'Val Acc': acc_mean, 'Val Macro-F1': macro_f1},  step = epoch + 1)
 
         return acc_mean
