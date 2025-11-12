@@ -3,3 +3,4 @@
 *__pycache__*
 wandb/
 *.swp
+test_all_classes_f1*.py

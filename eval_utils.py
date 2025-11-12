@@ -83,7 +83,8 @@ def evaluate(loader, model, n_way, class_names=None,
         else:
             scores = model.set_forward(x.to(device)).cpu()
 
-        torch.cuda.synchronize()
+        if device != "cpu" and torch.cuda.is_available():
+            torch.cuda.synchronize()
         times.append(time.time() - t0)
 
         preds = scores.argmax(1).numpy()
@@ -153,8 +154,16 @@ def evaluate(loader, model, n_way, class_names=None,
                                    labels=all_class_ids, zero_division=0)
         
         # Get class names if available
-        if dataset and hasattr(dataset, 'class_labels'):
-            all_classes_names = [dataset.class_labels[cls_id] for cls_id in all_class_ids]
+        if dataset and hasattr(dataset, 'class_labels') and hasattr(dataset, 'cl_list'):
+            # Map class IDs to class names via cl_list
+            all_classes_names = []
+            for cls_id in all_class_ids:
+                try:
+                    # Find the index of this class ID in cl_list
+                    idx = dataset.cl_list.index(cls_id)
+                    all_classes_names.append(dataset.class_labels[idx])
+                except (ValueError, IndexError):
+                    all_classes_names.append(f"Class {cls_id}")
         else:
             all_classes_names = [f"Class {cls_id}" for cls_id in all_class_ids]
         

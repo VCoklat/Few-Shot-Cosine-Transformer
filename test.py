@@ -122,8 +122,15 @@ def direct_test(test_loader, model, params):
                                    labels=all_class_ids, zero_division=0)
         
         # Get class names if available
-        if dataset and hasattr(dataset, 'class_labels'):
-            all_classes_names = [dataset.class_labels[cls_id] for cls_id in all_class_ids]
+        if dataset and hasattr(dataset, 'class_labels') and hasattr(dataset, 'cl_list'):
+            # Map class IDs to class names via cl_list
+            all_classes_names = []
+            for cls_id in all_class_ids:
+                try:
+                    idx = dataset.cl_list.index(cls_id)
+                    all_classes_names.append(dataset.class_labels[idx])
+                except (ValueError, IndexError):
+                    all_classes_names.append(f"Class {cls_id}")
         else:
             all_classes_names = [f"Class {cls_id}" for cls_id in all_class_ids]
         
