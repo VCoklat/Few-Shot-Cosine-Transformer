@@ -76,6 +76,13 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
   + This is our custom dataset with 50 yoga pose categories and 2480 images, including 50 categiores for training, 13 for validating, and 12 for testing set
   + Go to `/dataset/Yoga/`
   + Run `source yoga_processing.sh`
++ **HAM10000**:
+  + Skin cancer dataset with 10,000+ dermatoscopic images across 7 classes of skin lesions
+  + Go to `/dataset/HAM10000/`
+  + Download instructions in `download_HAM10000.txt`
+  + Prepare your image list CSV (see `write_HAM10000_filelist.py` for format)
+  + Run `source HAM10000_processing.sh` for processing dataset
+  + When complete, there are three JSON files `base.json`, `val.json`, and `novel.json` for experiments
 + **Custom dataset**:
   + Require three data split json file: `base.json`, `val.json`, `novel.json`  
   + The format should follow:
@@ -98,7 +105,7 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
       + `FSCT_ProFONet` is the **new hybrid method** combining Cosine Transformer with VIC Regularization
-    + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
+    + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`/`HAM10000`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
   - `--FETI`: Using FETI (Feature Extractor Trained partially on ImageNet) for ResNet Backbone if `1`, none if `0` (default `0`)  
@@ -113,6 +120,8 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
   - For other parameters, please read `io_utils.py` for detail information.
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`
++ **Example with HAM10000 dataset**:  
+  `python train_test.py --method FSCT_cosine --dataset HAM10000 --backbone ResNet34 --n_way 5 --k_shot 5 --train_aug 1 --wandb 1`
 + **Example with new FSCT_ProFONet method**:  
   `python train.py --method FSCT_ProFONet --dataset miniImagenet --backbone Conv4 --n_way 5 --k_shot 5 --n_query 10 --num_epoch 50`  
   See `FSCT_ProFONet_QUICKSTART.md` for more details on the hybrid method.  
