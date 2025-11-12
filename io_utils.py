@@ -19,7 +19,7 @@ model_dict = dict(
 
 def parse_args():
     parser = argparse.ArgumentParser(description= 'few-shot script' )
-    parser.add_argument('--dataset'         , default='miniImagenet', help='CIFAR/CUB/miniImagenet/cross/Omniglot/cross_char/Yoga/')
+    parser.add_argument('--dataset'         , default='miniImagenet', help='CIFAR/CUB/miniImagenet/cross/Omniglot/cross_char/Yoga/HAM10000')
     parser.add_argument('--backbone'        , default='ResNet18',      help='backbone: Conv{4|6} / ResNet{12|18|34}')
     parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine/FSCT_ProFONet') 
     parser.add_argument('--n_way'           , default=5, type=int,  help='number of categories')
