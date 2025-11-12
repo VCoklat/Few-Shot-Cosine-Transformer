@@ -387,6 +387,17 @@ class OptimalFewShotModel(MetaTemplate):
         
         return logits, prototypes, support_features, query_features
     
+    def correct(self, x):
+        """Override correct method to handle tuple return from set_forward"""
+        logits, prototypes, support_features, query_features = self.set_forward(x)
+        y_query = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
+        y_query = Variable(y_query.to(device))
+        
+        topk_scores, topk_labels = logits.data.topk(1, 1, True, True)
+        topk_ind = topk_labels
+        top1_correct = (topk_ind[:,0] == y_query).sum().item()
+        return float(top1_correct), len(y_query)
+    
     def set_forward_loss(self, x):
         """Forward pass with loss computation"""
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
