@@ -238,11 +238,11 @@ def evaluate_model_comprehensive(test_loader, model, params, testfile):
     accuracy = np.mean(all_predictions == all_true_labels) * 100
 
     # F1 scores
-    f1_scores = metrics.f1_score(all_true_labels, all_predictions, average=None, zero_division=0)
-    macro_f1 = metrics.f1_score(all_true_labels, all_predictions, average='macro', zero_division=0)
+    f1_scores = metrics.f1_score(all_true_labels, all_predictions, average=None, labels=list(range(params.n_way)), zero_division=0)
+    macro_f1 = metrics.f1_score(all_true_labels, all_predictions, average='macro', labels=list(range(params.n_way)), zero_division=0)
 
     # Confusion matrix
-    conf_matrix = metrics.confusion_matrix(all_true_labels, all_predictions)
+    conf_matrix = metrics.confusion_matrix(all_true_labels, all_predictions, labels=list(range(params.n_way)))
 
     # Timing metrics
     avg_inference_time = np.mean(inference_times)
@@ -602,8 +602,8 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         # Calculate and display per-class F1 scores
         all_preds = np.array(all_preds)
         all_labels = np.array(all_labels)
-        class_f1 = f1_score(all_labels, all_preds, average=None)
-        macro_f1 = f1_score(all_labels, all_preds, average='macro')
+        class_f1 = f1_score(all_labels, all_preds, average=None, labels=list(range(params.n_way)), zero_division=0)
+        macro_f1 = f1_score(all_labels, all_preds, average='macro', labels=list(range(params.n_way)), zero_division=0)
         
         print(f"\n📊 F1 Score Results:")
         print(f"Macro-F1: {macro_f1:.4f}")
