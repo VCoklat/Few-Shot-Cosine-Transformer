@@ -1,3 +1,15 @@
+# Installation instructions:
+# If you encounter "numpy.dtype size changed" error, run:
+#   pip install --upgrade --force-reinstall numpy scikit-learn
+#
+# For best results, install in this order:
+#   pip install numpy
+#   pip install -r requirements.txt
+
+# Core numerical computing (install first)
+numpy>=1.21.0
+
+# Other dependencies
 opencv-python
 torch
 torchvision
@@ -5,11 +17,12 @@ torchsummary
 einops
 h5py
 ipython
-numpy
 matplotlib
 pillow
 tqdm
 wandb
 gputil 
 psutil
-scikit-learn
+
+# Scientific computing (install after numpy)
+scikit-learn>=1.0.0

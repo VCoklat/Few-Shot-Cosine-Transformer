@@ -57,6 +57,13 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
 ## Experiments
 ### Dependencies environment
   + `pip install -r requirements.txt`
+  
+  **Note:** If you encounter `ValueError: numpy.dtype size changed, may indicate binary incompatibility` error, run:
+  ```bash
+  pip install --upgrade --force-reinstall numpy scikit-learn
+  ```
+  This ensures NumPy and scikit-learn are properly compatible.
+  
 ### Dataset
 + **_mini_-ImageNet**:  
   + Go to `/dataset/miniImagenet/`
