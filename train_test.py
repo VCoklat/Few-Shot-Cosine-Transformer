@@ -350,6 +350,45 @@ def safe_checkpoint_save(checkpoint_dict, filepath, max_retries=3):
     
     return False
 
+def validate_model(val_loader, model):
+    """
+    Validate the model on the validation set.
+    
+    Args:
+        val_loader: DataLoader for validation data
+        model: The model to validate
+        
+    Returns:
+        float: Validation accuracy percentage
+    """
+    correct = 0
+    count = 0
+    acc_all = []
+    
+    model.eval()
+    with torch.no_grad():
+        iter_num = len(val_loader)
+        with tqdm.tqdm(total=iter_num, desc="Validation") as val_pbar:
+            for i, (x, _) in enumerate(val_loader):
+                # Handle dynamic way changes if model supports it
+                if hasattr(model, 'change_way') and model.change_way:
+                    model.n_way = x.size(0)
+                
+                # Get predictions
+                correct_this, count_this = model.correct(x)
+                acc_all.append(correct_this / count_this * 100)
+                
+                val_pbar.set_description('Validation | Acc {:.2f}%'.format(np.mean(acc_all)))
+                val_pbar.update(1)
+    
+    acc_all = np.asarray(acc_all)
+    acc_mean = np.mean(acc_all)
+    acc_std = np.std(acc_all)
+    
+    print('Val Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std / np.sqrt(iter_num)))
+    
+    return acc_mean
+
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
     # Memory optimization settings
     torch.cuda.empty_cache()
