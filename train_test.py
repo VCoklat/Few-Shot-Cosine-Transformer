@@ -40,6 +40,7 @@ from io_utils import (get_assigned_file, get_best_file,
                      model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+from methods.optimal_few_shot import OptimalFewShotModel, DATASET_CONFIGS
 import eval_utils
 
 global device
@@ -389,7 +390,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'OptimalFewShot']:
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
         
@@ -425,6 +426,32 @@ if __name__ == '__main__':
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=False) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=False)
             
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
+
+        elif params.method == 'OptimalFewShot':
+            # Get dataset-specific configuration
+            config = DATASET_CONFIGS.get(params.dataset, DATASET_CONFIGS['miniImagenet'])
+            
+            # Create a dummy model function (not used since we override in OptimalFewShotModel)
+            def feature_model():
+                return None
+            
+            # Create model with dataset-specific parameters
+            use_focal_loss = config.get('focal_loss', False)
+            dropout = config.get('dropout', 0.1)
+            
+            model = OptimalFewShotModel(
+                feature_model,
+                n_way=params.n_way,
+                k_shot=params.k_shot,
+                n_query=params.n_query,
+                feature_dim=64,
+                n_heads=4,
+                dropout=dropout,
+                num_datasets=5,
+                dataset=params.dataset,
+                use_focal_loss=use_focal_loss,
+                label_smoothing=0.1
+            )
 
         else:
             raise ValueError('Unknown method')
