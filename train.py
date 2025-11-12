@@ -1,3 +1,52 @@
+#!/usr/bin/env python3
+"""
+Few-Shot Cosine Transformer Training Script
+
+This script requires dependencies to be installed. If you encounter import errors,
+please install the required packages:
+    pip install -r requirements.txt
+"""
+
+import sys
+
+# Check critical dependencies before proceeding
+def check_dependencies():
+    """Check if critical dependencies are installed and provide helpful error messages."""
+    missing_deps = []
+    
+    try:
+        import h5py
+    except ImportError:
+        missing_deps.append('h5py')
+    
+    try:
+        import torch
+    except ImportError:
+        missing_deps.append('torch')
+    
+    try:
+        import numpy
+    except ImportError:
+        missing_deps.append('numpy')
+    
+    try:
+        import tqdm
+    except ImportError:
+        missing_deps.append('tqdm')
+    
+    if missing_deps:
+        print("\n" + "="*70)
+        print("❌ ERROR: Missing required dependencies!")
+        print("="*70)
+        print(f"\nThe following packages are not installed: {', '.join(missing_deps)}")
+        print("\n📦 To install all required dependencies, run:")
+        print("   pip install -r requirements.txt")
+        print("\n💡 Make sure you're in the project root directory.")
+        print("="*70 + "\n")
+        sys.exit(1)
+
+check_dependencies()
+
 import glob
 import json
 import os
