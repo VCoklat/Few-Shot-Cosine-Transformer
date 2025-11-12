@@ -420,7 +420,7 @@ class Attention(nn.Module):
         
         return V_E
 
-    def covariance_component_torch(self, E, use_shrinkage=True):
+    def covariance_component_torch(self, E, use_shrinkage=False):
         """
         PyTorch implementation of covariance component with Ledoit-Wolf style shrinkage.
         
@@ -618,9 +618,9 @@ class Attention(nn.Module):
                 var_comp = var_q * var_k
                 var_component_list.append(var_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
 
-                # Compute covariance component for this chunk  
-                cov_q = self.covariance_component_torch(q_chunk)
-                cov_k = self.covariance_component_torch(k_chunk)
+                # Compute covariance component for this chunk (with shrinkage for stability)
+                cov_q = self.covariance_component_torch(q_chunk, use_shrinkage=True)
+                cov_k = self.covariance_component_torch(k_chunk, use_shrinkage=True)
                 cov_comp = cov_q * cov_k
                 cov_component_list.append(cov_comp.unsqueeze(0).expand(end_idx - i, seq_q, seq_k))
 
