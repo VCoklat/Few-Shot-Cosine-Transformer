@@ -33,15 +33,44 @@ global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def train(base_loader, val_loader, model, optimization, num_epoch, params):
+    # Check if model has dynamic weight predictor that needs separate LR
+    has_weight_predictor = False
+    weight_predictor_params = []
+    other_params = []
+    
+    if hasattr(model, 'ATTN') and hasattr(model.ATTN, 'dynamic_weight') and model.ATTN.dynamic_weight:
+        has_weight_predictor = True
+        # Collect weight predictor parameters
+        weight_predictor_param_names = ['weight_linear1', 'weight_layernorm1', 'weight_linear2', 
+                                        'weight_layernorm2', 'weight_linear3', 'weight_temperature',
+                                        'weight_dropout1', 'weight_dropout2']
+        
+        for name, param in model.named_parameters():
+            if any(wp_name in name for wp_name in weight_predictor_param_names):
+                weight_predictor_params.append(param)
+            else:
+                other_params.append(param)
+    
+    # Create optimizer with separate parameter groups for weight predictor
+    if has_weight_predictor and len(weight_predictor_params) > 0:
+        # Use smaller learning rate for weight predictor (0.5x main LR)
+        param_groups = [
+            {'params': other_params, 'lr': params.learning_rate},
+            {'params': weight_predictor_params, 'lr': params.learning_rate * 0.5}
+        ]
+        print(f"Using separate LR for weight predictor: {params.learning_rate * 0.5:.6f} (main: {params.learning_rate:.6f})")
+    else:
+        param_groups = model.parameters()
+    
     if optimization == 'Adam':
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+            param_groups, lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'AdamW':
         optimizer = torch.optim.AdamW(
-            model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+            param_groups, lr=params.learning_rate, weight_decay=params.weight_decay)
     elif optimization == 'SGD':
         optimizer = torch.optim.SGD(
-            model.parameters(), lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
+            param_groups, lr=params.learning_rate, momentum=params.momentum, weight_decay=params.weight_decay)
     else:
         raise ValueError('Unknown optimization, please define by yourself')
 
@@ -62,7 +91,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         if epoch < warmup_epochs:
             warmup_factor = (epoch + 1) / warmup_epochs
             for param_group in optimizer.param_groups:
-                param_group['lr'] = params.learning_rate * warmup_factor
+                param_group['lr'] = param_group['lr'] * warmup_factor
 
         model.train_loop(epoch, num_epoch, base_loader,
                          params.wandb,  optimizer)

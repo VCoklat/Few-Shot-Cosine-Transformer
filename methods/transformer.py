@@ -243,6 +243,12 @@ class FewShotTransformer(MetaTemplate):
 
         scores = self.set_forward(x)
         loss = self.loss_fn(scores, target)
+        
+        # Add regularization losses from attention module if using dynamic weighting
+        if hasattr(self.ATTN, 'get_regularization_losses'):
+            reg_loss = self.ATTN.get_regularization_losses()
+            loss = loss + reg_loss
+        
         predict = torch.argmax(scores, dim=1)
         acc = (predict == target).sum().item() / target.size(0) * 100
 
@@ -286,19 +292,33 @@ class Attention(nn.Module):
         if dynamic_weight:
             # Solution 4: Multi-Scale Dynamic Weighting with 4 components
             # Enhanced weight predictor with increased capacity
+            # Per-head weight prediction with head-specific features
             self.weight_linear1 = nn.Linear(dim_head * 2, dim_head * 2)
             self.weight_layernorm1 = nn.LayerNorm(dim_head * 2)
             self.weight_gelu1 = nn.GELU()  # Better activation than ReLU
-            self.weight_dropout1 = nn.Dropout(0.1)
+            self.weight_dropout1 = nn.Dropout(0.15)  # Increased dropout to avoid overfitting to noise
             self.weight_linear2 = nn.Linear(dim_head * 2, dim_head)
             self.weight_layernorm2 = nn.LayerNorm(dim_head)
             self.weight_gelu2 = nn.GELU()
-            self.weight_linear3 = nn.Linear(dim_head, 4)  # 4 weights instead of 3
-            self.weight_softmax = nn.Softmax(dim=-1)  # Ensure weights sum to 1.0
+            self.weight_dropout2 = nn.Dropout(0.1)  # Additional dropout layer
+            self.weight_linear3 = nn.Linear(dim_head, 3)  # 3 weights: cosine, cov, var
+            
+            # Temperature parameter for softmax (configurable per head)
+            # Lower temperature → crisper choices; higher → smoother mixing
+            self.weight_temperature = nn.Parameter(torch.ones(heads) * 1.0)
+            
+            # Entropy regularization weight (encourage moderate entropy)
+            self.entropy_reg_lambda = 0.01  # Small penalty for entropy
+            
+            # L2 penalty on logit magnitudes to avoid collapse
+            self.logit_l2_lambda = 0.001
         else:
             # Fixed weights as parameters (still learnable)
             self.fixed_cov_weight = nn.Parameter(torch.tensor(initial_cov_weight))
             self.fixed_var_weight = nn.Parameter(torch.tensor(initial_var_weight))
+        
+        # Shrinkage coefficient for covariance estimation (Ledoit-Wolf style)
+        self.shrinkage_alpha = 0.1  # Balance between empirical and diagonal covariance
 
         # Solution 6: Cross-Attention Between Query and Support
         self.cross_attn = nn.MultiheadAttention(
@@ -320,8 +340,11 @@ class Attention(nn.Module):
         """Transform input through layernorm and linear projection"""
         return self.input_linear(self.input_layernorm(t))
 
-    def weight_predictor_forward(self, x):
-        """Forward pass through enhanced weight predictor for 4 components"""
+    def weight_predictor_forward(self, x, head_idx=None):
+        """
+        Forward pass through enhanced weight predictor for 3 components
+        Returns: (weights, logits, entropy) for training
+        """
         x = self.weight_linear1(x)
         x = self.weight_layernorm1(x)
         x = self.weight_gelu1(x)
@@ -329,8 +352,23 @@ class Attention(nn.Module):
         x = self.weight_linear2(x)
         x = self.weight_layernorm2(x)
         x = self.weight_gelu2(x)
-        x = self.weight_linear3(x)
-        return self.weight_softmax(x)
+        x = self.weight_dropout2(x)
+        logits = self.weight_linear3(x)  # [heads, 3] raw logits
+        
+        # Apply temperature-scaled softmax
+        # Get temperature for this head (or use mean if head_idx not provided)
+        if head_idx is not None:
+            temp = self.weight_temperature[head_idx].view(1, 1)
+        else:
+            temp = self.weight_temperature.view(-1, 1)  # [heads, 1]
+        
+        # Temperature-scaled softmax
+        weights = F.softmax(logits / temp, dim=-1)
+        
+        # Compute entropy for regularization: H = -sum(p * log(p))
+        entropy = -(weights * torch.log(weights + 1e-8)).sum(dim=-1)
+        
+        return weights, logits, entropy
 
     def get_adaptive_gamma(self):
         """
@@ -347,13 +385,13 @@ class Attention(nn.Module):
 
     def variance_component_torch(self, E, gamma=1.0, epsilon=1e-8):
         """
-        PyTorch implementation of variance component matching problem statement:
-        def variance_regularization_multi_dim(E, gamma=0.1, epsilon=1e-8):
-            variance_per_dim = np.var(E, axis=0, ddof=0)
-            regularized_std = np.sqrt(variance_per_dim + epsilon)
-            hinge_values = np.maximum(0.0, gamma - regularized_std)
-            V_E = np.sum(hinge_values) / m
-            return V_E
+        PyTorch implementation of variance component with improved numerical stability.
+        Uses safe sqrt operations and clamping.
+        
+        Args:
+            E: Input embeddings (batch, seq, dim)
+            gamma: Hinge threshold
+            epsilon: Numerical stability constant (increased for safety)
         """
         # E shape: (batch, seq, dim)
         batch_size = E.shape[0]
@@ -364,14 +402,16 @@ class Attention(nn.Module):
         # Compute variance per dimension across samples (axis=0)
         variance_per_dim = torch.var(E_reshaped, dim=0, unbiased=False)  # (dim,)
         
-        # Compute regularized standard deviation
+        # Use stable numeric ops: clamp before sqrt to avoid negative values
+        variance_per_dim = torch.clamp(variance_per_dim, min=epsilon)
+        
+        # Compute regularized standard deviation with safe sqrt
         regularized_std = torch.sqrt(variance_per_dim + epsilon)  # (dim,)
         
         # Apply hinge: max(0, gamma - regularized_std)
         hinge_values = torch.clamp(gamma - regularized_std, min=0.0)  # (dim,)
         
-        # FIXED: Sum and normalize by number of dimensions (m), not samples
-        # This matches the problem statement: V_E = np.sum(hinge_values) / m
+        # Sum and normalize by number of dimensions (m)
         m = E_reshaped.shape[1]  # Number of dimensions
         V_E = torch.sum(hinge_values) / m
         
@@ -380,18 +420,19 @@ class Attention(nn.Module):
         
         return V_E
 
-    def covariance_component_torch(self, E):
+    def covariance_component_torch(self, E, use_shrinkage=True):
         """
-        PyTorch implementation of covariance component matching problem statement:
-        def covariance_regularization(E):
-            E_mean = np.mean(E, axis=0, keepdims=True)
-            E_centered = E - E_mean
-            cov_matrix = np.dot(E_centered.T, E_centered) / (K - 1)
-            mask = np.ones_like(cov_matrix) - np.eye(cov_matrix.shape[0])
-            off_diagonal_squared = np.sum((cov_matrix * mask) ** 2)
-            return off_diagonal_squared
+        PyTorch implementation of covariance component with Ledoit-Wolf style shrinkage.
         
-        Memory-optimized version with chunking to prevent OOM.
+        Shrinkage covariance: cov_shrunk = (1 - alpha) * empirical_cov + alpha * diag(empirical_cov)
+        This reduces noise in small mini-batches and improves stability.
+        
+        Args:
+            E: Input embeddings (batch, seq, dim)
+            use_shrinkage: Whether to apply shrinkage regularization
+        
+        Returns:
+            Covariance regularization loss (sum of squared off-diagonal elements)
         """
         try:
             # E shape: (batch, seq, dim)
@@ -407,26 +448,27 @@ class Attention(nn.Module):
             # Center the data
             E_centered = E_reshaped - E_mean  # (K, dim)
             
-            # OPTIMIZED: Better chunking strategy to prevent OOM
-            # Adaptive chunk size based on both dimension and available memory
-            if dim > 2048:
-                chunk_size = 32  # Very small chunks for huge dimensions
-            elif dim > 1024:
-                chunk_size = 64  # Smaller chunks for very large dimensions
-            elif dim > 512:
-                chunk_size = 128  # Medium chunks for large dimensions
-            else:
-                # For smaller dimensions, compute directly without chunking
-                # This is more efficient and avoids chunking overhead
+            # For smaller dimensions, compute directly without chunking
+            if dim <= 512:
+                # Compute empirical covariance matrix
                 if K > 1:
                     cov_matrix = torch.matmul(E_centered.T, E_centered) / (K - 1)
                 else:
                     cov_matrix = torch.matmul(E_centered.T, E_centered)
                 
+                # Apply shrinkage if enabled (Ledoit-Wolf style)
+                if use_shrinkage:
+                    # Get diagonal elements
+                    diag_elements = torch.diag(cov_matrix)
+                    # Create diagonal matrix
+                    diag_cov = torch.diag(diag_elements)
+                    # Shrinkage: (1 - alpha) * empirical + alpha * diagonal
+                    cov_matrix = (1 - self.shrinkage_alpha) * cov_matrix + self.shrinkage_alpha * diag_cov
+                
                 # Create mask for off-diagonal elements
                 mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
                 
-                # FIXED: Normalize by dimension m
+                # Compute sum of squares of off-diagonal elements and normalize by m
                 off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2) / dim
                 
                 # Clear tensors
@@ -436,7 +478,8 @@ class Attention(nn.Module):
                 
                 return off_diagonal_squared
             
-            # For large dimensions, use chunked computation
+            # For large dimensions, use chunked computation with shrinkage
+            chunk_size = 64 if dim > 1024 else 128
             cov_matrix = torch.zeros(dim, dim, device=E.device)
             
             for i in range(0, dim, chunk_size):
@@ -461,11 +504,16 @@ class Attention(nn.Module):
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             
+            # Apply shrinkage if enabled
+            if use_shrinkage:
+                diag_elements = torch.diag(cov_matrix)
+                diag_cov = torch.diag(diag_elements)
+                cov_matrix = (1 - self.shrinkage_alpha) * cov_matrix + self.shrinkage_alpha * diag_cov
+            
             # Create mask for off-diagonal elements
             mask = torch.ones_like(cov_matrix) - torch.eye(dim, device=cov_matrix.device)
             
-            # FIXED: Compute sum of squares of off-diagonal elements and normalize by m
-            # This matches the CTX.py implementation and improves numerical stability
+            # Compute sum of squares of off-diagonal elements and normalize by m
             off_diagonal_squared = torch.sum((cov_matrix * mask) ** 2) / dim
             
             # Clear large tensors
@@ -477,11 +525,10 @@ class Attention(nn.Module):
             
         except RuntimeError as e:
             if "out of memory" in str(e):
-                # OOM detected - clear cache and try with smaller chunks
+                # OOM detected - clear cache and return small penalty
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                print(f"OOM in covariance computation, using fallback with smaller chunks")
-                # Return a small penalty value instead of crashing
+                print(f"OOM in covariance computation, using fallback")
                 return torch.tensor(0.0, device=E.device, requires_grad=True)
             else:
                 raise e
@@ -692,8 +739,15 @@ class Attention(nn.Module):
                     self.cov_ema = self.ema_decay * self.cov_ema + (1 - self.ema_decay) * cov_component.detach().mean()
             
             # Normalize components by their EMA for stability
-            var_component_norm = var_component / (self.var_ema + epsilon)
-            cov_component_norm = cov_component / (self.cov_ema + epsilon)
+            # Also normalize by running std to ensure similar dynamic range
+            cosine_std = cosine_sim.std() + epsilon
+            var_std = var_component.std() + epsilon
+            cov_std = cov_component.std() + epsilon
+            
+            # Normalize to similar scale before mixing
+            cosine_sim_norm = cosine_sim / cosine_std
+            var_component_norm = var_component / (self.var_ema + epsilon) / var_std
+            cov_component_norm = cov_component / (self.cov_ema + epsilon) / cov_std
 
             # Weight combination logic
             if self.dynamic_weight:
@@ -705,32 +759,46 @@ class Attention(nn.Module):
                     # Concatenate global query and key features
                     qk_features = torch.cat([q_global, k_global], dim=-1)  # [h, 2d]
 
-                    # Solution 4: Predict four weights per attention head
-                    weights = self.weight_predictor_forward(qk_features)  # [h, 4]
+                    # Predict three weights per attention head with temperature and entropy
+                    weights, logits, entropy = self.weight_predictor_forward(qk_features)  # [h, 3]
 
                     # Record weights during evaluation if needed
                     if self.record_weights and not self.training:
                         self.weight_history.append(weights.detach().cpu().numpy().mean(axis=0))
 
-                    # Extract individual weights for 4 components
+                    # Extract individual weights for 3 components
                     cos_weight = weights[:, 0].view(self.heads, 1, 1, 1)  # Cosine weight
                     cov_weight = weights[:, 1].view(self.heads, 1, 1, 1)  # Covariance weight
                     var_weight = weights[:, 2].view(self.heads, 1, 1, 1)  # Variance weight
-                    interaction_weight = weights[:, 3].view(self.heads, 1, 1, 1)  # Interaction weight
 
-                    # Solution 4: Add interaction term (product of cosine and covariance)
-                    interaction_term = cosine_sim * cov_component_norm
-
-                    # Combine all four components
-                    dots = (cos_weight * cosine_sim +
+                    # Combine all three components with normalized magnitudes
+                    dots = (cos_weight * cosine_sim_norm +
                            cov_weight * cov_component_norm + 
-                           var_weight * var_component_norm +
-                           interaction_weight * interaction_term)
+                           var_weight * var_component_norm)
+                    
+                    # Store entropy and logits for regularization in training
+                    if self.training:
+                        # Entropy regularization: encourage moderate entropy (not too peaked, not too uniform)
+                        # Target entropy is log(3) ≈ 1.1 for 3 components
+                        target_entropy = np.log(3.0)
+                        entropy_reg = torch.mean((entropy - target_entropy) ** 2)
+                        
+                        # L2 penalty on logit magnitudes to avoid collapse
+                        logit_l2 = torch.mean(logits ** 2)
+                        
+                        # Store for use in loss computation (will be accessed by parent model)
+                        self.last_entropy_reg = self.entropy_reg_lambda * entropy_reg
+                        self.last_logit_l2 = self.logit_l2_lambda * logit_l2
+                    else:
+                        self.last_entropy_reg = torch.tensor(0.0, device=dots.device)
+                        self.last_logit_l2 = torch.tensor(0.0, device=dots.device)
 
                 except Exception as e:
                     print(f"Error in dynamic weighting: {e}, using equal weights")
                     # Fallback to equal weighting
-                    dots = (cosine_sim + cov_component_norm + var_component_norm) / 3
+                    dots = (cosine_sim_norm + cov_component_norm + var_component_norm) / 3
+                    self.last_entropy_reg = torch.tensor(0.0, device=dots.device)
+                    self.last_logit_l2 = torch.tensor(0.0, device=dots.device)
             else:
                 # Use fixed weights
                 cov_weight = torch.sigmoid(self.fixed_cov_weight)
@@ -739,9 +807,12 @@ class Attention(nn.Module):
                 # Ensure weights sum to approximately 1 by using the remaining portion for cosine
                 cos_weight = 1.0 - cov_weight - var_weight
 
-                dots = (cos_weight * cosine_sim +
-                       cov_weight * cov_component +
-                       var_weight * var_component)
+                dots = (cos_weight * cosine_sim_norm +
+                       cov_weight * cov_component_norm +
+                       var_weight * var_component_norm)
+                
+                self.last_entropy_reg = torch.tensor(0.0, device=dots.device)
+                self.last_logit_l2 = torch.tensor(0.0, device=dots.device)
 
             # CRITICAL FIX: Ensure f_v has the correct sequence dimension to match dots
             # dots shape: [heads, batch, seq_q, seq_k] 
@@ -795,24 +866,7 @@ class Attention(nn.Module):
 
         weights = np.array(self.weight_history)
 
-        if weights.shape[1] == 4:  # We have 4 components (updated)
-            return {
-                'cosine_mean': float(weights[:, 0].mean()),
-                'cov_mean': float(weights[:, 1].mean()),
-                'var_mean': float(weights[:, 2].mean()),
-                'interaction_mean': float(weights[:, 3].mean()),
-                'cosine_std': float(weights[:, 0].std()),
-                'cov_std': float(weights[:, 1].std()),
-                'var_std': float(weights[:, 2].std()),
-                'interaction_std': float(weights[:, 3].std()),
-                'histogram': {
-                    'cosine': np.histogram(weights[:, 0], bins=10, range=(0,1))[0].tolist(),
-                    'cov': np.histogram(weights[:, 1], bins=10, range=(0,1))[0].tolist(),
-                    'var': np.histogram(weights[:, 2], bins=10, range=(0,1))[0].tolist(),
-                    'interaction': np.histogram(weights[:, 3], bins=10, range=(0,1))[0].tolist()
-                }
-            }
-        elif weights.shape[1] == 3:  # We have 3 components (legacy)
+        if weights.shape[1] == 3:  # We have 3 components (current implementation)
             return {
                 'cosine_mean': float(weights[:, 0].mean()),
                 'cov_mean': float(weights[:, 1].mean()),
@@ -826,7 +880,7 @@ class Attention(nn.Module):
                     'var': np.histogram(weights[:, 2], bins=10, range=(0,1))[0].tolist()
                 }
             }
-        else:  # Legacy format with single weight
+        else:  # Legacy format with different number of components
             return {
                 'mean': float(weights.mean()),
                 'std': float(weights.std()),
@@ -834,6 +888,15 @@ class Attention(nn.Module):
                 'max': float(weights.max()),
                 'histogram': np.histogram(weights, bins=10, range=(0,1))[0].tolist()
             }
+    
+    def get_regularization_losses(self):
+        """
+        Returns the regularization losses from the last forward pass.
+        Should be called after forward() and added to the main loss during training.
+        """
+        if hasattr(self, 'last_entropy_reg') and hasattr(self, 'last_logit_l2'):
+            return self.last_entropy_reg + self.last_logit_l2
+        return torch.tensor(0.0)
 
     def clear_weight_history(self):
         """Clear recorded weights"""
