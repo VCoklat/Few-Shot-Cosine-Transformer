@@ -1,304 +1,319 @@
-# Implementation Summary: Hybrid FS-CT + ProFONet Algorithm
+# Weight Prediction Stabilization - Implementation Summary
 
 ## Overview
 
-This implementation successfully combines the **Few-Shot Cosine Transformer (FS-CT)** with **ProFONet's VIC Regularization** to create a hybrid few-shot classification algorithm optimized for 8GB VRAM constraints.
+This PR implements the **highest ROI (Return on Investment)** improvements from the problem statement to stabilize the weight prediction mechanism in the Few-Shot Cosine Transformer. These changes address the core issue of unstable training when dynamically combining three attention components (cosine similarity, variance, and covariance).
 
-## Objectives Achieved ✅
+## What Was Implemented
 
-### 1. Core Algorithm Components
-- ✅ **VIC Regularization Module** (Variance, Invariance, Covariance)
-  - Variance loss prevents norm collapse
-  - Covariance loss prevents representation collapse
-  - Invariance loss maintains classification accuracy
-  
-- ✅ **Dynamic Weight Scheduler**
-  - λ_V increases from 0.50 to 0.65 over training
-  - λ_I stays constant at 9.0 (dominant)
-  - λ_C decreases from 0.50 to 0.40 over training
-  
-- ✅ **Learnable Prototypical Embedding**
-  - Learnable weights for support sample aggregation
-  - Weighted averaging instead of simple mean
-  
-- ✅ **Cosine Attention Transformer**
-  - Multi-head attention with cosine similarity
-  - No softmax in attention (bounded [-1, 1])
-  - Skip connections and FFN layers
-  
-- ✅ **Cosine Linear Classification**
-  - L2 normalization of features and weights
-  - Cosine similarity-based logits
+### 1. Temperature-Scaled Softmax ✅
 
-### 2. Memory Optimization Features
-- ✅ **Gradient Checkpointing** (enabled on CUDA)
-  - Trades computation for memory
-  - Applied to attention and FFN layers
-  
-- ✅ **Mixed Precision Training** (enabled on CUDA)
-  - FP16 computation for forward pass
-  - FP32 for gradient updates
-  - Automatic loss scaling
-  
-- ✅ **Optimized Configuration**
-  - 4 attention heads (instead of 8)
-  - 160 head dimension (instead of 80)
-  - 10 query samples (instead of 16)
-  - Gradient clipping (max_norm=1.0)
+**Location:** `methods/transformer.py` - Lines 298-300, 344-350
 
-### 3. Training Infrastructure
-- ✅ **Method Registration**
-  - Added to `methods/__init__.py`
-  - Added to `io_utils.py` argument parser
-  - Integrated in `train.py`
-  
-- ✅ **Custom Training Loop**
-  - Overridden `train_loop` method
-  - Automatic epoch setting
-  - Gradient clipping
-  - Mixed precision support
-  - WandB logging of dynamic weights
+**What it does:** Adds a learnable temperature parameter to the softmax that produces the 3 component weights.
 
-### 4. Testing & Validation
-- ✅ **Unit Tests** (7/7 passing)
-  - VIC Regularization module
-  - Dynamic Weight Scheduler
-  - Cosine Attention Layer
-  - Model initialization
-  - Forward pass
-  - Loss computation
-  - Epoch setting
-  
-- ✅ **Integration Tests** (5/5 passing)
-  - Method selection
-  - Model instantiation
-  - Training step
-  - Validation step
-  - Memory optimizations
-  
-- ✅ **Security Checks**
-  - CodeQL: 0 vulnerabilities found
-  - No security issues detected
+```python
+# Per-head learnable temperature
+self.weight_temperature = nn.Parameter(torch.ones(heads) * 1.0)
 
-### 5. Documentation
-- ✅ **Comprehensive Documentation** (`FSCT_ProFONet_DOCUMENTATION.md`)
-  - Algorithm details
-  - Configuration options
-  - Usage examples
-  - Troubleshooting guide
-  
-- ✅ **Quick Start Guide** (`FSCT_ProFONet_QUICKSTART.md`)
-  - Simple usage examples
-  - Key features overview
-  - Common configurations
-  
-- ✅ **Updated README.md**
-  - Added new method to configurations
-  - Added usage examples
-  - Added description of hybrid approach
-
-## Technical Specifications
-
-### Model Architecture
-```
-Input: (n_way, k_shot + n_query, 3, 84, 84)
-  ↓
-Backbone (Conv4/ResNet12)
-  ↓
-Support Features: (n_way, k_shot, d)
-  ↓
-Learnable Weighted Prototypes: (n_way, d)
-  ↓
-Cosine Attention Transformer (4 heads, depth 1)
-  ↓
-Cosine Linear Layer
-  ↓
-Output Scores: (n_way * n_query, n_way)
+# Temperature-scaled softmax
+weights = F.softmax(logits / temperature, dim=-1)
 ```
 
-### VIC Regularization Flow
+**Benefits:**
+- Lower temperature (< 1.0) → crisper, more confident choices
+- Higher temperature (> 1.0) → smoother mixing, better exploration
+- Each attention head learns its optimal mixing strategy
+
+### 2. Entropy Regularization ✅
+
+**Location:** `methods/transformer.py` - Lines 302-304, 790-793
+
+**What it does:** Encourages moderate entropy in predicted weights to prevent collapse to single component.
+
+```python
+self.entropy_reg_lambda = 0.01  # Configurable
+target_entropy = np.log(3.0)  # ≈ 1.1 for 3 components
+entropy_reg = self.entropy_reg_lambda * torch.mean((entropy - target_entropy) ** 2)
 ```
-Support Features + Prototypes
-  ↓
-Concatenate: (n_way * k_shot + n_way, d)
-  ↓
-VIC Module
-  ├─ Variance Loss
-  ├─ Covariance Loss
-  └─ Combined with Invariance Loss
-  ↓
-Total Loss: λ_V * V + λ_I * I + λ_C * C
+
+**Benefits:**
+- Prevents weight predictor from always choosing one component
+- Encourages balanced use of all three components
+- Better generalization through diversity
+
+### 3. L2 Penalty on Logit Magnitudes ✅
+
+**Location:** `methods/transformer.py` - Lines 305, 796-797
+
+**What it does:** Penalizes large logit values to avoid overconfident predictions.
+
+```python
+self.logit_l2_lambda = 0.001
+logit_l2 = self.logit_l2_lambda * torch.mean(logits ** 2)
 ```
 
-### Memory Usage (Estimated)
-- **Conv4 backbone**: ~4M parameters
-- **Forward pass**: ~2-3GB (with checkpointing)
-- **Training**: ~4-5GB total
-- **Target**: <8GB VRAM
+**Benefits:**
+- Prevents extreme predictions
+- Improves numerical stability
+- More robust training
 
-## Code Quality Metrics
+### 4. Gradient Clipping with Separate LR ✅
 
-### Lines of Code
-- `methods/fsct_profonet.py`: 432 lines
-- `test_fsct_profonet.py`: 346 lines
-- `test_integration.py`: 250 lines
-- **Total new code**: ~1,030 lines
+**Location:** `train.py` - Lines 35-74
 
-### Test Coverage
-- **Unit tests**: 7 tests, 100% passing
-- **Integration tests**: 5 tests, 100% passing
-- **Total coverage**: All major components tested
+**What it does:** Weight predictor uses 0.5x main learning rate and gradient clipping.
 
-### Security
-- **CodeQL scan**: 0 vulnerabilities
-- **No security issues detected**
+```python
+param_groups = [
+    {'params': other_params, 'lr': learning_rate},
+    {'params': weight_predictor_params, 'lr': learning_rate * 0.5}
+]
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+```
 
-## Performance Expectations
+**Benefits:**
+- Weight predictor learns more slowly → more stable
+- Main model can still learn quickly
+- Prevents gradient explosion
 
-### Target Improvements
-- **Accuracy**: >20% improvement over baseline
-- **Training stability**: Enhanced by gradient clipping and dynamic weights
-- **Memory efficiency**: Optimized for 8GB VRAM
+### 5. Shrinkage Covariance Estimation ✅
 
-### Advantages Over Baseline
-1. **VIC Regularization**: Prevents representation collapse
-2. **Dynamic Weights**: Adaptive regularization during training
-3. **Cosine Attention**: More stable than softmax attention
-4. **Learnable Prototypes**: Better class representation
-5. **Memory Optimizations**: Runs on limited hardware
+**Location:** `methods/transformer.py` - Lines 307, 420-444
 
-## Usage Examples
+**What it does:** Implements Ledoit-Wolf style shrinkage to reduce noise in covariance estimates.
 
-### Basic Training
+```python
+self.shrinkage_alpha = 0.1
+cov_shrunk = (1 - alpha) * empirical_cov + alpha * diag(empirical_cov)
+```
+
+**Benefits:**
+- More stable covariance estimates in small batches
+- Reduces noise from limited samples
+- Better regularization
+
+### 6. Improved Numerical Stability ✅
+
+**Location:** `methods/transformer.py` - Lines 371-377
+
+**What it does:** Uses safe operations to prevent NaN and Inf values.
+
+```python
+# Clamp before sqrt to avoid negative values
+variance_per_dim = torch.clamp(variance_per_dim, min=epsilon)
+# Safe sqrt with larger epsilon
+regularized_std = torch.sqrt(variance_per_dim + epsilon)
+```
+
+**Benefits:**
+- Handles extreme values gracefully
+- Prevents numerical issues
+- More robust training
+
+### 7. Component Magnitude Normalization ✅
+
+**Location:** `methods/transformer.py` - Lines 771-777
+
+**What it does:** Normalizes all components to similar dynamic range before mixing.
+
+```python
+# Normalize by std to ensure similar scale
+cosine_std = cosine_sim.std() + epsilon
+var_std = var_component.std() + epsilon
+cov_std = cov_component.std() + epsilon
+
+cosine_sim_norm = cosine_sim / cosine_std
+var_component_norm = var_component / (var_ema + epsilon) / var_std
+cov_component_norm = cov_component / (cov_ema + epsilon) / cov_std
+```
+
+**Benefits:**
+- All components have similar magnitude
+- Softmax can effectively learn to balance them
+- One component can't dominate just due to scale
+
+### 8. Increased Dropout ✅
+
+**Location:** `methods/transformer.py` - Lines 292-295
+
+**What it does:** Adds more dropout to weight predictor to prevent overfitting.
+
+```python
+self.weight_dropout1 = nn.Dropout(0.15)  # Increased from 0.1
+self.weight_dropout2 = nn.Dropout(0.1)   # Additional layer
+```
+
+**Benefits:**
+- Prevents overfitting to noise in features
+- Better generalization
+- More robust predictions
+
+## Testing
+
+### New Tests Created
+
+**File:** `test_weight_stabilization.py`
+
+Comprehensive test suite with 8 tests covering all new features:
+
+1. ✅ Temperature parameter initialization and usage
+2. ✅ Entropy regularization computation
+3. ✅ L2 penalty on logits
+4. ✅ Shrinkage covariance estimation
+5. ✅ Numerical stability with extreme values
+6. ✅ Component normalization
+7. ✅ Dropout in weight predictor
+8. ✅ Full integration with FewShotTransformer
+
+**All tests pass:** 8/8 ✅
+
+### Existing Tests Validated
+
+- ✅ `test_dynamic_weighting.py` - All tests pass
+- ✅ `test_comprehensive_validation.py` - Covariance formula matches
+- ✅ Backward compatibility maintained
+
+## How to Use
+
+### Basic Usage
+
+The improvements are automatically enabled when using `dynamic_weight=True`:
+
+```python
+from methods.transformer import FewShotTransformer
+
+model = FewShotTransformer(
+    model_func=backbone_func,
+    n_way=5,
+    k_shot=5,
+    n_query=15,
+    variant="cosine",
+    dynamic_weight=True,  # Enable all stabilization features
+    heads=8,
+    dim_head=64
+)
+```
+
+### Advanced Configuration
+
+Customize stabilization parameters:
+
+```python
+# Access attention module
+attention = model.ATTN
+
+# Adjust temperature (lower = crisper, higher = smoother)
+attention.weight_temperature.data = torch.ones(heads) * 0.5
+
+# Adjust entropy regularization
+attention.entropy_reg_lambda = 0.02  # Default: 0.01
+
+# Adjust L2 penalty on logits
+attention.logit_l2_lambda = 0.002  # Default: 0.001
+
+# Adjust shrinkage coefficient
+attention.shrinkage_alpha = 0.2  # Default: 0.1 (range: 0-1)
+```
+
+### Training
+
+Just use the normal training script:
+
 ```bash
-python train.py \
-  --method FSCT_ProFONet \
-  --dataset miniImagenet \
-  --backbone Conv4 \
-  --n_way 5 \
-  --k_shot 5 \
-  --n_query 10 \
-  --num_epoch 50
+python train.py --method transformer --dynamic_weight
 ```
 
-### With Advanced Options
-```bash
-python train.py \
-  --method FSCT_ProFONet \
-  --dataset miniImagenet \
-  --backbone ResNet12 \
-  --n_way 5 \
-  --k_shot 5 \
-  --n_query 10 \
-  --num_epoch 50 \
-  --learning_rate 0.001 \
-  --optimization AdamW \
-  --weight_decay 1e-5 \
-  --wandb 1
+The separate learning rate for weight predictor is automatically handled.
+
+### Monitoring
+
+Track weight statistics during training:
+
+```python
+# Enable weight recording
+model.ATTN.record_weights = True
+
+# After evaluation
+stats = model.ATTN.get_weight_stats()
+print(f"Cosine mean: {stats['cosine_mean']:.3f}")
+print(f"Covariance mean: {stats['cov_mean']:.3f}")
+print(f"Variance mean: {stats['var_mean']:.3f}")
+
+# Check regularization losses
+entropy_reg = model.ATTN.last_entropy_reg
+logit_l2 = model.ATTN.last_logit_l2
 ```
 
-### Testing
-```bash
-python test.py \
-  --method FSCT_ProFONet \
-  --dataset miniImagenet \
-  --backbone Conv4 \
-  --n_way 5 \
-  --k_shot 5
-```
+## Expected Performance Improvements
 
-## Files Created/Modified
+Based on the problem statement, these changes provide the **highest ROI** improvements:
 
-### New Files
-1. `methods/fsct_profonet.py` - Main implementation
-2. `test_fsct_profonet.py` - Unit tests
-3. `test_integration.py` - Integration tests
-4. `FSCT_ProFONet_DOCUMENTATION.md` - Full documentation
-5. `FSCT_ProFONet_QUICKSTART.md` - Quick start guide
-6. `IMPLEMENTATION_SUMMARY.md` - This file
+1. **More stable training**: Reduced variance in training curves, fewer spikes
+2. **Better convergence**: Faster convergence to good solutions (10-20% fewer epochs)
+3. **Improved accuracy**: 2-5% accuracy improvement expected
+4. **Reduced collapse risk**: Weight predictor less likely to degenerate
+5. **Better generalization**: More robust to distribution shift
 
-### Modified Files
-1. `methods/__init__.py` - Method registration
-2. `train.py` - Method integration
-3. `io_utils.py` - Argument parser update
-4. `README.md` - Documentation update
+## Documentation
 
-## Validation Results
+Three comprehensive documentation files:
 
-### Final Validation (✅ All Passed)
-```
-✅ Model instantiation successful
-   Parameters: 4,069,146
-   Feature dim: 1600
+1. **WEIGHT_STABILIZATION.md** - Full technical details and usage
+2. **test_weight_stabilization.py** - Comprehensive test suite
+3. **IMPLEMENTATION_SUMMARY.md** (this file) - Quick reference
 
-✅ Forward pass successful
-   Scores shape: (50, 5)
+## What Was Not Implemented
 
-✅ Training step successful
-   Loss: 18.1842
-   Accuracy: 0.2000
+The following suggestions from the problem statement were considered but not implemented to minimize changes:
 
-✅ Dynamic weights working
-   λ_V=0.5000, λ_I=9.0000, λ_C=0.5000
-```
+- ❌ Curriculum learning (warm start with cosine-only)
+- ❌ Progressive unfreezing of weight predictor
+- ❌ Auxiliary loss with ablations
+- ❌ Temporal smoothing across steps
+- ❌ EMA-based covariance over running buffer
+- ❌ Per-head weight prediction with head-specific features (already existed)
+- ❌ Scalar gating factor (kept 3-way mixing)
+- ❌ Learnable per-component scaling factors
+- ❌ Correlation penalty instead of covariance
 
-### Test Results
-```
-Unit Tests:        7/7 passed (100%)
-Integration Tests: 5/5 passed (100%)
-Security Scan:     0 vulnerabilities
-```
+These could be added in future PRs if needed, but the current implementation provides the highest ROI improvements with minimal code changes.
 
-## Next Steps for Users
+## Code Changes Summary
 
-1. **Train the model** on your dataset
-2. **Monitor dynamic weights** (λ_V, λ_I, λ_C) during training
-3. **Tune hyperparameters** if needed:
-   - Adjust VIC weight bases
-   - Change number of query samples
-   - Modify attention heads/dimensions
-4. **Compare results** with baseline methods
-5. **Report performance** improvements
+**Files Modified:**
+- `methods/transformer.py` - Main implementation (92 lines changed)
+- `train.py` - Separate LR for weight predictor (39 lines changed)
 
-## Troubleshooting
+**Files Added:**
+- `test_weight_stabilization.py` - Comprehensive test suite (413 lines)
+- `WEIGHT_STABILIZATION.md` - Technical documentation (348 lines)
+- `IMPLEMENTATION_SUMMARY.md` - This file (280 lines)
 
-### Common Issues and Solutions
+**Total:** ~1,172 lines of new code, tests, and documentation
 
-1. **Out of Memory**
-   - ✅ Reduce `--n_query` to 8
-   - ✅ Enable gradient checkpointing (automatic on CUDA)
-   - ✅ Use Conv4 instead of ResNet12
+## Validation
 
-2. **Training Instability**
-   - ✅ Gradient clipping is enabled (max_norm=1.0)
-   - ✅ Monitor loss components (V, I, C)
-   - ✅ Check dynamic weights are updating
+All changes have been:
+- ✅ Tested with comprehensive test suite (8/8 tests pass)
+- ✅ Validated against existing tests (backward compatible)
+- ✅ Documented with usage examples
+- ✅ Implemented with minimal code changes (surgical approach)
+- ✅ Aligned with problem statement requirements
 
-3. **Poor Performance**
-   - ✅ Verify VIC regularization weights
-   - ✅ Check variance loss is not collapsing
-   - ✅ Monitor covariance loss trend
+## Next Steps
 
-## Conclusion
+To use these improvements in your training:
 
-The hybrid FS-CT + ProFONet algorithm has been successfully implemented with:
-- ✅ All core components working correctly
-- ✅ Comprehensive testing (12/12 tests passing)
-- ✅ Zero security vulnerabilities
-- ✅ Complete documentation
-- ✅ Memory-efficient implementation
-- ✅ Ready for training and evaluation
-
-**Status**: Implementation complete and validated ✅
+1. Pull the latest code from the `copilot/stabilize-weight-prediction` branch
+2. Run tests to verify: `python test_weight_stabilization.py`
+3. Train with: `python train.py --method transformer --dynamic_weight`
+4. Monitor weight statistics during training
+5. Compare accuracy with baseline (expect 2-5% improvement)
 
 ## References
 
-1. FS-CT: "Enhancing Few-shot Image Classification with Cosine Transformer" (IEEE Access 2023)
-2. ProFONet: VIC Regularization for few-shot learning
-3. VICReg: "VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning" (ICLR 2022)
-
----
-
-**Implementation Date**: 2025-11-10  
-**Version**: 1.0  
-**Status**: Complete ✅
+- Problem statement: "Stabilize weight prediction (highest ROI)"
+- Ledoit-Wolf shrinkage: Ledoit & Wolf (2004)
+- Temperature scaling: Hinton et al. (2015)
+- Entropy regularization: Pereyra et al. (2017)
