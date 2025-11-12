@@ -203,14 +203,18 @@ def evaluate_model_comprehensive(test_loader, model, params, testfile):
                     chunk_size = 8
                     for j in range(0, x.size(0), chunk_size):
                         x_chunk = x[j:j+chunk_size].to(device)
-                        scores_chunk = model.set_forward(x_chunk)
+                        result = model.set_forward(x_chunk)
+                        # Handle tuple return (e.g., FSCT_ProFONet returns (scores, z_support, z_proto))
+                        scores_chunk = result[0] if isinstance(result, tuple) else result
                         scores_list.append(scores_chunk.cpu())
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
                     scores = torch.cat(scores_list, dim=0)
                 else:
                     x = x.to(device)
-                    scores = model.set_forward(x)
+                    result = model.set_forward(x)
+                    # Handle tuple return (e.g., FSCT_ProFONet returns (scores, z_support, z_proto))
+                    scores = result[0] if isinstance(result, tuple) else result
 
                 # Calculate inference time
                 inference_time = time.time() - start_time
@@ -570,7 +574,9 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         with tqdm.tqdm(total=len(test_loader)) as pbar:
             for i, (x, _) in enumerate(test_loader):
                 with torch.cuda.amp.autocast(enabled=True):
-                    scores = model.set_forward(x)
+                    result = model.set_forward(x)
+                    # Handle tuple return (e.g., FSCT_ProFONet returns (scores, z_support, z_proto))
+                    scores = result[0] if isinstance(result, tuple) else result
                     pred = scores.data.cpu().numpy().argmax(axis=1)
                     
                     # Move computation to CPU and free GPU memory
