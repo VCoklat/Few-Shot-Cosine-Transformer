@@ -25,4 +25,4 @@ gputil
 psutil
 
 # Scientific computing (install after numpy)
-scikit-learn>=1.0.0
+scikit-learn>=1.0.1
