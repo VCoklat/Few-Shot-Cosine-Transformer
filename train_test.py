@@ -68,7 +68,8 @@ def pretty_print(res):
     print(f"🎯 Macro-F1: {res['macro_f1']:.4f}")
 
     print("\n📈 Per-class F1 scores:")
-    for name, f in zip(res["class_names"], res["class_f1"]):
+    for i, f in enumerate(res["class_f1"]):
+        name = res["class_names"][i] if i < len(res["class_names"]) else f"Class {i}"
         print(f"  F1 '{name}': {f:.4f}")
 
     print("\n🔢 Confusion matrix:")
