@@ -25,19 +25,9 @@ from sklearn.metrics import (
 # ──────────────────────────────────────────────────────────────
 @torch.no_grad()
 def evaluate(loader, model, n_way, class_names=None,
-             chunk: int = 16, device: str = "cuda", track_all_classes: bool = True):
+             chunk: int = 16, device: str = "cuda"):
     """
     Evaluate `model` on an episodic `loader`.
-
-    Args:
-        loader: DataLoader with episodic batch sampler
-        model: Model to evaluate
-        n_way: Number of classes per episode
-        class_names: Optional list of class names for all classes in dataset
-        chunk: Chunk size for processing large batches
-        device: Device to run evaluation on
-        track_all_classes: If True, track and report F1 for all dataset classes.
-                          If False, only report F1 for the n_way classes per episode.
 
     Returns a dict with:
         macro_f1          – overall F1 (macro)
@@ -46,31 +36,19 @@ def evaluate(loader, model, n_way, class_names=None,
         accuracy          – overall accuracy
         macro_precision   – macro-averaged precision
         macro_recall      – macro-averaged recall
-        kappa             – Cohen's κ
+        kappa             – Cohen’s κ
         mcc               – Matthews Corr. Coef.
         top5_accuracy     – top-5 accuracy
         avg_inf_time      – mean inference time per episode (s)
         param_count       – model size (millions of params)
         gpu*/cpu*         – utilisation & memory stats
         class_names       – label strings for pretty print
-        all_classes_f1    – per-class F1 for all dataset classes (if track_all_classes=True)
-        all_classes_names – names for all dataset classes (if track_all_classes=True)
     """
     model.eval()
 
     all_true, all_pred, all_scores, times = [], [], [], []
-    
-    # For tracking all classes across episodes
-    all_true_global, all_pred_global = [], []
-    
-    # Get batch sampler to access episode class information
-    batch_sampler = loader.batch_sampler if hasattr(loader, 'batch_sampler') else None
-    dataset = loader.dataset if hasattr(loader, 'dataset') else None
-    
-    # Create an iterator for the batch sampler to track episode classes
-    episode_iter = iter(batch_sampler) if (batch_sampler and track_all_classes) else None
 
-    for x, _ in loader:                     # dataset's y is ignored
+    for x, _ in loader:                     # dataset’s y is ignored
         t0 = time.time()
 
         # forward pass in safe chunks
@@ -92,24 +70,6 @@ def evaluate(loader, model, n_way, class_names=None,
 
         n_query = len(preds) // n_way
         all_true.append(np.repeat(np.arange(n_way), n_query))
-        
-        # Track actual class labels if requested
-        if episode_iter and dataset:
-            try:
-                sampled_class_indices = next(episode_iter)
-                # Map predictions from 0..n_way-1 to actual class IDs
-                actual_class_ids = [dataset.cl_list[idx] for idx in sampled_class_indices]
-                
-                # Map predictions and true labels to actual class IDs
-                pred_global = np.array([actual_class_ids[p] for p in preds])
-                true_global = np.repeat(actual_class_ids, n_query)
-                
-                all_pred_global.append(pred_global)
-                all_true_global.append(true_global)
-            except (StopIteration, AttributeError, IndexError) as e:
-                # If we can't track episodes, disable tracking
-                print(f"Warning: Could not track all classes: {e}")
-                episode_iter = None
 
         del scores
         gc.collect()
@@ -119,7 +79,7 @@ def evaluate(loader, model, n_way, class_names=None,
     y_pred   = np.concatenate(all_pred)
     y_scores = np.concatenate(all_scores)
 
-    # core classification metrics for episodic evaluation (n_way classes)
+    # core classification metrics
     macro_prec, macro_rec, _, _ = precision_recall_fscore_support(
         y_true, y_pred, average="macro", labels=list(range(n_way)), zero_division=0
     )
@@ -139,30 +99,6 @@ def evaluate(loader, model, n_way, class_names=None,
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
     )
-    
-    # Add all-classes F1 scores if we tracked them
-    if all_true_global and all_pred_global:
-        y_true_global = np.concatenate(all_true_global)
-        y_pred_global = np.concatenate(all_pred_global)
-        
-        # Get all unique classes that appeared in episodes
-        all_class_ids = np.unique(y_true_global)
-        
-        # Compute F1 scores for all classes
-        all_classes_f1 = f1_score(y_true_global, y_pred_global, average=None, 
-                                   labels=all_class_ids, zero_division=0)
-        
-        # Get class names if available
-        if dataset and hasattr(dataset, 'class_labels'):
-            all_classes_names = [dataset.class_labels[cls_id] for cls_id in all_class_ids]
-        else:
-            all_classes_names = [f"Class {cls_id}" for cls_id in all_class_ids]
-        
-        res.update(
-            all_classes_f1 = all_classes_f1.tolist(),
-            all_classes_names = all_classes_names,
-            all_class_ids = all_class_ids.tolist(),
-        )
 
     # hardware stats
     gpus = GPUtil.getGPUs()
@@ -181,28 +117,22 @@ def evaluate(loader, model, n_way, class_names=None,
 # ──────────────────────────────────────────────────────────────
 def pretty_print(res: dict) -> None:
     """Console-friendly summary of `evaluate()` output."""
-    print("\n📊 EVALUATION RESULTS:")
-    print("="*50)
-    print(f"🎯 Macro-F1: {res['macro_f1']:.4f}")
-    
-    print(f"\n📈 Per-class F1 scores:")
+    print(f"\nMacro-F1: {res['macro_f1']:.4f}")
     for i, f in enumerate(res["class_f1"]):
         name = res["class_names"][i] if i < len(res["class_names"]) else f"Class {i}"
         print(f"  F1 '{name}': {f:.4f}")
 
-    print(f"\n🔢 Confusion matrix:")
-    print(np.array(res["conf_mat"]))
-    
-    # Print all-classes F1 scores if available
-    if 'all_classes_f1' in res:
-        print(f"\n📊 F1 Scores for All Dataset Classes ({len(res['all_classes_f1'])} classes):")
-        for i, (name, f1) in enumerate(zip(res['all_classes_names'], res['all_classes_f1'])):
-            print(f"  {name}: {f1:.4f}")
+    print("\nConfusion matrix:\n", np.array(res["conf_mat"]))
+    print(f"\nAccuracy:          {res['accuracy']:.4f}")
+    print(f"Macro Precision:   {res['macro_precision']:.4f}")
+    print(f"Macro Recall:      {res['macro_recall']:.4f}")
+    print(f"Cohen’s κ:         {res['kappa']:.4f}")
+    print(f"Matthews CorrCoef: {res['mcc']:.4f}")
+    print(f"Top-5 Accuracy:    {res['top5_accuracy']:.4f}")
 
-    print(f"\n⏱️ Avg inference time/episode: {res['avg_inf_time']*1e3:.1f} ms")
-    print(f"💾 Model size: {res['param_count']:.2f} M params")
-    print(f"🖥️ GPU util: {res['gpu_util']*100:.1f}% | "
-          f"mem {res['gpu_mem_used_MB']:.1f}/{res['gpu_mem_total_MB']:.1f} MB")
-    print(f"🖥️ CPU util: {res['cpu_util']:.1f}% | "
+    print(f"\nAvg inf. time/episode: {res['avg_inf_time']*1e3:.1f} ms")
+    print(f"Model size:            {res['param_count']:.2f} M params")
+    print(f"GPU util: {res['gpu_util']*100:.1f}% | "
+          f"mem {res['gpu_mem_used_MB']}/{res['gpu_mem_total_MB']} MB")
+    print(f"CPU util: {res['cpu_util']}% | "
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
-    print("="*50)
