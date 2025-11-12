@@ -54,6 +54,10 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     warmup_epochs = min(5, num_epoch // 10)  # Warmup for first 5 epochs or 10% of training
     
     max_acc = 0
+    # Early stopping parameters to prevent overfitting
+    patience = 10  # Number of epochs to wait for improvement
+    patience_counter = 0
+    min_delta = 0.1  # Minimum improvement to reset patience counter
 
     for epoch in range(num_epoch):
         model.train()
@@ -78,14 +82,25 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
                 os.makedirs(params.checkpoint_dir)
 
             acc = model.val_loop(val_loader, epoch, params.wandb)
-            if acc > max_acc:  
+            
+            # Early stopping logic
+            if acc > max_acc + min_delta:  
                 print("best model! save...")
                 max_acc = acc
+                patience_counter = 0  # Reset patience counter
                 outfile = os.path.join(params.checkpoint_dir, 'best_model.tar')
                 torch.save(
                     {'epoch': epoch, 'state': model.state_dict()}, outfile)
                 # if params.wandb:
                 #     wandb.save(outfile)
+            else:
+                patience_counter += 1
+                print(f"No improvement for {patience_counter} epoch(s). Best val acc: {max_acc:.2f}%")
+                
+            # Check if we should stop early
+            if patience_counter >= patience:
+                print(f"Early stopping triggered after {epoch + 1} epochs. Best val acc: {max_acc:.2f}%")
+                break
 
             if (epoch % params.save_freq == 0) or (epoch == num_epoch-1):
                 outfile = os.path.join(
@@ -209,20 +224,21 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
 
-            # Enhanced hyperparameters for >10% accuracy improvement
+            # Balanced hyperparameters to reduce overfitting (train 97% -> val 60%)
+            # Reduced model capacity and increased regularization for better generalization
             model = FewShotTransformer(
                 feature_model, 
                 variant=variant, 
-                depth=2,  # Increase depth from 1 to 2 for better feature learning
-                heads=12,  # Increase heads from 8 to 12 for richer attention patterns
-                dim_head=80,  # Increase from 64 to 80 for more capacity
-                mlp_dim=768,  # Increase from 512 to 768 for better transformation
+                depth=1,  # Reduced from 2 to 1 to prevent overfitting
+                heads=8,  # Reduced from 12 to 8 for simpler attention
+                dim_head=64,  # Reduced from 80 to 64 to decrease capacity
+                mlp_dim=512,  # Reduced from 768 to 512 to prevent memorization
                 initial_cov_weight=0.55,  # Optimized covariance weight
                 initial_var_weight=0.2,  # Optimized variance weight
                 dynamic_weight=True,  # Enable dynamic weighting
-                label_smoothing=0.1,  # Add label smoothing for better generalization
-                attention_dropout=0.15,  # Add attention dropout
-                drop_path_rate=0.1,  # Add stochastic depth for regularization
+                label_smoothing=0.15,  # Increased from 0.1 to 0.15 for stronger regularization
+                attention_dropout=0.2,  # Increased from 0.15 to 0.2 for better generalization
+                drop_path_rate=0.15,  # Increased from 0.1 to 0.15 for stronger regularization
                 **few_shot_params
             )
             

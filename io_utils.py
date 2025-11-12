@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--FETI'            , default=0, type=int, help='[1:0] - [True:False]; Use pre-trained model on ImageNet subset that is trained non-overlapped with mini-ImgeNet test set. Only support ResNet backbone')
     parser.add_argument('--test_iter'       , default=600, type=int, help ='Number of iteration (episode) for testing') 
     parser.add_argument('--learning_rate'   , default=1e-3, type=float, help='learning rate')
-    parser.add_argument('--weight_decay'    , default=1e-5, type=float, help='weight decay')
+    parser.add_argument('--weight_decay'    , default=5e-4, type=float, help='weight decay (increased from 1e-5 to 5e-4 to prevent overfitting)')
     parser.add_argument('--momentum'        , type=float, default=0.9, help='momentum')
     parser.add_argument('--optimization'    , type=str, default='AdamW', help='Optimization algorithms. Support Adam, AdamW, SGD')
     parser.add_argument('--wandb'           , type=int, default=0, help='[1:0] - [True:False]; Wandb Log, only for train.py and train_save_test.py')

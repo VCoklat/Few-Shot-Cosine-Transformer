@@ -129,8 +129,8 @@ class FewShotTransformer(MetaTemplate):
         # Initialize proto_weight with small random values for better gradient flow
         self.proto_weight = nn.Parameter(torch.randn(n_way, k_shot, 1) * 0.1 + 1.0)
         
-        # Add dropout for FFN layers to improve generalization
-        self.ffn_dropout = nn.Dropout(0.1)
+        # Add stronger dropout for FFN layers to prevent overfitting
+        self.ffn_dropout = nn.Dropout(0.15)  # Increased from 0.1 to 0.15
 
         # Replace nn.Sequential with separate components to avoid lambda issues
         # FFN components
@@ -211,9 +211,9 @@ class FewShotTransformer(MetaTemplate):
         z_support, z_query = self.parse_feature(x, is_feature)
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
         
-        # Apply mixup augmentation during training for better generalization
+        # Apply stronger mixup augmentation during training to prevent overfitting
         if self.training:
-            z_support = self.mixup_support(z_support, alpha=0.2)
+            z_support = self.mixup_support(z_support, alpha=0.3)  # Increased from 0.2 to 0.3
         
         z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)  # (1, n, d)
         z_query = z_query.contiguous().reshape(self.n_way * self.n_query, -1).unsqueeze(1)  # (q, 1, d)
