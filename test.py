@@ -80,8 +80,8 @@ def direct_test(test_loader, model, params):
     # Calculate and display per-class F1 scores
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
-    class_f1 = f1_score(all_labels, all_preds, average=None)
-    macro_f1 = f1_score(all_labels, all_preds, average='macro')
+    class_f1 = f1_score(all_labels, all_preds, average=None, labels=list(range(params.n_way)), zero_division=0)
+    macro_f1 = f1_score(all_labels, all_preds, average='macro', labels=list(range(params.n_way)), zero_division=0)
     
     print(f"\n📊 F1 Score Results:")
     print(f"Macro-F1: {macro_f1:.4f}")

@@ -81,13 +81,13 @@ def evaluate(loader, model, n_way, class_names=None,
 
     # core classification metrics
     macro_prec, macro_rec, _, _ = precision_recall_fscore_support(
-        y_true, y_pred, average="macro", zero_division=0
+        y_true, y_pred, average="macro", labels=list(range(n_way)), zero_division=0
     )
 
     res = dict(
-        macro_f1        = float(f1_score(y_true, y_pred, average="macro")),
-        class_f1        = f1_score(y_true, y_pred, average=None).tolist(),
-        conf_mat        = confusion_matrix(y_true, y_pred).tolist(),
+        macro_f1        = float(f1_score(y_true, y_pred, average="macro", labels=list(range(n_way)), zero_division=0)),
+        class_f1        = f1_score(y_true, y_pred, average=None, labels=list(range(n_way)), zero_division=0).tolist(),
+        conf_mat        = confusion_matrix(y_true, y_pred, labels=list(range(n_way))).tolist(),
         accuracy        = accuracy_score(y_true, y_pred),
         macro_precision = macro_prec,
         macro_recall    = macro_rec,
