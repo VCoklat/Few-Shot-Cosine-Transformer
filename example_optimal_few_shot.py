@@ -133,7 +133,7 @@ def main():
     model.eval()
     
     with torch.no_grad():
-        logits, prototypes, support_features, query_features = model.set_forward(x)
+        logits, prototypes, support_features, query_features = model._set_forward_full(x)
         
         print(f"\nInference completed:")
         print(f"  - Logits shape: {logits.shape}")

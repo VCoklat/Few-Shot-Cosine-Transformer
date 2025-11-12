@@ -347,8 +347,8 @@ class OptimalFewShotModel(MetaTemplate):
         pt = torch.exp(-ce_loss)
         return (alpha * (1 - pt) ** gamma * ce_loss).mean()
     
-    def set_forward(self, x, is_feature=False):
-        """Forward pass with all components"""
+    def _set_forward_full(self, x, is_feature=False):
+        """Internal forward pass that returns all components"""
         z_support, z_query = self.parse_feature(x, is_feature)
         
         # Reshape for transformer
@@ -387,9 +387,14 @@ class OptimalFewShotModel(MetaTemplate):
         
         return logits, prototypes, support_features, query_features
     
+    def set_forward(self, x, is_feature=False):
+        """Forward pass returning only logits for compatibility with other models"""
+        logits, _, _, _ = self._set_forward_full(x, is_feature)
+        return logits
+    
     def correct(self, x):
-        """Override correct method to handle tuple return from set_forward"""
-        logits, prototypes, support_features, query_features = self.set_forward(x)
+        """Override correct method to use internal _set_forward_full"""
+        logits, prototypes, support_features, query_features = self._set_forward_full(x)
         y_query = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         y_query = Variable(y_query.to(device))
         
@@ -403,7 +408,7 @@ class OptimalFewShotModel(MetaTemplate):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))
         
-        logits, prototypes, support_features, query_features = self.set_forward(x)
+        logits, prototypes, support_features, query_features = self._set_forward_full(x)
         
         # Get dataset ID
         dataset_id = self.dataset_id_map.get(self.current_dataset, 0)

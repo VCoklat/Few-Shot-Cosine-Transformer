@@ -120,7 +120,9 @@ def test_complete_model():
     # Test forward pass
     model.eval()
     with torch.no_grad():
-        logits, prototypes, support_features, query_features = model.set_forward(x)
+        logits = model.set_forward(x)
+        # Test internal method that returns full tuple
+        logits_full, prototypes, support_features, query_features = model._set_forward_full(x)
     
     print(f"  Logits shape: {logits.shape}")
     print(f"  Prototypes shape: {prototypes.shape}")
@@ -128,6 +130,7 @@ def test_complete_model():
     print(f"  Query features shape: {query_features.shape}")
     
     assert logits.shape == (n_way * n_query, n_way), f"Logits shape mismatch: {logits.shape}"
+    assert torch.allclose(logits, logits_full), "Logits from set_forward and _set_forward_full should match"
     assert prototypes.shape == (n_way, 64), f"Prototypes shape mismatch: {prototypes.shape}"
     
     # Test loss computation
@@ -178,7 +181,7 @@ def test_memory_usage():
     # Forward pass
     model.eval()
     with torch.no_grad():
-        logits, prototypes, support_features, query_features = model.set_forward(x)
+        logits = model.set_forward(x)
     
     # Get memory stats
     allocated = torch.cuda.memory_allocated() / 1024**3  # GB
@@ -193,7 +196,7 @@ def test_memory_usage():
         print(f"⚠ Warning: Peak memory usage {peak:.2f} GB exceeds 8 GB target")
     
     # Clean up
-    del model, x, logits, prototypes, support_features, query_features
+    del model, x, logits
     torch.cuda.empty_cache()
 
 def test_dataset_configs():
