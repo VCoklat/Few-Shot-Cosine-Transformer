@@ -77,18 +77,35 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
     return model
 
 def direct_test(test_loader, model, params):
-
-    correct = 0
-    count = 0
+    from sklearn.metrics import f1_score
+    
     acc = []
-
+    all_preds = []
+    all_labels = []
     iter_num = len(test_loader)
+    
+    if iter_num == 0:
+        print("ERROR: Test loader is empty")
+        return 0.0, 0.0
+
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            scores = model.set_forward(x)
+            # Use mixed precision for memory efficiency
+            with torch.cuda.amp.autocast(enabled=True):
+                scores = model.set_forward(x)
+                
             pred = scores.data.cpu().numpy().argmax(axis=1)
             y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+            
+            all_preds.extend(pred.tolist())
+            all_labels.extend(y.tolist())
+            
             acc.append(np.mean(pred == y)*100)
+            
+            # Clear unnecessary tensors
+            del scores
+            torch.cuda.empty_cache()
+            
             pbar.set_description(
                 'Test       | Acc {:.6f}'.format(np.mean(acc)))
             pbar.update(1)
@@ -96,6 +113,19 @@ def direct_test(test_loader, model, params):
     acc_all = np.asarray(acc)
     acc_mean = np.mean(acc_all)
     acc_std = np.std(acc_all)
+    
+    # Calculate and display per-class F1 scores
+    all_preds = np.array(all_preds)
+    all_labels = np.array(all_labels)
+    class_f1 = f1_score(all_labels, all_preds, average=None)
+    macro_f1 = f1_score(all_labels, all_preds, average='macro')
+    
+    print(f"\n📊 F1 Score Results:")
+    print(f"Macro-F1: {macro_f1:.4f}")
+    print("\nPer-class F1 scores:")
+    for i, f1 in enumerate(class_f1):
+        print(f"  Class {i}: {f1:.4f}")
+    
     return acc_mean, acc_std
 
 def seed_func():
@@ -262,4 +292,84 @@ if __name__ == '__main__':
 
     print("===================================")
     print("Test phase: ")
+    
+    # Memory optimization
+    torch.cuda.empty_cache()
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
+    iter_num = params.test_iter
+    split = params.split
+
+    if params.dataset == 'cross':
+        if split == 'base':
+            testfile = configs.data_dir['miniImagenet'] + 'all.json'
+        else:
+            testfile = configs.data_dir['CUB'] + split + '.json'
+    elif params.dataset == 'cross_char':
+        if split == 'base':
+            testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
+        else:
+            testfile = configs.data_dir['emnist'] + split + '.json'
+    else:
+        testfile = configs.data_dir[params.dataset] + split + '.json'
+
+    print(f"Testing with file: {testfile}")
+
+    if not os.path.exists(testfile):
+        print(f"ERROR: Test file {testfile} does not exist!")
+
+    if params.save_iter != -1:
+        modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
+    else:
+        modelfile = get_best_file(params.checkpoint_dir)
+
+    test_datamgr = SetDataManager(
+        image_size, n_episode=iter_num, **few_shot_params)
+    test_loader = test_datamgr.get_data_loader(testfile, aug=False)
+
+    # Check test loader size
+    test_loader_size = len(test_loader)
+    print(f"Test loader contains {test_loader_size} episodes")
+
+    if test_loader_size == 0:
+        print("WARNING: Test loader is empty! Check your data paths and configuration.")
+
+    model = model.to(device)
+
+    if modelfile is not None:
+        tmp = torch.load(modelfile)
+        model.load_state_dict(tmp['state'])
+
+    split = params.split
+    if params.save_iter != -1:
+        split_str = split + "_" + str(params.save_iter)
+    else:
+        split_str = split
+
+    # Enhanced test execution
+    acc_mean, acc_std = direct_test(test_loader, model, params)
+
+    print('%d Test Acc = %4.2f%% +- %4.2f%%' %
+          (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
+
+    if params.wandb:
+        wandb.log({'Test Acc': acc_mean})
+
+    with open('./record/results.txt', 'a') as f:
+        timestamp = params.datetime
+        aug_str = '-aug' if params.train_aug else ''
+        aug_str += '-FETI' if params.FETI and 'ResNet' in params.backbone else ''
+
+        if params.backbone == "Conv4SNP":
+            params.backbone = "Conv4"
+        elif params.backbone == "Conv6SNP":
+            params.backbone = "Conv6"
+
+        exp_setting = '%s-%s-%s%s-%sw%ss' % (params.dataset, params.backbone,
+                                           params.method, aug_str, params.n_way, params.k_shot)
+        acc_str = 'Test Acc = %4.2f%% +- %4.2f%%' % (acc_mean, 1.96 * acc_std/np.sqrt(iter_num))
+        f.write('Time: %s Setting: %s %s \n' % (timestamp, exp_setting.ljust(50), acc_str))
+
+    if params.wandb:
+        wandb.finish()
 
