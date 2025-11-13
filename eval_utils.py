@@ -117,12 +117,9 @@ def evaluate(loader, model, n_way, class_names=None,
 # ──────────────────────────────────────────────────────────────
 def pretty_print(res: dict) -> None:
     """Console-friendly summary of `evaluate()` output."""
-    print(f"\nMacro-F1: {res['macro_f1']:.4f}")
-    for name, f in zip(res["class_names"], res["class_f1"]):
-        print(f"  F1 '{name}': {f:.4f}")
-
     print("\nConfusion matrix:")
     print(np.array(res["conf_mat"]))
+    
     print(f"\nAccuracy:          {res['accuracy']:.4f}")
     print(f"Macro Precision:   {res['macro_precision']:.4f}")
     print(f"Macro Recall:      {res['macro_recall']:.4f}")
@@ -136,3 +133,9 @@ def pretty_print(res: dict) -> None:
           f"mem {res['gpu_mem_used_MB']:.1f}/{res['gpu_mem_total_MB']:.1f} MB")
     print(f"CPU util: {res['cpu_util']:.1f}% | "
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
+    
+    # Display F1 scores for all classes
+    print(f"\nMacro-F1: {res['macro_f1']:.4f}")
+    print("\nPer-class F1 scores:")
+    for name, f in zip(res["class_names"], res["class_f1"]):
+        print(f"  F1 '{name}': {f:.4f}")
