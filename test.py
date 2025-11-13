@@ -253,9 +253,10 @@ if __name__ == '__main__':
         split_str = split
     
     # Check if comprehensive evaluation is requested (default: True)
-    comprehensive = getattr(params, 'comprehensive_eval', True)
+    comprehensive = getattr(params, 'comprehensive_eval', 1)
     
     if comprehensive:
+        print(f"\n📊 Using comprehensive evaluation (detailed metrics)")
         # Get class names from data file
         class_names = get_class_names_from_file(testfile, params.n_way)
         
@@ -267,6 +268,7 @@ if __name__ == '__main__':
         acc_mean = results['accuracy'] * 100
         acc_std = np.std([f1 * 100 for f1 in results['class_f1']])
     else:
+        print(f"\n📊 Using standard evaluation (basic metrics)")
         # Use standard evaluation
         acc_mean, acc_std = direct_test(test_loader, model, params)
         
