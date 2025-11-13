@@ -86,20 +86,57 @@ class Attention(nn.Module):
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
+        # Initialize weight tracking attributes
+        self.record_weights = False
+        self.weight_history = []
+        
     def forward(self, q, k, v):
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
             dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
+            attn_weights = dots
             out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
         
         else: # self.variant == "softmax"
-            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale            
-            out = torch.matmul(self.sm(dots), f_v)
+            dots = torch.matmul(f_q, f_k.transpose(-1, -2)) * self.scale
+            attn_weights = self.sm(dots)
+            out = torch.matmul(attn_weights, f_v)
+        
+        # Record attention weights if enabled
+        if self.record_weights:
+            self.weight_history.append(attn_weights.detach().cpu())
         
         out = rearrange(out, 'h q n d -> q n (h d)')                                                   # (q, n, d)
-        return self.output_linear(out)                                              
+        return self.output_linear(out)
+    
+    def get_weight_stats(self):
+        """Calculate statistics about the recorded attention weights"""
+        if not self.weight_history:
+            return None
+        
+        # Concatenate all recorded weights
+        all_weights = torch.cat([w.flatten() for w in self.weight_history])
+        
+        # Calculate statistics
+        stats = {
+            'mean': all_weights.mean().item(),
+            'std': all_weights.std().item(),
+            'min': all_weights.min().item(),
+            'max': all_weights.max().item(),
+            'histogram': []
+        }
+        
+        # Calculate histogram (10 bins from 0 to 1)
+        hist = torch.histc(all_weights, bins=10, min=0, max=1)
+        stats['histogram'] = hist.tolist()
+        
+        return stats
+    
+    def clear_weight_history(self):
+        """Clear the recorded weight history"""
+        self.weight_history = []                                              
 
 
 def cosine_distance(x1, x2):
