@@ -260,6 +260,7 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
 def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
     """Enhanced testing function with optional comprehensive evaluation"""
     if comprehensive and data_file:
+        print(f"  └─ Generating comprehensive metrics...")
         # Get class names from data file
         class_names = get_class_names_from_file(data_file, params.n_way)
         
@@ -273,6 +274,8 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         
         return acc_mean, acc_std, results
     else:
+        if comprehensive and not data_file:
+            print(f"  └─ Warning: Comprehensive evaluation requested but no data file provided. Using standard evaluation.")
         # Original direct_test functionality with F1 score calculation
         acc = []
         all_preds = []
@@ -509,6 +512,7 @@ if __name__ == '__main__':
 
         # Enhanced test execution with comprehensive evaluation option
         if params.comprehensive_eval:
+            print(f"\n📊 Using comprehensive evaluation (detailed metrics)")
             # Use comprehensive evaluation
             acc_mean, acc_std, detailed_results = direct_test(
                 test_loader, model, params, testfile, comprehensive=True
@@ -523,6 +527,7 @@ if __name__ == '__main__':
                     'Model Size (M params)': detailed_results['param_count']
                 })
         else:
+            print(f"\n📊 Using standard evaluation (basic metrics)")
             # Use standard evaluation
             acc_mean, acc_std = direct_test(test_loader, model, params)
 
