@@ -121,7 +121,8 @@ def pretty_print(res: dict) -> None:
     for name, f in zip(res["class_names"], res["class_f1"]):
         print(f"  F1 '{name}': {f:.4f}")
 
-    print("\nConfusion matrix:\n", np.array(res["conf_mat"]))
+    print("\nConfusion matrix:")
+    print(np.array(res["conf_mat"]))
     print(f"\nAccuracy:          {res['accuracy']:.4f}")
     print(f"Macro Precision:   {res['macro_precision']:.4f}")
     print(f"Macro Recall:      {res['macro_recall']:.4f}")
@@ -132,6 +133,6 @@ def pretty_print(res: dict) -> None:
     print(f"\nAvg inf. time/episode: {res['avg_inf_time']*1e3:.1f} ms")
     print(f"Model size:            {res['param_count']:.2f} M params")
     print(f"GPU util: {res['gpu_util']*100:.1f}% | "
-          f"mem {res['gpu_mem_used_MB']}/{res['gpu_mem_total_MB']} MB")
-    print(f"CPU util: {res['cpu_util']}% | "
+          f"mem {res['gpu_mem_used_MB']:.1f}/{res['gpu_mem_total_MB']:.1f} MB")
+    print(f"CPU util: {res['cpu_util']:.1f}% | "
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
