@@ -45,6 +45,8 @@ def parse_args():
                         help='Generate feature space visualizations')
     parser.add_argument('--comprehensive_eval', type=int, default=1, 
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
+    parser.add_argument('--feature_analysis', type=int, default=1,
+                        help='[1:0] - [True:False]; Perform comprehensive feature space analysis')
     return parser.parse_args()
 
 
