@@ -156,7 +156,7 @@ class FeatureVisualizer:
         return embeddings
         
     def visualize(self, embeddings=None, labels=None, method='tsne', 
-                 interactive=True, title=None, save_path=None, **kwargs):
+                 interactive=True, title=None, save_path=None, show=True, **kwargs):
         """
         Visualize the embeddings
         
@@ -167,6 +167,7 @@ class FeatureVisualizer:
             interactive: Whether to use plotly for interactive visualization
             title: Title for the plot
             save_path: Path to save the visualization
+            show: Whether to display the plot (default True)
             **kwargs: Additional arguments for plotting
             
         Returns:
@@ -212,6 +213,10 @@ class FeatureVisualizer:
             # Save if requested
             if save_path:
                 fig.write_html(save_path)
+            
+            # Show if requested (for interactive plotly visualizations)
+            if show:
+                fig.show()
                 
             return fig
         else:
@@ -250,6 +255,10 @@ class FeatureVisualizer:
             # Save if requested
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            
+            # Show if requested
+            if show:
+                plt.show()
                 
             return plt.gcf()
 

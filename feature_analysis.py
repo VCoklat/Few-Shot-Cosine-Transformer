@@ -591,6 +591,7 @@ def visualize_embedding_space(features: np.ndarray,
                               n_components: int = 2,
                               save_path: Optional[str] = None,
                               title: Optional[str] = None,
+                              show: bool = True,
                               **kwargs) -> Optional[Figure]:
     """
     Visualize feature embeddings in 2D or 3D space using dimensionality reduction.
@@ -602,6 +603,7 @@ def visualize_embedding_space(features: np.ndarray,
         n_components: Number of dimensions (2 or 3)
         save_path: Path to save the visualization (e.g., 'embedding_space.png')
         title: Custom title for the plot
+        show: Whether to display the plot (default True)
         **kwargs: Additional arguments for the reduction method
         
     Returns:
@@ -678,6 +680,9 @@ def visualize_embedding_space(features: np.ndarray,
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"  ✓ Saved to {save_path}")
     
+    if show:
+        plt.show()
+    
     return fig
 
 
@@ -685,7 +690,8 @@ def visualize_attention_maps(attention_weights: np.ndarray,
                             save_path: Optional[str] = None,
                             title: Optional[str] = None,
                             query_labels: Optional[np.ndarray] = None,
-                            support_labels: Optional[np.ndarray] = None) -> Optional[Figure]:
+                            support_labels: Optional[np.ndarray] = None,
+                            show: bool = True) -> Optional[Figure]:
     """
     Visualize attention weight matrices as heatmaps.
     
@@ -695,6 +701,7 @@ def visualize_attention_maps(attention_weights: np.ndarray,
         title: Custom title for the plot
         query_labels: Optional labels for query samples
         support_labels: Optional labels for support samples
+        show: Whether to display the plot (default True)
         
     Returns:
         matplotlib Figure object or None if visualization unavailable
@@ -752,13 +759,17 @@ def visualize_attention_maps(attention_weights: np.ndarray,
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"  ✓ Saved to {save_path}")
     
+    if show:
+        plt.show()
+    
     return fig
 
 
 def visualize_weight_distributions(model_weights: Dict[str, np.ndarray],
                                    save_path: Optional[str] = None,
                                    title: Optional[str] = None,
-                                   layer_names: Optional[List[str]] = None) -> Optional[Figure]:
+                                   layer_names: Optional[List[str]] = None,
+                                   show: bool = True) -> Optional[Figure]:
     """
     Visualize distribution of model weights across layers.
     
@@ -767,6 +778,7 @@ def visualize_weight_distributions(model_weights: Dict[str, np.ndarray],
         save_path: Path to save the visualization (e.g., 'weight_distributions.png')
         title: Custom title for the plot
         layer_names: Optional list of specific layer names to visualize
+        show: Whether to display the plot (default True)
         
     Returns:
         matplotlib Figure object or None if visualization unavailable
@@ -825,6 +837,9 @@ def visualize_weight_distributions(model_weights: Dict[str, np.ndarray],
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"  ✓ Saved to {save_path}")
     
+    if show:
+        plt.show()
+    
     return fig
 
 
@@ -833,7 +848,8 @@ def visualize_feature_analysis(features: np.ndarray,
                                attention_weights: Optional[np.ndarray] = None,
                                model_weights: Optional[Dict[str, np.ndarray]] = None,
                                save_dir: str = './figures',
-                               methods: List[str] = ['pca', 'tsne']) -> Dict[str, Optional[plt.Figure]]:
+                               methods: List[str] = ['pca', 'tsne'],
+                               show: bool = False) -> Dict[str, Optional[plt.Figure]]:
     """
     Generate all feature analysis visualizations at once.
     
@@ -844,6 +860,7 @@ def visualize_feature_analysis(features: np.ndarray,
         model_weights: Optional dictionary of model weights
         save_dir: Directory to save visualizations
         methods: List of dimensionality reduction methods to use
+        show: Whether to display plots (default False for batch operations)
         
     Returns:
         Dictionary mapping visualization names to Figure objects
@@ -868,7 +885,8 @@ def visualize_feature_analysis(features: np.ndarray,
                     features, labels, 
                     method=method, 
                     n_components=n_components,
-                    save_path=save_path
+                    save_path=save_path,
+                    show=show
                 )
                 figures[vis_name] = fig
                 if fig:
@@ -884,7 +902,8 @@ def visualize_feature_analysis(features: np.ndarray,
         try:
             fig = visualize_attention_maps(
                 attention_weights,
-                save_path=save_path
+                save_path=save_path,
+                show=show
             )
             figures[vis_name] = fig
             if fig:
@@ -900,7 +919,8 @@ def visualize_feature_analysis(features: np.ndarray,
         try:
             fig = visualize_weight_distributions(
                 model_weights,
-                save_path=save_path
+                save_path=save_path,
+                show=show
             )
             figures[vis_name] = fig
             if fig:
