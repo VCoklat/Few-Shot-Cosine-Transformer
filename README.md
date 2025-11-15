@@ -74,9 +74,9 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
 ### Dependencies environment
   + `pip install -r requirements.txt`
   
-  **Note:** If you encounter `ValueError: numpy.dtype size changed, may indicate binary incompatibility` error, run:
+  **Note:** The `requirements.txt` now includes version constraints to prevent `ValueError: numpy.dtype size changed, may indicate binary incompatibility` errors. If you still encounter this issue with an existing installation, run:
   ```bash
-  pip install --upgrade --force-reinstall numpy scikit-learn
+  pip install --upgrade --force-reinstall "numpy>=1.24.0,<2.0.0" "scikit-learn>=1.3.0,<1.5.0"
   ```
   This ensures NumPy and scikit-learn are properly compatible.
   
