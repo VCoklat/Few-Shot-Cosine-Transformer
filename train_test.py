@@ -15,6 +15,7 @@ import torch.utils.data.sampler
 import tqdm
 from torch.autograd import Variable
 from torchsummary import summary
+import matplotlib.pyplot as plt
 
 # Additional imports for enhanced functionality
 try:
