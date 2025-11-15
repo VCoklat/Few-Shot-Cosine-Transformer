@@ -47,6 +47,18 @@ def parse_args():
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
     parser.add_argument('--feature_analysis', type=int, default=1,
                         help='[1:0] - [True:False]; Perform comprehensive feature space analysis')
+    
+    # Ablation study parameters
+    parser.add_argument('--se_blocks', type=int, default=1,
+                        help='[1:0] - [True:False]; Use Squeeze-and-Excitation blocks for channel attention')
+    parser.add_argument('--n_heads', type=int, default=4,
+                        help='Number of attention heads (1, 2, 4, or 8)')
+    parser.add_argument('--vic_reg', type=int, default=1,
+                        help='[1:0] - [True:False]; Use Variance-Invariance-Covariance regularization')
+    parser.add_argument('--vic_variance_only', type=int, default=0,
+                        help='[1:0] - [True:False]; Use only variance component of VIC regularization')
+    parser.add_argument('--dynamic_weighting', type=int, default=1,
+                        help='[1:0] - [True:False]; Use dynamic weighting for support samples')
     return parser.parse_args()
 
 

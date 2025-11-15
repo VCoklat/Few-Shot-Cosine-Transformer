@@ -264,8 +264,14 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         # Get class names from data file
         class_names = get_class_names_from_file(data_file, params.n_way)
         
-        # Use eval_utils comprehensive evaluation
-        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
+        # Use eval_utils comprehensive evaluation with feature analysis
+        results = eval_utils.evaluate(
+            test_loader, model, params.n_way, 
+            class_names=class_names, 
+            device=device,
+            extract_features=params.feature_analysis,
+            feature_analysis=params.feature_analysis
+        )
         eval_utils.pretty_print(results)
         
         # Still return traditional accuracy metrics for backward compatibility
@@ -414,7 +420,7 @@ if __name__ == '__main__':
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
             
-            model = FewShotTransformer(feature_model, variant=variant, **few_shot_params)
+            model = FewShotTransformer(feature_model, variant=variant, heads=params.n_heads, **few_shot_params)
 
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
