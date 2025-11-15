@@ -3,3 +3,8 @@
 *__pycache__*
 wandb/
 *.swp
+
+# Test output files
+figures/test_*.png
+figures/comprehensive_test/
+figures/feature_analysis/
