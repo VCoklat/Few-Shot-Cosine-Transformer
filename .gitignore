@@ -7,4 +7,5 @@ wandb/
 # Test output files
 figures/test_*.png
 figures/comprehensive_test/
+figures/integration_test/
 figures/feature_analysis/
