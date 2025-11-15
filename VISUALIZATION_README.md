@@ -10,6 +10,8 @@ Three types of visualizations are automatically generated when feature analysis 
 2. **Attention Map Visualization** - Heatmaps of attention weights
 3. **Weight Distribution Visualization** - Histograms of model parameters
 
+**NEW:** All visualization functions now support a `show` parameter (default: `True`) that displays plots in addition to saving them. This allows visualizations to appear in interactive environments like Jupyter notebooks or when running scripts directly.
+
 ## Quick Start
 
 ### Enable During Training/Evaluation
@@ -26,24 +28,53 @@ Visualizations will be automatically saved to `./figures/feature_analysis/`
 ### Programmatic Usage
 
 ```python
-from feature_analysis import visualize_feature_analysis
+from feature_analysis import visualize_embedding_space
 
 # Your data
 features = model.extract_features(data)  # shape: (n_samples, n_features)
 labels = data.get_labels()  # shape: (n_samples,)
 
+# Display AND save visualization (default behavior)
+fig = visualize_embedding_space(
+    features=features,
+    labels=labels,
+    method='tsne',
+    save_path='./embedding.png',
+    show=True  # Shows plot in interactive environment
+)
+
+# Only save, don't display (useful for batch processing)
+fig = visualize_embedding_space(
+    features=features,
+    labels=labels,
+    method='pca',
+    save_path='./embedding_pca.png',
+    show=False  # Only saves to file
+)
+```
+
+### Batch Visualization
+
+```python
+from feature_analysis import visualize_feature_analysis
+
+# Your data
+features = model.extract_features(data)
+labels = data.get_labels()
+
 # Optional: extract attention and model weights
 attention_weights = model.get_attention_weights()  # shape: (n_heads, n_queries, n_support)
 model_weights = {name: param.numpy() for name, param in model.named_parameters()}
 
-# Generate all visualizations
+# Generate all visualizations (show=False by default for batch operations)
 figures = visualize_feature_analysis(
     features=features,
     labels=labels,
     attention_weights=attention_weights,
     model_weights=model_weights,
     save_dir='./my_visualizations',
-    methods=['pca', 'tsne']
+    methods=['pca', 'tsne'],
+    show=False  # Set to True to display all plots
 )
 ```
 
@@ -100,7 +131,7 @@ Shows histogram distributions of model weights across layers.
 
 ## API Reference
 
-### `visualize_embedding_space(features, labels, method='pca', n_components=2, save_path=None, **kwargs)`
+### `visualize_embedding_space(features, labels, method='pca', n_components=2, save_path=None, show=True, **kwargs)`
 
 Create embedding space visualization.
 
@@ -110,12 +141,13 @@ Create embedding space visualization.
 - `method` (str): 'pca', 'tsne', or 'umap'
 - `n_components` (int): 2 or 3 for 2D/3D visualization
 - `save_path` (str): Path to save figure
+- `show` (bool): Whether to display the plot (default: True)
 - `**kwargs`: Additional args for the reduction method (e.g., `perplexity` for t-SNE)
 
 **Returns:**
 - `matplotlib.figure.Figure` or `None`
 
-### `visualize_attention_maps(attention_weights, save_path=None, query_labels=None, support_labels=None)`
+### `visualize_attention_maps(attention_weights, save_path=None, query_labels=None, support_labels=None, show=True)`
 
 Create attention weight heatmaps.
 
@@ -124,11 +156,12 @@ Create attention weight heatmaps.
 - `save_path` (str): Path to save figure
 - `query_labels` (np.ndarray): Optional labels for queries
 - `support_labels` (np.ndarray): Optional labels for support samples
+- `show` (bool): Whether to display the plot (default: True)
 
 **Returns:**
 - `matplotlib.figure.Figure` or `None`
 
-### `visualize_weight_distributions(model_weights, save_path=None, layer_names=None)`
+### `visualize_weight_distributions(model_weights, save_path=None, layer_names=None, show=True)`
 
 Create weight distribution histograms.
 
@@ -136,11 +169,12 @@ Create weight distribution histograms.
 - `model_weights` (dict): Mapping of layer names to weight arrays
 - `save_path` (str): Path to save figure
 - `layer_names` (list): Optional list of specific layers to visualize
+- `show` (bool): Whether to display the plot (default: True)
 
 **Returns:**
 - `matplotlib.figure.Figure` or `None`
 
-### `visualize_feature_analysis(features, labels, attention_weights=None, model_weights=None, save_dir='./figures', methods=['pca', 'tsne'])`
+### `visualize_feature_analysis(features, labels, attention_weights=None, model_weights=None, save_dir='./figures', methods=['pca', 'tsne'], show=False)`
 
 Generate all visualizations at once.
 
@@ -151,6 +185,7 @@ Generate all visualizations at once.
 - `model_weights` (dict, optional): Model weights
 - `save_dir` (str): Directory to save visualizations
 - `methods` (list): Dimensionality reduction methods to use
+- `show` (bool): Whether to display plots (default: False for batch operations)
 
 **Returns:**
 - `dict`: Mapping of visualization names to Figure objects
@@ -173,7 +208,7 @@ pip install -r requirements.txt
 
 ## Examples
 
-See `test_visualizations.py` and `test_integration.py` for complete examples.
+See `test_visualizations.py`, `test_show_visualization.py`, and `test_integration.py` for complete examples.
 
 ## Tips
 
@@ -182,6 +217,8 @@ See `test_visualizations.py` and `test_integration.py` for complete examples.
 3. **For large datasets**: Use UMAP (best speed/quality tradeoff)
 4. **For interpretability**: Use 2D over 3D visualizations
 5. **Save high-res**: Add `dpi=300` when saving manually
+6. **Interactive environments**: Set `show=True` to display plots in Jupyter notebooks or interactive Python sessions
+7. **Batch processing**: Set `show=False` to only save files without displaying (faster for automation)
 
 ## Troubleshooting
 
