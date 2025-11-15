@@ -89,8 +89,26 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
   - `--train_aug`: apply augmentation if `1`, none if `0` (default `0`)
   - `--num_epoch`: number of training epoch (default `50`)
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
+  - `--comprehensive_eval`: use comprehensive evaluation with detailed metrics if `1` (default `1`)
+  - `--feature_analysis`: perform comprehensive feature space analysis if `1` (default `0`)
 
   - For other parameters, please read `io_utils.py` for detail information.
++ **Comprehensive Evaluation**:
+  - **NEW**: The repository now includes comprehensive evaluation metrics including:
+    - 95% Confidence Intervals from 10,000+ episodes
+    - Per-Class F1 Scores (harmonic mean of precision and recall)
+    - Confusion Matrix analysis for error patterns
+    - Feature collapse detection (dimensions with std < 1e-4)
+    - Feature utilization and redundancy analysis
+    - Diversity scores and intra-class consistency
+    - Confusing class pair identification
+    - Imbalance ratio calculations
+  - See [COMPREHENSIVE_METRICS.md](COMPREHENSIVE_METRICS.md) for full documentation
+  - Example: `python test.py --dataset miniImagenet --comprehensive_eval 1 --feature_analysis 1`
++ **Ablation Studies**:
+  - Complete guide for analyzing component contributions
+  - Configurations for testing without SE blocks, cosine attention, VIC regularization, etc.
+  - See [ABLATION_STUDIES.md](ABLATION_STUDIES.md) for detailed instructions
 + **Example**:  
   `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
 + **Bash script for multiple running**:
