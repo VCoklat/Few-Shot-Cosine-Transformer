@@ -89,7 +89,8 @@ def evaluate(loader, model, n_way, class_names=None,
             except:
                 pass
 
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         times.append(time.time() - t0)
 
         preds = scores.argmax(1).numpy()
