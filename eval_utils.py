@@ -24,7 +24,11 @@ from sklearn.metrics import (
 )
 
 try:
-    from feature_analysis import comprehensive_feature_analysis, print_feature_analysis_summary
+    from feature_analysis import (
+        comprehensive_feature_analysis, 
+        print_feature_analysis_summary,
+        visualize_feature_analysis
+    )
     FEATURE_ANALYSIS_AVAILABLE = True
 except ImportError:
     FEATURE_ANALYSIS_AVAILABLE = False
@@ -164,6 +168,35 @@ def evaluate(loader, model, n_way, class_names=None,
         
         # Print summary
         print_feature_analysis_summary(feature_results)
+        
+        # Generate visualizations
+        print("\n📊 Generating visualizations...")
+        try:
+            # Extract attention weights if available from the model
+            attention_weights = None
+            if hasattr(model, 'ATTN') and hasattr(model, 'last_attention_weights'):
+                attention_weights = model.last_attention_weights
+            
+            # Extract model weights for key layers
+            model_weights = {}
+            for name, param in model.named_parameters():
+                if 'weight' in name and param.requires_grad:
+                    # Limit to a few key layers to avoid cluttering
+                    if any(key in name for key in ['ATTN', 'linear', 'FFN', 'feature']):
+                        model_weights[name] = param.detach().cpu().numpy()
+            
+            # Generate all visualizations
+            vis_figures = visualize_feature_analysis(
+                features=features,
+                labels=y_true,
+                attention_weights=attention_weights,
+                model_weights=model_weights if model_weights else None,
+                save_dir='./figures/feature_analysis',
+                methods=['pca', 'tsne']  # Use both PCA and t-SNE
+            )
+            res['visualization_figures'] = vis_figures
+        except Exception as e:
+            print(f"⚠️  Warning: Could not generate visualizations: {e}")
     
     return res
 

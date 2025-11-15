@@ -7,6 +7,7 @@ h5py
 ipython
 numpy
 matplotlib
+seaborn
 pillow
 tqdm
 wandb
@@ -14,3 +15,4 @@ umap-learn
 gputil 
 psutil
 scikit-learn
+scipy
