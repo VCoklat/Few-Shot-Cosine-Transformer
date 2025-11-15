@@ -1,0 +1,21 @@
+{
+  "label_names": [
+    "akiec",
+    "bcc",
+    "bkl",
+    "df",
+    "mel",
+    "nv",
+    "vasc"
+  ],
+  "image_names": [
+    "./HAM10000_images_part_1/sample_10.jpg",
+    "./HAM10000_images_part_1/sample_11.jpg",
+    "./HAM10000_images_part_1/sample_12.jpg"
+  ],
+  "image_labels": [
+    5,
+    5,
+    5
+  ]
+}

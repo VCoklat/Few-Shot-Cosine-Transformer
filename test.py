@@ -41,19 +41,29 @@ def direct_test(test_loader, model, params):
     acc = []
     all_preds = []
     all_labels = []
+    all_preds_global = []
+    all_labels_global = []
     iter_num = len(test_loader)
+    
+    # Get batch sampler and dataset for tracking all classes
+    batch_sampler = test_loader.batch_sampler if hasattr(test_loader, 'batch_sampler') else None
+    dataset = test_loader.dataset if hasattr(test_loader, 'dataset') else None
+    episode_iter = iter(batch_sampler) if batch_sampler else None
     
     with tqdm.tqdm(total=len(test_loader)) as pbar:
         for i, (x, _) in enumerate(test_loader):
-            # Process in smaller chunks if needed
-            if x.size(0) > 20:  # If batch is larger than 20
+            # Process in smaller chunks if needed - more conservative to prevent OOM
+            if x.size(0) > 16:  # Reduced from 20 to 16
                 scores_list = []
-                chunk_size = 20
+                chunk_size = 8  # Reduced from 20 to 8
                 for j in range(0, x.size(0), chunk_size):
                     x_chunk = x[j:j+chunk_size]
                     with torch.cuda.amp.autocast():  # Use mixed precision
                         scores_chunk = model.set_forward(x_chunk)
                     scores_list.append(scores_chunk.cpu())
+                    # Clear cache after each chunk
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 scores = torch.cat(scores_list, dim=0)
             else:
                 with torch.cuda.amp.autocast():  # Use mixed precision
@@ -64,6 +74,22 @@ def direct_test(test_loader, model, params):
             
             all_preds.extend(pred.tolist())
             all_labels.extend(y.tolist())
+            
+            # Track actual class labels
+            if episode_iter and dataset:
+                try:
+                    sampled_class_indices = next(episode_iter)
+                    actual_class_ids = [dataset.cl_list[idx] for idx in sampled_class_indices]
+                    
+                    # Map predictions and labels to actual class IDs
+                    n_query = len(pred) // params.n_way
+                    pred_global = [actual_class_ids[p] for p in pred]
+                    true_global = np.repeat(actual_class_ids, n_query).tolist()
+                    
+                    all_preds_global.extend(pred_global)
+                    all_labels_global.extend(true_global)
+                except (StopIteration, AttributeError, IndexError):
+                    episode_iter = None
             
             acc.append(np.mean(pred == y)*100)
             pbar.set_description(
@@ -77,14 +103,40 @@ def direct_test(test_loader, model, params):
     # Calculate and display per-class F1 scores
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
-    class_f1 = f1_score(all_labels, all_preds, average=None)
-    macro_f1 = f1_score(all_labels, all_preds, average='macro')
+    class_f1 = f1_score(all_labels, all_preds, average=None, labels=list(range(params.n_way)), zero_division=0)
+    macro_f1 = f1_score(all_labels, all_preds, average='macro', labels=list(range(params.n_way)), zero_division=0)
     
     print(f"\n📊 F1 Score Results:")
     print(f"Macro-F1: {macro_f1:.4f}")
     print("\nPer-class F1 scores:")
     for i, f1 in enumerate(class_f1):
         print(f"  Class {i}: {f1:.4f}")
+    
+    # Display all-classes F1 scores if we tracked them
+    if all_preds_global and all_labels_global:
+        all_preds_global = np.array(all_preds_global)
+        all_labels_global = np.array(all_labels_global)
+        
+        all_class_ids = np.unique(all_labels_global)
+        all_classes_f1 = f1_score(all_labels_global, all_preds_global, average=None, 
+                                   labels=all_class_ids, zero_division=0)
+        
+        # Get class names if available
+        if dataset and hasattr(dataset, 'class_labels'):
+            # Map class IDs directly to class names (cls_id is the index in class_labels)
+            all_classes_names = []
+            for cls_id in all_class_ids:
+                try:
+                    # cls_id is the direct index into class_labels array
+                    all_classes_names.append(dataset.class_labels[cls_id])
+                except (IndexError):
+                    all_classes_names.append(f"Class {cls_id}")
+        else:
+            all_classes_names = [f"Class {cls_id}" for cls_id in all_class_ids]
+        
+        print(f"\n📊 F1 Scores for All Dataset Classes ({len(all_classes_f1)} classes):")
+        for name, f1 in zip(all_classes_names, all_classes_f1):
+            print(f"  {name}: {f1:.4f}")
     
     return acc_mean, acc_std
 
@@ -109,14 +161,20 @@ def change_model(model_name):
         model_name = 'Conv6SNP'
     return model_name
 
-def get_class_names_from_file(data_file, n_way=None):
+def get_class_names_from_file(data_file, n_way=None, for_episodes=True):
     """
     Generate class names for few-shot evaluation.
     
+    Args:
+        data_file: Path to the dataset JSON file
+        n_way: Number of ways in few-shot evaluation
+        for_episodes: If True, returns generic "Way X" labels for episodic evaluation.
+                     If False, returns all actual class names from dataset.
+    
     In few-shot learning, each episode randomly samples n_way classes from the dataset,
-    and labels are re-mapped to 0, 1, ..., n_way-1 for each episode. Therefore, the
-    class names should be generic labels representing these positions, not specific
-    class names from the dataset (which vary across episodes).
+    and labels are re-mapped to 0, 1, ..., n_way-1 for each episode. Therefore, for
+    episodic evaluation we use generic "Way X" labels. For per-class F1 scores across
+    all episodes, we use actual class names.
     """
     try:
         with open(data_file, 'r') as f:
@@ -125,15 +183,21 @@ def get_class_names_from_file(data_file, n_way=None):
         unique_labels = np.unique(meta['image_labels']).tolist()
         total_classes = len(unique_labels)
         
-        # In few-shot learning, labels are re-mapped to 0 to n_way-1 for each episode
-        # Use generic names that represent the position/way rather than specific classes
-        if n_way:
-            class_names = [f"Way {i}" for i in range(n_way)]
+        if for_episodes:
+            # For episodic evaluation: use generic way labels
+            if n_way:
+                class_names = [f"Way {i}" for i in range(n_way)]
+            else:
+                class_names = [f"Class {i}" for i in range(total_classes)]
+            print(f"Dataset has {total_classes} classes total, using {len(class_names)} ways for episodic evaluation")
         else:
-            # If n_way is not specified, use all available classes
-            class_names = [f"Class {i}" for i in range(total_classes)]
+            # For all-classes evaluation: use actual class names if available
+            if 'label_names' in meta:
+                class_names = meta['label_names']
+            else:
+                class_names = [f"Class {i}" for i in range(total_classes)]
+            print(f"Dataset has {total_classes} classes total")
         
-        print(f"Dataset has {total_classes} classes total, using {len(class_names)} ways for evaluation")
         return class_names
     except Exception as e:
         print(f"Error extracting class names: {e}")
@@ -257,8 +321,8 @@ if __name__ == '__main__':
     feature_analysis = getattr(params, 'feature_analysis', True)
     
     if comprehensive:
-        # Get class names from data file
-        class_names = get_class_names_from_file(testfile, params.n_way)
+        # Get class names from data file for episodic evaluation (Way 0, Way 1, etc.)
+        class_names = get_class_names_from_file(testfile, params.n_way, for_episodes=True)
         
         # Use comprehensive evaluation with optional feature analysis
         results = eval_utils.evaluate_comprehensive(

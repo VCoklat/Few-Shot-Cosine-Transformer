@@ -41,6 +41,16 @@ def evaluate(loader, model, n_way, class_names=None,
     """
     Evaluate `model` on an episodic `loader`.
 
+    Args:
+        loader: DataLoader with episodic batch sampler
+        model: Model to evaluate
+        n_way: Number of classes per episode
+        class_names: Optional list of class names for all classes in dataset
+        chunk: Chunk size for processing large batches
+        device: Device to run evaluation on
+        track_all_classes: If True, track and report F1 for all dataset classes.
+                          If False, only report F1 for the n_way classes per episode.
+
     Returns a dict with:
         macro_f1          – overall F1 (macro)
         class_f1          – list of per-class F1
@@ -117,27 +127,58 @@ def evaluate(loader, model, n_way, class_names=None,
     y_pred   = np.concatenate(all_pred)
     y_scores = np.concatenate(all_scores)
 
-    # core classification metrics
+    # core classification metrics for episodic evaluation (n_way classes)
     macro_prec, macro_rec, _, _ = precision_recall_fscore_support(
-        y_true, y_pred, average="macro", zero_division=0
+        y_true, y_pred, average="macro", labels=list(range(n_way)), zero_division=0
     )
 
     res = dict(
-        macro_f1        = float(f1_score(y_true, y_pred, average="macro")),
-        class_f1        = f1_score(y_true, y_pred, average=None).tolist(),
-        conf_mat        = confusion_matrix(y_true, y_pred).tolist(),
+        macro_f1        = float(f1_score(y_true, y_pred, average="macro", labels=list(range(n_way)), zero_division=0)),
+        class_f1        = f1_score(y_true, y_pred, average=None, labels=list(range(n_way)), zero_division=0).tolist(),
+        conf_mat        = confusion_matrix(y_true, y_pred, labels=list(range(n_way))).tolist(),
         accuracy        = accuracy_score(y_true, y_pred),
         macro_precision = macro_prec,
         macro_recall    = macro_rec,
         kappa           = cohen_kappa_score(y_true, y_pred),
         mcc             = matthews_corrcoef(y_true, y_pred),
         top5_accuracy   = top_k_accuracy_score(
-                            y_true, y_scores, k=min(5, n_way), labels=list(range(n_way))
+                            y_true, y_scores, k=5, labels=list(range(n_way))
                           ),
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
         episode_accuracies = episode_accuracies,
     )
+    
+    # Add all-classes F1 scores if we tracked them
+    if all_true_global and all_pred_global:
+        y_true_global = np.concatenate(all_true_global)
+        y_pred_global = np.concatenate(all_pred_global)
+        
+        # Get all unique classes that appeared in episodes
+        all_class_ids = np.unique(y_true_global)
+        
+        # Compute F1 scores for all classes
+        all_classes_f1 = f1_score(y_true_global, y_pred_global, average=None, 
+                                   labels=all_class_ids, zero_division=0)
+        
+        # Get class names if available
+        if dataset and hasattr(dataset, 'class_labels'):
+            # Map class IDs directly to class names (cls_id is the index in class_labels)
+            all_classes_names = []
+            for cls_id in all_class_ids:
+                try:
+                    # cls_id is the direct index into class_labels array
+                    all_classes_names.append(dataset.class_labels[cls_id])
+                except (IndexError):
+                    all_classes_names.append(f"Class {cls_id}")
+        else:
+            all_classes_names = [f"Class {cls_id}" for cls_id in all_class_ids]
+        
+        res.update(
+            all_classes_f1 = all_classes_f1.tolist(),
+            all_classes_names = all_classes_names,
+            all_class_ids = all_class_ids.tolist(),
+        )
 
     # hardware stats
     gpus = GPUtil.getGPUs()
