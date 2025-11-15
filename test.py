@@ -252,20 +252,35 @@ if __name__ == '__main__':
     else:
         split_str = split
     
-    # Check if comprehensive evaluation is requested (default: True)
+    # Check if comprehensive evaluation with feature analysis is requested
     comprehensive = getattr(params, 'comprehensive_eval', True)
+    feature_analysis = getattr(params, 'feature_analysis', False)
     
     if comprehensive:
         # Get class names from data file
         class_names = get_class_names_from_file(testfile, params.n_way)
         
-        # Use comprehensive evaluation
-        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
-        eval_utils.pretty_print(results)
+        # Use comprehensive evaluation with optional feature analysis
+        if feature_analysis:
+            print("\n🔬 Running comprehensive evaluation with feature analysis...")
+            results = eval_utils.evaluate_comprehensive(test_loader, model, params.n_way, 
+                                                       class_names=class_names, device=device)
+            eval_utils.pretty_print(results, show_feature_analysis=True)
+        else:
+            print("\n📊 Running standard comprehensive evaluation...")
+            results = eval_utils.evaluate(test_loader, model, params.n_way, 
+                                         class_names=class_names, device=device)
+            eval_utils.pretty_print(results, show_feature_analysis=False)
         
         # Extract traditional metrics for compatibility
         acc_mean = results['accuracy'] * 100
-        acc_std = np.std([f1 * 100 for f1 in results['class_f1']])
+        
+        # Use confidence interval if available, otherwise use F1 std
+        if 'confidence_interval_95' in results:
+            ci_margin = results['confidence_interval_95']['margin'] * 100
+            acc_std = ci_margin * np.sqrt(iter_num) / 1.96  # Convert back to std for compatibility
+        else:
+            acc_std = np.std([f1 * 100 for f1 in results['class_f1']])
     else:
         # Use standard evaluation
         acc_mean, acc_std = direct_test(test_loader, model, params)
