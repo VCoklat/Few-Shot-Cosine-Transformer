@@ -50,8 +50,7 @@ from io_utils import (get_assigned_file, get_best_file,
                      model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
-from methods.transformer import Attention
-from methods.fsct_profonet import FSCT_ProFONet
+from methods.optimal_few_shot import OptimalFewShotModel, DATASET_CONFIGS
 import eval_utils
 
 global device
@@ -552,8 +551,14 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         # Get class names from data file
         class_names = get_class_names_from_file(data_file, params.n_way)
         
-        # Use eval_utils comprehensive evaluation
-        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, device=device)
+        # Use eval_utils comprehensive evaluation with feature analysis
+        results = eval_utils.evaluate(
+            test_loader, model, params.n_way, 
+            class_names=class_names, 
+            device=device,
+            extract_features=params.feature_analysis,
+            feature_analysis=params.feature_analysis
+        )
         eval_utils.pretty_print(results)
         
         # Still return traditional accuracy metrics for backward compatibility
@@ -686,7 +691,7 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'FSCT_ProFONet']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'OptimalFewShot']:
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
 
@@ -709,14 +714,8 @@ if __name__ == '__main__':
                 if params.dataset in ['Omniglot', 'cross_char']:
                     params.backbone = change_model(params.backbone)
                 return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
-
-            # Enable dynamic weighting for improved accuracy
-            # Optimized initial weights: higher covariance weight helps with feature separation
-            model = FewShotTransformer(feature_model, variant=variant, 
-                                     initial_cov_weight=0.5,  # Increased for stronger covariance regularization
-                                     initial_var_weight=0.25, # Balanced variance regularization
-                                     dynamic_weight=True,
-                                     **few_shot_params)
+            
+            model = FewShotTransformer(feature_model, variant=variant, heads=params.n_heads, **few_shot_params)
 
         elif params.method in ['CTX_softmax', 'CTX_cosine']:
             variant = 'cosine' if params.method == 'CTX_cosine' else 'softmax'
@@ -729,28 +728,30 @@ if __name__ == '__main__':
             
             model = CTX(feature_model, variant=variant, input_dim=input_dim, **few_shot_params)
 
-        elif params.method == 'FSCT_ProFONet':
-            # Hybrid FS-CT + ProFONet method
-            def feature_model():
-                if params.dataset in ['Omniglot', 'cross_char']:
-                    params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+        elif params.method == 'OptimalFewShot':
+            # Get dataset-specific configuration
+            config = DATASET_CONFIGS.get(params.dataset, DATASET_CONFIGS['miniImagenet'])
             
-            # Use optimized parameters for 8GB VRAM
-            model = FSCT_ProFONet(
+            # Create a dummy model function (not used since we override in OptimalFewShotModel)
+            def feature_model():
+                return None
+            
+            # Create model with dataset-specific parameters
+            use_focal_loss = config.get('focal_loss', False)
+            dropout = config.get('dropout', 0.1)
+            
+            model = OptimalFewShotModel(
                 feature_model,
-                variant='cosine',
-                depth=1,
-                heads=4,
-                dim_head=160,
-                mlp_dim=512,
-                dropout=0.0,
-                lambda_V_base=0.5,
-                lambda_I=9.0,
-                lambda_C_base=0.5,
-                gradient_checkpointing=True if torch.cuda.is_available() else False,
-                mixed_precision=True if torch.cuda.is_available() else False,
-                **few_shot_params
+                n_way=params.n_way,
+                k_shot=params.k_shot,
+                n_query=params.n_query,
+                feature_dim=64,
+                n_heads=4,
+                dropout=dropout,
+                num_datasets=5,
+                dataset=params.dataset,
+                use_focal_loss=use_focal_loss,
+                label_smoothing=0.1
             )
 
         else:

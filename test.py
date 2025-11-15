@@ -318,14 +318,19 @@ if __name__ == '__main__':
     
     # Check if comprehensive evaluation is requested (default: True)
     comprehensive = getattr(params, 'comprehensive_eval', True)
+    feature_analysis = getattr(params, 'feature_analysis', True)
     
     if comprehensive:
         # Get class names from data file for episodic evaluation (Way 0, Way 1, etc.)
         class_names = get_class_names_from_file(testfile, params.n_way, for_episodes=True)
         
-        # Use comprehensive evaluation with all-classes tracking
-        results = eval_utils.evaluate(test_loader, model, params.n_way, class_names=class_names, 
-                                      device=device, track_all_classes=True)
+        # Use comprehensive evaluation with optional feature analysis
+        results = eval_utils.evaluate_comprehensive(
+            test_loader, model, params.n_way, 
+            class_names=class_names, 
+            device=device,
+            feature_analysis=feature_analysis
+        )
         eval_utils.pretty_print(results)
         
         # Extract traditional metrics for compatibility
