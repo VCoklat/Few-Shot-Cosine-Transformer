@@ -8,5 +8,6 @@ wandb/
 figures/test_*.png
 figures/comprehensive_test/
 figures/integration_test/
+figures/integration_show_test/
 figures/feature_analysis/
 figures/demo/
