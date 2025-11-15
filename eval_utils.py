@@ -1,6 +1,7 @@
 """
 Extended evaluation utilities for few-shot classification.
 Tracks F1 plus a richer set of metrics and system stats.
+Integrates comprehensive feature space analysis.
 
 Author: dvh
 """
@@ -22,10 +23,17 @@ from sklearn.metrics import (
     top_k_accuracy_score,
 )
 
+try:
+    from feature_analysis import comprehensive_feature_analysis, print_feature_analysis_summary
+    FEATURE_ANALYSIS_AVAILABLE = True
+except ImportError:
+    FEATURE_ANALYSIS_AVAILABLE = False
+
 # ──────────────────────────────────────────────────────────────
 @torch.no_grad()
 def evaluate(loader, model, n_way, class_names=None,
-             chunk: int = 16, device: str = "cuda"):
+             chunk: int = 16, device: str = "cuda", 
+             extract_features: bool = False, feature_analysis: bool = False):
     """
     Evaluate `model` on an episodic `loader`.
 
@@ -43,10 +51,15 @@ def evaluate(loader, model, n_way, class_names=None,
         param_count       – model size (millions of params)
         gpu*/cpu*         – utilisation & memory stats
         class_names       – label strings for pretty print
+        episode_accuracies – per-episode accuracies (for confidence intervals)
+        features          – extracted features (if extract_features=True)
+        feature_analysis_results – feature analysis results (if feature_analysis=True)
     """
     model.eval()
 
     all_true, all_pred, all_scores, times = [], [], [], []
+    episode_accuracies = []
+    all_features = []
 
     for x, _ in loader:                     # dataset's y is ignored
         t0 = time.time()
@@ -60,8 +73,24 @@ def evaluate(loader, model, n_way, class_names=None,
             )
         else:
             scores = model.set_forward(x.to(device)).cpu()
+            
+        # Extract features if requested
+        if extract_features and hasattr(model, 'feature'):
+            try:
+                if x.size(0) > chunk:
+                    feats = torch.cat(
+                        [model.feature.forward(x[i:i + chunk].to(device)).cpu()
+                         for i in range(0, x.size(0), chunk)],
+                        dim=0
+                    )
+                else:
+                    feats = model.feature.forward(x.to(device)).cpu()
+                all_features.append(feats.numpy())
+            except:
+                pass
 
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         times.append(time.time() - t0)
 
         preds = scores.argmax(1).numpy()
@@ -69,7 +98,12 @@ def evaluate(loader, model, n_way, class_names=None,
         all_scores.append(scores.numpy())
 
         n_query = len(preds) // n_way
-        all_true.append(np.repeat(np.arange(n_way), n_query))
+        y_true_episode = np.repeat(np.arange(n_way), n_query)
+        all_true.append(y_true_episode)
+        
+        # Track per-episode accuracy
+        episode_acc = np.mean(preds == y_true_episode)
+        episode_accuracies.append(episode_acc)
 
         del scores
         gc.collect()
@@ -98,6 +132,7 @@ def evaluate(loader, model, n_way, class_names=None,
                           ),
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
+        episode_accuracies = episode_accuracies,
     )
 
     # hardware stats
@@ -111,27 +146,113 @@ def evaluate(loader, model, n_way, class_names=None,
         cpu_mem_total_MB  = psutil.virtual_memory().total / 1_048_576,
         class_names       = class_names or list(range(len(res["class_f1"]))),
     )
-
+    
+    # Add feature analysis if requested
+    if feature_analysis and FEATURE_ANALYSIS_AVAILABLE and len(all_features) > 0:
+        print("\n🔬 Running comprehensive feature space analysis...")
+        features = np.concatenate(all_features, axis=0)
+        episode_accs_array = np.array(episode_accuracies)
+        
+        feature_results = comprehensive_feature_analysis(
+            features=features,
+            labels=y_true,
+            episode_accuracies=episode_accs_array,
+            predictions=y_pred
+        )
+        res['feature_analysis_results'] = feature_results
+        res['features'] = features
+        
+        # Print summary
+        print_feature_analysis_summary(feature_results)
+    
     return res
 
 # ──────────────────────────────────────────────────────────────
+def evaluate_comprehensive(loader, model, n_way, class_names=None,
+                          chunk: int = 16, device: str = "cuda",
+                          feature_analysis: bool = True):
+    """
+    Wrapper for comprehensive evaluation combining standard metrics + feature analysis.
+    
+    Args:
+        loader: Data loader
+        model: Model to evaluate
+        n_way: Number of classes
+        class_names: Optional class names
+        chunk: Batch size for chunked processing
+        device: Device to use
+        feature_analysis: Whether to perform feature analysis
+        
+    Returns:
+        Dict with comprehensive evaluation results
+    """
+    return evaluate(
+        loader=loader,
+        model=model,
+        n_way=n_way,
+        class_names=class_names,
+        chunk=chunk,
+        device=device,
+        extract_features=feature_analysis,
+        feature_analysis=feature_analysis
+    )
+
+# ──────────────────────────────────────────────────────────────
 def pretty_print(res: dict) -> None:
-    """Console-friendly summary of `evaluate()` output."""
-    print(f"\nMacro-F1: {res['macro_f1']:.4f}")
+    """Console-friendly summary of `evaluate()` output with feature analysis support."""
+    print("\n" + "="*70)
+    print("EVALUATION RESULTS")
+    print("="*70)
+    
+    # Classification Metrics
+    print(f"\n📊 Classification Metrics:")
+    print(f"  Accuracy:          {res['accuracy']:.4f}")
+    print(f"  Macro-F1:          {res['macro_f1']:.4f}")
+    print(f"  Macro Precision:   {res['macro_precision']:.4f}")
+    print(f"  Macro Recall:      {res['macro_recall']:.4f}")
+    print(f"  Cohen's κ:         {res['kappa']:.4f}")
+    print(f"  Matthews CorrCoef: {res['mcc']:.4f}")
+    print(f"  Top-5 Accuracy:    {res['top5_accuracy']:.4f}")
+    
+    # Per-class F1 Scores
+    print(f"\n📈 Per-class F1 Scores:")
     for name, f in zip(res["class_names"], res["class_f1"]):
         print(f"  F1 '{name}': {f:.4f}")
 
-    print("\nConfusion matrix:\n", np.array(res["conf_mat"]))
-    print(f"\nAccuracy:          {res['accuracy']:.4f}")
-    print(f"Macro Precision:   {res['macro_precision']:.4f}")
-    print(f"Macro Recall:      {res['macro_recall']:.4f}")
-    print(f"Cohen's κ:         {res['kappa']:.4f}")
-    print(f"Matthews CorrCoef: {res['mcc']:.4f}")
-    print(f"Top-5 Accuracy:    {res['top5_accuracy']:.4f}")
+    # Confusion Matrix
+    print("\n🔢 Confusion Matrix:")
+    print(np.array(res["conf_mat"]))
+    
+    # Statistical Confidence (if available from episode accuracies)
+    if 'episode_accuracies' in res and len(res['episode_accuracies']) > 0:
+        ep_accs = np.array(res['episode_accuracies'])
+        mean_acc = np.mean(ep_accs)
+        std_acc = np.std(ep_accs)
+        n = len(ep_accs)
+        margin = 1.96 * std_acc / np.sqrt(n)
+        
+        print(f"\n📊 Statistical Confidence (95% CI):")
+        print(f"  Mean Episode Accuracy: {mean_acc*100:.2f}%")
+        print(f"  Standard Deviation:    {std_acc*100:.2f}%")
+        print(f"  95% Confidence Interval: [{(mean_acc-margin)*100:.2f}%, {(mean_acc+margin)*100:.2f}%]")
+        print(f"  Number of Episodes:    {n}")
 
-    print(f"\nAvg inf. time/episode: {res['avg_inf_time']*1e3:.1f} ms")
-    print(f"Model size:            {res['param_count']:.2f} M params")
-    print(f"GPU util: {res['gpu_util']*100:.1f}% | "
-          f"mem {res['gpu_mem_used_MB']}/{res['gpu_mem_total_MB']} MB")
-    print(f"CPU util: {res['cpu_util']}% | "
+    # Performance Metrics
+    print(f"\n⏱️ Performance:")
+    print(f"  Avg inf. time/episode: {res['avg_inf_time']*1e3:.1f} ms")
+    print(f"  Model size:            {res['param_count']:.2f} M params")
+    
+    # Hardware Stats
+    print(f"\n🖥️ Hardware Utilization:")
+    print(f"  GPU util: {res['gpu_util']*100:.1f}% | "
+          f"mem {res['gpu_mem_used_MB']:.0f}/{res['gpu_mem_total_MB']:.0f} MB")
+    print(f"  CPU util: {res['cpu_util']:.1f}% | "
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
+    
+    # Feature Analysis Results (if available)
+    if 'feature_analysis_results' in res:
+        print("\n" + "="*70)
+        print("FEATURE ANALYSIS RESULTS (Already displayed above)")
+        print("="*70)
+    
+    print("\n" + "="*70)
