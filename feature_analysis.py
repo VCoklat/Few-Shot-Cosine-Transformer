@@ -27,10 +27,29 @@ try:
     from scipy.stats import pearsonr
     from sklearn.decomposition import PCA
     from sklearn.metrics import f1_score, confusion_matrix
+    from sklearn.manifold import TSNE
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
     warnings.warn("scipy/sklearn not available. Some features will be limited.")
+
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
+    import seaborn as sns
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    Figure = None
+    warnings.warn("matplotlib/seaborn not available. Visualizations will be disabled.")
+
+try:
+    import umap
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
 
 
 def detect_feature_collapse(features: np.ndarray, threshold: float = 1e-4) -> Dict:
@@ -560,3 +579,337 @@ def print_feature_analysis_summary(results: Dict) -> None:
                 print(f"  Macro F1: {sc['macro_f1']:.4f}")
     
     print("\n" + "="*60)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# VISUALIZATION FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def visualize_embedding_space(features: np.ndarray, 
+                              labels: np.ndarray,
+                              method: str = 'tsne',
+                              n_components: int = 2,
+                              save_path: Optional[str] = None,
+                              title: Optional[str] = None,
+                              **kwargs) -> Optional[Figure]:
+    """
+    Visualize feature embeddings in 2D or 3D space using dimensionality reduction.
+    
+    Args:
+        features: Shape (n_samples, n_features)
+        labels: Shape (n_samples,)
+        method: Dimensionality reduction method ('tsne', 'pca', 'umap')
+        n_components: Number of dimensions (2 or 3)
+        save_path: Path to save the visualization (e.g., 'embedding_space.png')
+        title: Custom title for the plot
+        **kwargs: Additional arguments for the reduction method
+        
+    Returns:
+        matplotlib Figure object or None if visualization unavailable
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        warnings.warn("matplotlib not available. Cannot create visualizations.")
+        return None
+    
+    if not SCIPY_AVAILABLE and method != 'pca':
+        warnings.warn(f"scipy not available. Cannot use {method} method.")
+        return None
+    
+    print(f"\n🎨 Visualizing embedding space using {method.upper()}...")
+    
+    # Perform dimensionality reduction
+    if method == 'tsne':
+        if not SCIPY_AVAILABLE:
+            return None
+        from sklearn.manifold import TSNE
+        perplexity = kwargs.get('perplexity', min(30, len(features) - 1))
+        reducer = TSNE(n_components=n_components, perplexity=perplexity, random_state=42)
+        embeddings = reducer.fit_transform(features)
+    elif method == 'pca':
+        if not SCIPY_AVAILABLE:
+            warnings.warn("sklearn not available. Cannot use PCA.")
+            return None
+        from sklearn.decomposition import PCA
+        reducer = PCA(n_components=n_components)
+        embeddings = reducer.fit_transform(features)
+        variance_explained = reducer.explained_variance_ratio_
+        print(f"  Variance explained: {variance_explained.sum()*100:.2f}%")
+    elif method == 'umap':
+        if not UMAP_AVAILABLE:
+            warnings.warn("umap-learn not available. Using PCA instead.")
+            if not SCIPY_AVAILABLE:
+                return None
+            from sklearn.decomposition import PCA
+            reducer = PCA(n_components=n_components)
+            embeddings = reducer.fit_transform(features)
+        else:
+            n_neighbors = kwargs.get('n_neighbors', min(15, len(features) - 1))
+            reducer = umap.UMAP(n_components=n_components, n_neighbors=n_neighbors, random_state=42)
+            embeddings = reducer.fit_transform(features)
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'tsne', 'pca', or 'umap'.")
+    
+    # Create visualization
+    if n_components == 2:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        scatter = ax.scatter(embeddings[:, 0], embeddings[:, 1], 
+                           c=labels, cmap='viridis', alpha=0.6, s=50)
+        ax.set_xlabel(f'{method.upper()} Component 1')
+        ax.set_ylabel(f'{method.upper()} Component 2')
+        plt.colorbar(scatter, ax=ax, label='Class')
+    else:  # 3D
+        fig = plt.figure(figsize=(12, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        scatter = ax.scatter(embeddings[:, 0], embeddings[:, 1], embeddings[:, 2],
+                           c=labels, cmap='viridis', alpha=0.6, s=50)
+        ax.set_xlabel(f'{method.upper()} Component 1')
+        ax.set_ylabel(f'{method.upper()} Component 2')
+        ax.set_zlabel(f'{method.upper()} Component 3')
+        plt.colorbar(scatter, ax=ax, label='Class')
+    
+    if title:
+        plt.title(title)
+    else:
+        plt.title(f'Feature Embedding Space ({method.upper()})')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"  ✓ Saved to {save_path}")
+    
+    return fig
+
+
+def visualize_attention_maps(attention_weights: np.ndarray,
+                            save_path: Optional[str] = None,
+                            title: Optional[str] = None,
+                            query_labels: Optional[np.ndarray] = None,
+                            support_labels: Optional[np.ndarray] = None) -> Optional[Figure]:
+    """
+    Visualize attention weight matrices as heatmaps.
+    
+    Args:
+        attention_weights: Shape (n_queries, n_support) or (n_heads, n_queries, n_support)
+        save_path: Path to save the visualization (e.g., 'attention_maps.png')
+        title: Custom title for the plot
+        query_labels: Optional labels for query samples
+        support_labels: Optional labels for support samples
+        
+    Returns:
+        matplotlib Figure object or None if visualization unavailable
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        warnings.warn("matplotlib not available. Cannot create visualizations.")
+        return None
+    
+    print("\n🔍 Visualizing attention maps...")
+    
+    # Handle multi-head attention
+    if len(attention_weights.shape) == 3:
+        n_heads = attention_weights.shape[0]
+        n_cols = min(4, n_heads)
+        n_rows = (n_heads + n_cols - 1) // n_cols
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
+        if n_heads == 1:
+            axes = np.array([axes])
+        axes = axes.flatten()
+        
+        for head_idx in range(n_heads):
+            ax = axes[head_idx]
+            sns.heatmap(attention_weights[head_idx], 
+                       cmap='viridis', annot=False, 
+                       cbar=True, ax=ax,
+                       xticklabels=support_labels if support_labels is not None else False,
+                       yticklabels=query_labels if query_labels is not None else False)
+            ax.set_title(f'Attention Head {head_idx + 1}')
+            ax.set_xlabel('Support Samples')
+            ax.set_ylabel('Query Samples')
+        
+        # Hide unused subplots
+        for idx in range(n_heads, len(axes)):
+            axes[idx].axis('off')
+    else:
+        # Single attention map
+        fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(attention_weights, 
+                   cmap='viridis', annot=False, 
+                   cbar=True, ax=ax,
+                   xticklabels=support_labels if support_labels is not None else False,
+                   yticklabels=query_labels if query_labels is not None else False)
+        ax.set_xlabel('Support Samples')
+        ax.set_ylabel('Query Samples')
+    
+    if title:
+        plt.suptitle(title)
+    else:
+        plt.suptitle('Attention Weight Maps')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"  ✓ Saved to {save_path}")
+    
+    return fig
+
+
+def visualize_weight_distributions(model_weights: Dict[str, np.ndarray],
+                                   save_path: Optional[str] = None,
+                                   title: Optional[str] = None,
+                                   layer_names: Optional[List[str]] = None) -> Optional[Figure]:
+    """
+    Visualize distribution of model weights across layers.
+    
+    Args:
+        model_weights: Dictionary mapping layer names to weight arrays
+        save_path: Path to save the visualization (e.g., 'weight_distributions.png')
+        title: Custom title for the plot
+        layer_names: Optional list of specific layer names to visualize
+        
+    Returns:
+        matplotlib Figure object or None if visualization unavailable
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        warnings.warn("matplotlib not available. Cannot create visualizations.")
+        return None
+    
+    print("\n📊 Visualizing weight distributions...")
+    
+    # Filter layers if specified
+    if layer_names:
+        model_weights = {k: v for k, v in model_weights.items() if k in layer_names}
+    
+    if not model_weights:
+        warnings.warn("No weights to visualize.")
+        return None
+    
+    n_layers = len(model_weights)
+    n_cols = min(3, n_layers)
+    n_rows = (n_layers + n_cols - 1) // n_cols
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 4*n_rows))
+    if n_layers == 1:
+        axes = np.array([axes])
+    axes = axes.flatten()
+    
+    for idx, (layer_name, weights) in enumerate(model_weights.items()):
+        ax = axes[idx]
+        
+        # Flatten weights
+        weights_flat = weights.flatten()
+        
+        # Plot histogram
+        ax.hist(weights_flat, bins=50, alpha=0.7, color='steelblue', edgecolor='black')
+        ax.set_xlabel('Weight Value')
+        ax.set_ylabel('Frequency')
+        ax.set_title(f'{layer_name}\nMean: {weights_flat.mean():.4f}, Std: {weights_flat.std():.4f}')
+        ax.grid(True, alpha=0.3)
+        
+        # Add vertical line at 0
+        ax.axvline(x=0, color='red', linestyle='--', linewidth=1, alpha=0.5)
+    
+    # Hide unused subplots
+    for idx in range(n_layers, len(axes)):
+        axes[idx].axis('off')
+    
+    if title:
+        plt.suptitle(title, fontsize=14, y=1.00)
+    else:
+        plt.suptitle('Model Weight Distributions', fontsize=14, y=1.00)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"  ✓ Saved to {save_path}")
+    
+    return fig
+
+
+def visualize_feature_analysis(features: np.ndarray,
+                               labels: np.ndarray,
+                               attention_weights: Optional[np.ndarray] = None,
+                               model_weights: Optional[Dict[str, np.ndarray]] = None,
+                               save_dir: str = './figures',
+                               methods: List[str] = ['pca', 'tsne']) -> Dict[str, Optional[plt.Figure]]:
+    """
+    Generate all feature analysis visualizations at once.
+    
+    Args:
+        features: Shape (n_samples, n_features)
+        labels: Shape (n_samples,)
+        attention_weights: Optional attention weight matrices
+        model_weights: Optional dictionary of model weights
+        save_dir: Directory to save visualizations
+        methods: List of dimensionality reduction methods to use
+        
+    Returns:
+        Dictionary mapping visualization names to Figure objects
+    """
+    import os
+    os.makedirs(save_dir, exist_ok=True)
+    
+    figures = {}
+    
+    print("\n" + "="*60)
+    print("GENERATING FEATURE ANALYSIS VISUALIZATIONS")
+    print("="*60)
+    
+    # 1. Embedding space visualizations
+    for method in methods:
+        for n_components in [2, 3]:
+            vis_name = f'embedding_{method}_{n_components}d'
+            save_path = os.path.join(save_dir, f'{vis_name}.png')
+            
+            try:
+                fig = visualize_embedding_space(
+                    features, labels, 
+                    method=method, 
+                    n_components=n_components,
+                    save_path=save_path
+                )
+                figures[vis_name] = fig
+                if fig:
+                    plt.close(fig)
+            except Exception as e:
+                warnings.warn(f"Failed to create {vis_name}: {e}")
+    
+    # 2. Attention maps
+    if attention_weights is not None:
+        vis_name = 'attention_maps'
+        save_path = os.path.join(save_dir, f'{vis_name}.png')
+        
+        try:
+            fig = visualize_attention_maps(
+                attention_weights,
+                save_path=save_path
+            )
+            figures[vis_name] = fig
+            if fig:
+                plt.close(fig)
+        except Exception as e:
+            warnings.warn(f"Failed to create attention maps: {e}")
+    
+    # 3. Weight distributions
+    if model_weights is not None:
+        vis_name = 'weight_distributions'
+        save_path = os.path.join(save_dir, f'{vis_name}.png')
+        
+        try:
+            fig = visualize_weight_distributions(
+                model_weights,
+                save_path=save_path
+            )
+            figures[vis_name] = fig
+            if fig:
+                plt.close(fig)
+        except Exception as e:
+            warnings.warn(f"Failed to create weight distributions: {e}")
+    
+    print("\n✓ Visualization generation complete!")
+    print(f"  Saved {len([f for f in figures.values() if f is not None])} visualizations to {save_dir}")
+    print("="*60)
+    
+    return figures
