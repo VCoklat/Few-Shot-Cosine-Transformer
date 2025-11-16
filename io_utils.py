@@ -20,8 +20,8 @@ model_dict = dict(
 def parse_args():
     parser = argparse.ArgumentParser(description= 'few-shot script' )
     parser.add_argument('--dataset'         , default='miniImagenet', help='CIFAR/CUB/miniImagenet/cross/Omniglot/cross_char/Yoga/')
-    parser.add_argument('--backbone'        , default='ResNet18',      help='backbone: Conv{4|6} / ResNet{12|18|34}')
-    parser.add_argument('--method'          , default='FSCT_cosine',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine/OptimalFewShot') 
+    parser.add_argument('--backbone'        , default='Conv4',      help='backbone: Conv{4|6} / ResNet{12|18|34}')
+    parser.add_argument('--method'          , default='OptimalFewShot',   help='CTX_softmax/CTX_cosine/FSCT_softmax/FSCT_cosine/OptimalFewShot') 
     parser.add_argument('--n_way'           , default=5, type=int,  help='number of categories')
     parser.add_argument('--n_query'         , default=16, type=int,  help='number of query samples per category')
     parser.add_argument('--k_shot'          , default=5, type=int,  help='number of labeled data per category') 
