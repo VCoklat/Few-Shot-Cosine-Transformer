@@ -92,8 +92,8 @@ def evaluate(loader, model, n_way, class_names=None,
                         try:
                             z_support, z_query = model.parse_feature(x, is_feature=False)
                             feats = torch.cat([
-                                z_support.view(-1, z_support.size(-1)),
-                                z_query.view(-1, z_query.size(-1))
+                                z_support.reshape(-1, z_support.size(-1)),
+                                z_query.reshape(-1, z_query.size(-1))
                             ], dim=0).cpu().numpy()
                         except Exception as e:
                             print(f"Warning: model.parse_feature failed: {e}")
