@@ -263,24 +263,24 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
             results = eval_utils.evaluate_comprehensive(test_loader, model, params.n_way,
                                                        class_names=class_names, device=device)
             eval_utils.pretty_print(results, show_feature_analysis=True)
-                # Explicitly print key feature-analysis fields for quick visibility
-                if 'feature_analysis' in results and results['feature_analysis']:
-                    fa = results['feature_analysis']
-                    try:
-                        print("\n🔎 Feature Analysis Summary:")
-                        print(f"  Collapsed dimensions: {fa['feature_collapse']['collapsed_dimensions']}/{fa['feature_collapse']['total_dimensions']}")
-                        print(f"  Mean utilization: {fa['feature_utilization']['mean_utilization']:.4f} (low dims: {fa['feature_utilization']['low_utilization_dims']})")
-                        print(f"  Mean diversity (CV): {fa['diversity_score']['mean_diversity']:.4f}")
-                        print(f"  Effective dimensions (95%): {fa['feature_redundancy']['effective_dimensions_95pct']} of {fa['feature_redundancy']['total_features']}")
-                        print(f"  High correlation pairs (>0.9): {fa['feature_redundancy']['high_correlation_pairs']}")
-                        print(f"  Mean intra-class euclidean consistency: {fa['intraclass_consistency']['mean_euclidean_consistency']:.4f}")
-                        print(f"  Mean intra-class cosine consistency: {fa['intraclass_consistency']['mean_cosine_consistency']:.4f}")
-                        print(f"  Imbalance ratio (minor/major): {fa['imbalance_ratio']['imbalance_ratio']:.3f}")
-                        print("  Most confusing pairs (top):")
-                        for pair in fa['confusing_pairs']['most_confusing_pairs']:
-                            print(f"    {pair['class_1']} ↔ {pair['class_2']}: distance = {pair['distance']:.4f}")
-                    except Exception as e:
-                        print(f"Error printing feature analysis summary: {e}")
+            # Explicitly print key feature-analysis fields for quick visibility
+            if 'feature_analysis' in results and results['feature_analysis']:
+                fa = results['feature_analysis']
+                try:
+                    print("\n🔎 Feature Analysis Summary:")
+                    print(f"  Collapsed dimensions: {fa['feature_collapse']['collapsed_dimensions']}/{fa['feature_collapse']['total_dimensions']}")
+                    print(f"  Mean utilization: {fa['feature_utilization']['mean_utilization']:.4f} (low dims: {fa['feature_utilization']['low_utilization_dims']})")
+                    print(f"  Mean diversity (CV): {fa['diversity_score']['mean_diversity']:.4f}")
+                    print(f"  Effective dimensions (95%): {fa['feature_redundancy']['effective_dimensions_95pct']} of {fa['feature_redundancy']['total_features']}")
+                    print(f"  High correlation pairs (>0.9): {fa['feature_redundancy']['high_correlation_pairs']}")
+                    print(f"  Mean intra-class euclidean consistency: {fa['intraclass_consistency']['mean_euclidean_consistency']:.4f}")
+                    print(f"  Mean intra-class cosine consistency: {fa['intraclass_consistency']['mean_cosine_consistency']:.4f}")
+                    print(f"  Imbalance ratio (minor/major): {fa['imbalance_ratio']['imbalance_ratio']:.3f}")
+                    print("  Most confusing pairs (top):")
+                    for pair in fa['confusing_pairs']['most_confusing_pairs']:
+                        print(f"    {pair['class_1']} ↔ {pair['class_2']}: distance = {pair['distance']:.4f}")
+                except Exception as e:
+                    print(f"Error printing feature analysis summary: {e}")
         else:
             results = eval_utils.evaluate(test_loader, model, params.n_way,
                                           class_names=class_names, device=device)
