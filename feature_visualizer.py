@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import seaborn as sns
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
@@ -156,7 +157,7 @@ class FeatureVisualizer:
         return embeddings
         
     def visualize(self, embeddings=None, labels=None, method='tsne', 
-                 interactive=True, title=None, save_path=None, **kwargs):
+                 interactive=True, title=None, save_path=None, show=False, **kwargs):
         """
         Visualize the embeddings
         
@@ -167,6 +168,7 @@ class FeatureVisualizer:
             interactive: Whether to use plotly for interactive visualization
             title: Title for the plot
             save_path: Path to save the visualization
+            show: Whether to display the plot using plt.show() (only for matplotlib)
             **kwargs: Additional arguments for plotting
             
         Returns:
@@ -221,6 +223,9 @@ class FeatureVisualizer:
             if embeddings.shape[1] == 2:
                 # 2D plot
                 sns.scatterplot(data=df, x='x', y='y', hue='label', palette='viridis', **kwargs)
+                plt.xlabel('Component 1')
+                plt.ylabel('Component 2')
+                plt.legend(title='Class', bbox_to_anchor=(1.05, 1), loc='upper left')
             else:
                 # 3D plot
                 fig = plt.figure(figsize=(10, 8))
@@ -243,6 +248,7 @@ class FeatureVisualizer:
                 ax.set_xlabel('Component 1')
                 ax.set_ylabel('Component 2')
                 ax.set_zlabel('Component 3')
+                ax.legend(title='Class', bbox_to_anchor=(1.05, 1), loc='upper left')
                 
             plt.title(title)
             plt.tight_layout()
@@ -250,8 +256,107 @@ class FeatureVisualizer:
             # Save if requested
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            
+            # Show if requested
+            if show:
+                plt.show()
                 
             return plt.gcf()
+
+
+    def visualize_all_projections(self, n_components_2d=2, n_components_3d=3, 
+                                  show=True, save_dir=None, figsize=(18, 12)):
+        """
+        Generate comprehensive visualizations with PCA, t-SNE, and UMAP in both 2D and 3D.
+        
+        Args:
+            n_components_2d: Number of components for 2D projection (should be 2)
+            n_components_3d: Number of components for 3D projection (should be 3)
+            show: Whether to display plots using plt.show()
+            save_dir: Directory to save the plots (if None, plots are not saved)
+            figsize: Figure size for the combined plot
+            
+        Returns:
+            Dictionary containing all embeddings and the figure object
+        """
+        if self.features is None or len(self.features) == 0:
+            raise ValueError("No features available. Call extract_features() first.")
+        
+        # Create comprehensive figure with subplots
+        methods = ['PCA', 't-SNE', 'UMAP']
+        projections = {}
+        
+        # Create 2x3 grid: 2 rows (2D, 3D) x 3 columns (PCA, t-SNE, UMAP)
+        fig = plt.figure(figsize=figsize)
+        
+        for idx, method in enumerate(methods):
+            method_lower = method.lower().replace('-', '')
+            
+            # 2D projection
+            print(f"Computing {method} 2D projection...")
+            embeddings_2d = self.reduce_dimensions(method=method_lower, n_components=n_components_2d)
+            projections[f'{method}_2D'] = embeddings_2d
+            
+            ax = fig.add_subplot(2, 3, idx + 1)
+            self._plot_2d_scatter(ax, embeddings_2d, self.labels, f'{method} 2D Projection')
+            
+            # 3D projection
+            print(f"Computing {method} 3D projection...")
+            embeddings_3d = self.reduce_dimensions(method=method_lower, n_components=n_components_3d)
+            projections[f'{method}_3D'] = embeddings_3d
+            
+            ax = fig.add_subplot(2, 3, idx + 4, projection='3d')
+            self._plot_3d_scatter(ax, embeddings_3d, self.labels, f'{method} 3D Projection')
+        
+        plt.tight_layout()
+        
+        # Save if requested
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, 'feature_projections_all.png')
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Saved combined visualization to {save_path}")
+        
+        # Show if requested
+        if show:
+            plt.show()
+        
+        return {
+            'projections': projections,
+            'figure': fig
+        }
+    
+    def _plot_2d_scatter(self, ax, embeddings, labels, title):
+        """Helper function to plot 2D scatter plot."""
+        unique_labels = np.unique(labels)
+        colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
+        
+        for i, label in enumerate(unique_labels):
+            mask = labels == label
+            ax.scatter(embeddings[mask, 0], embeddings[mask, 1], 
+                      color=colors[i], label=f'Class {label}', alpha=0.6, s=30)
+        
+        ax.set_xlabel('Component 1')
+        ax.set_ylabel('Component 2')
+        ax.set_title(title)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+        ax.grid(True, alpha=0.3)
+    
+    def _plot_3d_scatter(self, ax, embeddings, labels, title):
+        """Helper function to plot 3D scatter plot."""
+        unique_labels = np.unique(labels)
+        colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
+        
+        for i, label in enumerate(unique_labels):
+            mask = labels == label
+            ax.scatter(embeddings[mask, 0], embeddings[mask, 1], embeddings[mask, 2],
+                      color=colors[i], label=f'Class {label}', alpha=0.6, s=30)
+        
+        ax.set_xlabel('Component 1')
+        ax.set_ylabel('Component 2')
+        ax.set_zlabel('Component 3')
+        ax.set_title(title)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
 
 
 def extract_features(self, x, layer='penultimate'):
@@ -306,3 +411,134 @@ def extract_features(self, x, layer='penultimate'):
             # Handle case where flatten=False
             # Implementation depends on specific model architecture
             pass
+
+
+def visualize_features_from_results(features, labels, show=True, save_dir=None, 
+                                   figsize=(18, 12), title_prefix="Feature Space"):
+    """
+    Standalone function to visualize features with PCA, t-SNE, and UMAP projections.
+    Can be called directly with pre-extracted features.
+    
+    Args:
+        features: numpy array of shape (n_samples, n_features)
+        labels: numpy array of shape (n_samples,) containing class labels
+        show: Whether to display plots using plt.show()
+        save_dir: Directory to save the plots (if None, plots are not saved)
+        figsize: Figure size for the combined plot
+        title_prefix: Prefix for plot titles
+        
+    Returns:
+        Dictionary containing all embeddings and the figure object
+    """
+    from sklearn.manifold import TSNE
+    from sklearn.decomposition import PCA
+    import umap
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    import numpy as np
+    
+    print(f"\n{'='*60}")
+    print("Generating Feature Space Visualizations")
+    print(f"{'='*60}")
+    print(f"Feature shape: {features.shape}")
+    print(f"Number of unique classes: {len(np.unique(labels))}")
+    
+    methods = {
+        'PCA': PCA,
+        't-SNE': TSNE,
+        'UMAP': lambda n_components: umap.UMAP(n_components=n_components, random_state=42)
+    }
+    
+    projections = {}
+    
+    # Create 2x3 grid: 2 rows (2D, 3D) x 3 columns (PCA, t-SNE, UMAP)
+    fig = plt.figure(figsize=figsize)
+    
+    for idx, (method_name, method_class) in enumerate(methods.items()):
+        # 2D projection
+        print(f"\n{method_name} 2D projection...")
+        if method_name == 'PCA':
+            reducer_2d = method_class(n_components=2, random_state=42)
+        elif method_name == 't-SNE':
+            reducer_2d = method_class(n_components=2, random_state=42, perplexity=min(30, len(features)-1))
+        else:  # UMAP
+            reducer_2d = method_class(2)
+        
+        embeddings_2d = reducer_2d.fit_transform(features)
+        projections[f'{method_name}_2D'] = embeddings_2d
+        
+        # Plot 2D
+        ax = fig.add_subplot(2, 3, idx + 1)
+        _plot_2d_scatter(ax, embeddings_2d, labels, f'{title_prefix} - {method_name} 2D')
+        
+        # 3D projection
+        print(f"{method_name} 3D projection...")
+        if method_name == 'PCA':
+            reducer_3d = method_class(n_components=3, random_state=42)
+        elif method_name == 't-SNE':
+            reducer_3d = method_class(n_components=3, random_state=42, perplexity=min(30, len(features)-1))
+        else:  # UMAP
+            reducer_3d = method_class(3)
+        
+        embeddings_3d = reducer_3d.fit_transform(features)
+        projections[f'{method_name}_3D'] = embeddings_3d
+        
+        # Plot 3D
+        ax = fig.add_subplot(2, 3, idx + 4, projection='3d')
+        _plot_3d_scatter(ax, embeddings_3d, labels, f'{title_prefix} - {method_name} 3D')
+    
+    plt.tight_layout()
+    
+    # Save if requested
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, 'feature_projections_all.png')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"\n✓ Saved combined visualization to: {save_path}")
+    
+    # Show if requested
+    if show:
+        print(f"\n{'='*60}")
+        print("Displaying visualizations...")
+        print(f"{'='*60}\n")
+        plt.show()
+    
+    return {
+        'projections': projections,
+        'figure': fig
+    }
+
+
+def _plot_2d_scatter(ax, embeddings, labels, title):
+    """Helper function to plot 2D scatter plot."""
+    unique_labels = np.unique(labels)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
+    
+    for i, label in enumerate(unique_labels):
+        mask = labels == label
+        ax.scatter(embeddings[mask, 0], embeddings[mask, 1], 
+                  color=colors[i], label=f'Class {label}', alpha=0.6, s=30, edgecolors='w', linewidth=0.5)
+    
+    ax.set_xlabel('Component 1', fontsize=10)
+    ax.set_ylabel('Component 2', fontsize=10)
+    ax.set_title(title, fontsize=11, fontweight='bold')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+    ax.grid(True, alpha=0.3)
+
+
+def _plot_3d_scatter(ax, embeddings, labels, title):
+    """Helper function to plot 3D scatter plot."""
+    unique_labels = np.unique(labels)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
+    
+    for i, label in enumerate(unique_labels):
+        mask = labels == label
+        ax.scatter(embeddings[mask, 0], embeddings[mask, 1], embeddings[mask, 2],
+                  color=colors[i], label=f'Class {label}', alpha=0.6, s=30, edgecolors='w', linewidth=0.5)
+    
+    ax.set_xlabel('Component 1', fontsize=9)
+    ax.set_ylabel('Component 2', fontsize=9)
+    ax.set_zlabel('Component 3', fontsize=9)
+    ax.set_title(title, fontsize=11, fontweight='bold')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+    ax.grid(True, alpha=0.3)

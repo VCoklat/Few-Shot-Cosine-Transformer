@@ -377,7 +377,7 @@ def evaluate_comprehensive(loader, model, n_way, class_names=None,
                    chunk=chunk, device=device, extract_features=True)
     
     # If features were extracted, perform comprehensive feature analysis
-    if FEATURE_ANALYSIS_AVAILABLE and 'features' in res and res['features'] is not None:
+     if FEATURE_ANALYSIS_AVAILABLE and 'features' in res and res['features'] is not None:
         try:
             features = res['features']
             labels = res['feature_labels']
@@ -398,10 +398,55 @@ def evaluate_comprehensive(loader, model, n_way, class_names=None,
             print("   Make sure your model exposes `feature()` or `parse_feature()` methods and that SciPy/scikit-learn are installed.")
         res['feature_analysis'] = None
     
-    # Clean up large arrays from result to save memory
-    if 'features' in res:
-        del res['features']
-    if 'feature_labels' in res:
-        del res['feature_labels']
-    
     return res
+
+
+def visualize_feature_projections(loader, model, n_way, device: str = "cuda", 
+                                  show: bool = True, save_dir: str = None):
+    """
+    Extract features and visualize them using PCA, t-SNE, and UMAP in 2D and 3D.
+    
+    Args:
+        loader: DataLoader for episodic evaluation
+        model: Model to evaluate
+        n_way: Number of ways (classes per episode)
+        device: Device to run on
+        show: Whether to display plots using plt.show()
+        save_dir: Directory to save the plots (if None, plots are not saved)
+    
+    Returns:
+        Dictionary with projections and figure
+    """
+    try:
+        from feature_visualizer import visualize_features_from_results
+    except ImportError:
+        print("Error: feature_visualizer module not found")
+        return None
+    
+    # Extract features first
+    print("\n" + "="*80)
+    print("EXTRACTING FEATURES FOR VISUALIZATION")
+    print("="*80)
+    
+    res = evaluate(loader, model, n_way, chunk=16, device=device, extract_features=True)
+    
+    if 'features' not in res or res['features'] is None:
+        print("\n⚠ Could not extract features for visualization")
+        return None
+    
+    features = res['features']
+    labels = res['feature_labels']
+    
+    print(f"\nExtracted {features.shape[0]} feature vectors with {features.shape[1]} dimensions")
+    print(f"Classes: {np.unique(labels)}")
+    
+    # Generate visualizations
+    result = visualize_features_from_results(
+        features, 
+        labels, 
+        show=show, 
+        save_dir=save_dir,
+        title_prefix=f"Few-Shot {n_way}-Way"
+    )
+    
+    return result
