@@ -237,7 +237,8 @@ def pretty_print(res: dict, show_feature_analysis: bool = False) -> None:
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
     
     # Feature analysis (if available)
-    if show_feature_analysis and 'feature_analysis' in res:
+    # Make sure the feature_analysis entry is present and not None
+    if show_feature_analysis and res.get('feature_analysis'):
         print("\n" + "="*80)
         print("FEATURE SPACE ANALYSIS")
         print("="*80)
