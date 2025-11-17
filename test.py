@@ -278,6 +278,29 @@ if __name__ == '__main__':
     print('%d Test Acc = %4.2f%% +- %4.2f%%' %
             (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
     
+    # Visualize features if requested
+    visualize_features = getattr(params, 'visualize_features', False)
+    if visualize_features:
+        print("\n" + "="*80)
+        print("GENERATING FEATURE VISUALIZATIONS")
+        print("="*80)
+        try:
+            visualization_result = eval_utils.visualize_feature_projections(
+                test_loader, 
+                model, 
+                params.n_way, 
+                device=device,
+                show=True,  # Use plt.show() to display plots
+                save_dir='./figures/feature_projections'
+            )
+            if visualization_result:
+                print("\n✓ Feature visualizations generated successfully!")
+            else:
+                print("\n⚠ Feature visualization failed")
+        except Exception as e:
+            print(f"\n⚠ Error generating visualizations: {e}")
+            import traceback
+            traceback.print_exc()
             
     with open('./record/results.txt', 'a') as f:
 

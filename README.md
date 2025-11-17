@@ -91,8 +91,19 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
   - `--wandb`: saving training log and plot visualization into WandB server if `1`, none if `0` (default `0`)
   - `--comprehensive_eval`: use comprehensive evaluation with detailed metrics if `1` (default `1`)
   - `--feature_analysis`: perform comprehensive feature space analysis if `1` (default `0`)
+  - `--visualize_features`: generate PCA/t-SNE/UMAP visualizations in 2D/3D using `plt.show()` (flag)
 
   - For other parameters, please read `io_utils.py` for detail information.
++ **Feature Visualization**:
+  - **NEW**: The repository now includes feature space visualization with PCA, t-SNE, and UMAP projections:
+    - Automatic feature extraction during evaluation
+    - 2D and 3D visualizations for all three methods
+    - Interactive display using `plt.show()` 
+    - Automatic saving to PNG files
+    - Support for custom feature visualization
+  - See [VISUALIZATION_GUIDE.md](VISUALIZATION_GUIDE.md) for full documentation
+  - Example: `python test.py --dataset miniImagenet --visualize_features`
+  - Quick demo: `python example_visualization.py`
 + **Comprehensive Evaluation**:
   - **NEW**: The repository now includes comprehensive evaluation metrics including:
     - 95% Confidence Intervals from 10,000+ episodes
