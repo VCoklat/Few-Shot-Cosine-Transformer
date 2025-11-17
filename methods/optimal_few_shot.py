@@ -334,7 +334,7 @@ class OptimalFewShotModel(MetaTemplate):
         else:
             x = x.contiguous().view(self.n_way * (self.k_shot + self.n_query), *x.size()[2:])
             z_all = self.feature.forward(x)
-            z_all = z_all.view(self.n_way, self.k_shot + self.n_query, -1)
+            z_all = z_all.reshape(self.n_way, self.k_shot + self.n_query, -1)
             
         z_support = z_all[:, :self.k_shot]
         z_query = z_all[:, self.k_shot:]
@@ -355,8 +355,8 @@ class OptimalFewShotModel(MetaTemplate):
         N_support = z_support.size(0) * z_support.size(1)
         N_query = z_query.size(0) * z_query.size(1)
         
-        z_support = z_support.contiguous().view(N_support, -1)
-        z_query = z_query.contiguous().view(N_query, -1)
+        z_support = z_support.contiguous().reshape(N_support, -1)
+        z_query = z_query.contiguous().reshape(N_query, -1)
         
         # Extract features through backbone
         support_features = z_support
@@ -376,7 +376,7 @@ class OptimalFewShotModel(MetaTemplate):
         query_features = all_features[N_support:]
         
         # Compute prototypes
-        support_features_per_way = support_features.view(self.n_way, self.k_shot, -1)
+        support_features_per_way = support_features.reshape(self.n_way, self.k_shot, -1)
         prototypes = support_features_per_way.mean(dim=1)
         prototypes = F.normalize(prototypes, p=2, dim=1)
         
