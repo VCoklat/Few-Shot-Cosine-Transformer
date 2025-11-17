@@ -86,19 +86,35 @@ def evaluate(loader, model, n_way, class_names=None,
         if extract_features:
             try:
                 with torch.no_grad():
-                    if hasattr(model, 'feature'):
-                        # For models with explicit feature extractor
-                        feats = model.feature(x.to(device)).cpu().numpy()
-                    elif hasattr(model, 'parse_feature'):
-                        # For meta-learning models
-                        z_support, z_query = model.parse_feature(x, is_feature=False)
-                        feats = torch.cat([z_support.view(-1, z_support.size(-1)), 
-                                          z_query.view(-1, z_query.size(-1))], dim=0).cpu().numpy()
-                    else:
-                        feats = None
+                            # Prefer parse_feature for meta-learning models (returns support/query split)
+                            # as it handles episodic reshaping internally. Fallback to `feature` when not available.
+                            if hasattr(model, 'parse_feature'):
+                                try:
+                                    z_support, z_query = model.parse_feature(x, is_feature=False)
+                                    feats = torch.cat([
+                                        z_support.view(-1, z_support.size(-1)),
+                                        z_query.view(-1, z_query.size(-1))
+                                    ], dim=0).cpu().numpy()
+                                except Exception as e:
+                                    print(f"Warning: model.parse_feature failed: {e}")
+                                    feats = None
+                            elif hasattr(model, 'feature'):
+                                try:
+                                    feats = model.feature(x.to(device)).cpu().numpy()
+                                except Exception as e:
+                                    print(f"Warning: model.feature failed: {e}")
+                                    feats = None
+                            else:
+                                feats = None
                     
                     if feats is not None:
                         all_features.append(feats)
+                        # Debug: show feature extraction shape once
+                        if len(all_features) == 1:
+                            try:
+                                print(f"Extracted features: shape={feats.shape}")
+                            except Exception:
+                                pass
             except Exception as e:
                 # If feature extraction fails, continue without it
                 pass
@@ -348,6 +364,7 @@ def evaluate_comprehensive(loader, model, n_way, class_names=None,
             print("\n⚠ Feature analysis module not available")
         else:
             print("\n⚠ Could not extract features for analysis")
+            print("   Make sure your model exposes `feature()` or `parse_feature()` methods and that SciPy/scikit-learn are installed.")
         res['feature_analysis'] = None
     
     # Clean up large arrays from result to save memory
