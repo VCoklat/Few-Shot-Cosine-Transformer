@@ -377,7 +377,7 @@ def evaluate_comprehensive(loader, model, n_way, class_names=None,
                    chunk=chunk, device=device, extract_features=True)
     
     # If features were extracted, perform comprehensive feature analysis
-     if FEATURE_ANALYSIS_AVAILABLE and 'features' in res and res['features'] is not None:
+    if FEATURE_ANALYSIS_AVAILABLE and 'features' in res and res['features'] is not None:
         try:
             features = res['features']
             labels = res['feature_labels']
