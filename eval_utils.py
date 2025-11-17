@@ -32,6 +32,13 @@ except ImportError:
     FEATURE_ANALYSIS_AVAILABLE = False
     print("Warning: feature_analysis module not available. Advanced metrics disabled.")
 
+try:
+    from significance_test import compute_per_class_f1
+    SIGNIFICANCE_TEST_AVAILABLE = True
+except ImportError:
+    SIGNIFICANCE_TEST_AVAILABLE = False
+    print("Warning: significance_test module not available. Significance tests disabled.")
+
 # ──────────────────────────────────────────────────────────────
 @torch.no_grad()
 def evaluate(loader, model, n_way, class_names=None,
@@ -175,6 +182,11 @@ def evaluate(loader, model, n_way, class_names=None,
                 'margin': float(mean_acc - lower_ci)
             }
         )
+    
+    # Compute per-class F1 scores
+    if SIGNIFICANCE_TEST_AVAILABLE:
+        per_class_f1_results = compute_per_class_f1(y_true, y_pred, n_way)
+        res.update(per_class_f1_results=per_class_f1_results)
 
     # hardware stats
     gpus = GPUtil.getGPUs()
@@ -225,6 +237,25 @@ def pretty_print(res: dict, show_feature_analysis: bool = False) -> None:
     print(f"\nCohen's κ: {res['kappa']:.4f}")
     print(f"Matthews CorrCoef: {res['mcc']:.4f}")
     print(f"Top-5 Accuracy: {res['top5_accuracy']:.4f}")
+    
+    # Per-class F1 scores
+    if 'per_class_f1_results' in res:
+        print("\n" + "="*80)
+        print("PER-CLASS F1 SCORES")
+        print("="*80)
+        f1_res = res['per_class_f1_results']
+        print(f"\nMacro F1: {f1_res['macro_f1']:.4f}")
+        print(f"Micro F1: {f1_res['micro_f1']:.4f}")
+        print(f"Weighted F1: {f1_res['weighted_f1']:.4f}")
+        print(f"Std F1: {f1_res['std_f1']:.4f}")
+        print(f"Range: [{f1_res['min_f1']:.4f}, {f1_res['max_f1']:.4f}]")
+        
+        print("\nF1 Score by Class:")
+        for i, (f1, prec, rec) in enumerate(zip(f1_res['per_class_f1'], 
+                                                  f1_res['per_class_precision'],
+                                                  f1_res['per_class_recall'])):
+            class_name = res["class_names"][i] if i < len(res["class_names"]) else f"Class {i}"
+            print(f"  {class_name}: F1={f1:.4f} (Precision={prec:.4f}, Recall={rec:.4f})")
     
     # Confusion Matrix
     print("\n" + "="*80)

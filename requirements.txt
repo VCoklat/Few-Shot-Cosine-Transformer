@@ -14,3 +14,4 @@ umap-learn
 gputil 
 psutil
 scikit-learn
+scipy

@@ -96,7 +96,7 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
 + **Comprehensive Evaluation**:
   - **NEW**: The repository now includes comprehensive evaluation metrics including:
     - 95% Confidence Intervals from 10,000+ episodes
-    - Per-Class F1 Scores (removed — use per-class precision/recall + confusion matrix)
+    - Per-Class F1 Scores with detailed precision/recall breakdown
     - Confusion Matrix analysis for error patterns
     - Feature collapse detection (dimensions with std < 1e-4)
     - Feature utilization and redundancy analysis
@@ -105,6 +105,15 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
     - Imbalance ratio calculations
   - See [COMPREHENSIVE_METRICS.md](COMPREHENSIVE_METRICS.md) for full documentation
   - Example: `python test.py --dataset miniImagenet --comprehensive_eval 1 --feature_analysis 1`
++ **Statistical Significance Testing**:
+  - **NEW**: Rigorous statistical comparison of model performance:
+    - McNemar's test for paired prediction comparison
+    - Paired t-test for episode-wise accuracy comparison
+    - Wilcoxon signed-rank test (non-parametric alternative)
+    - Per-class F1 score comparison with significance testing
+    - Comprehensive reporting with p-values and confidence intervals
+  - See [SIGNIFICANCE_TEST.md](SIGNIFICANCE_TEST.md) for full documentation
+  - Example: `python example_significance_test.py --example all`
 + **Ablation Studies**:
   - Complete guide for analyzing component contributions
   - Configurations for testing without SE blocks, cosine attention, VIC regularization, etc.
