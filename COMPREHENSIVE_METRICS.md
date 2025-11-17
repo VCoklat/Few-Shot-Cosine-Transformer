@@ -22,11 +22,9 @@ The evaluation system has been significantly extended to provide deep insights i
 - **Output**: Mean accuracy with lower and upper bounds at 95% confidence
 - **Use case**: Essential for comparing models and establishing statistical significance
 
-#### Per-Class F1 Score
-- **Purpose**: Harmonic mean of precision and recall for each class
-- **Implementation**: Uses sklearn's f1_score with per-class averaging
-- **Output**: F1 score for each class plus macro-averaged F1
-- **Use case**: Identifying which classes are well-learned vs. problematic
+#### Per-Class F1 Score (REMOVED)
+Per-class F1 is no longer part of the default comprehensive evaluation. Use the
+confusion matrix together with per-class precision/recall for class-level analysis.
 
 #### Enhanced Confusion Matrix
 - **Purpose**: Detailed analysis of classification errors
@@ -113,7 +111,7 @@ The evaluation system has been significantly extended to provide deep insights i
 
 ### Basic Comprehensive Evaluation
 
-Run standard evaluation with confidence intervals, F1 scores, and confusion matrix:
+Run standard evaluation with confidence intervals and confusion matrix:
 
 ```bash
 python test.py --dataset miniImagenet \
@@ -192,16 +190,8 @@ Accuracy: 0.7342 (73.42%)
   (±0.0067 or ±0.67%)
   Based on 600 episodes
 
-Macro-F1: 0.7340
 Macro Precision: 0.7350
 Macro Recall: 0.7330
-
-Per-Class F1 Scores:
-  Way 0: 0.7420
-  Way 1: 0.7280
-  Way 2: 0.7340
-  Way 3: 0.7310
-  Way 4: 0.7350
 
 Cohen's κ: 0.6678
 Matthews CorrCoef: 0.6685

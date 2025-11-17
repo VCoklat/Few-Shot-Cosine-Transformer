@@ -36,7 +36,6 @@ torch.cuda.empty_cache()
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 def direct_test(test_loader, model, params):
-    from sklearn.metrics import f1_score
     
     acc = []
     all_preds = []
@@ -74,17 +73,7 @@ def direct_test(test_loader, model, params):
     acc_mean = np.mean(acc_all)
     acc_std = np.std(acc_all)
     
-    # Calculate and display per-class F1 scores
-    all_preds = np.array(all_preds)
-    all_labels = np.array(all_labels)
-    class_f1 = f1_score(all_labels, all_preds, average=None)
-    macro_f1 = f1_score(all_labels, all_preds, average='macro')
-    
-    print(f"\n📊 F1 Score Results:")
-    print(f"Macro-F1: {macro_f1:.4f}")
-    print("\nPer-class F1 scores:")
-    for i, f1 in enumerate(class_f1):
-        print(f"  Class {i}: {f1:.4f}")
+    # F1 score computation removed — accuracy-only reporting
     
     return acc_mean, acc_std
 
@@ -280,7 +269,8 @@ if __name__ == '__main__':
             ci_margin = results['confidence_interval_95']['margin'] * 100
             acc_std = ci_margin * np.sqrt(iter_num) / 1.96  # Convert back to std for compatibility
         else:
-            acc_std = np.std([f1 * 100 for f1 in results['class_f1']])
+            # Use episode-level standard deviation if F1 is not available
+            acc_std = np.std(results.get('episode_accuracies', [acc_mean/100])) * 100
     else:
         # Use standard evaluation
         acc_mean, acc_std = direct_test(test_loader, model, params)

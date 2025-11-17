@@ -29,7 +29,7 @@ except ImportError:
     print("GPUtil not installed. GPU monitoring will be limited.")
     GPUtil = None
 
-from sklearn.metrics import confusion_matrix, f1_score
+from sklearn.metrics import confusion_matrix
 
 import backbone
 import configs
@@ -54,11 +54,7 @@ def pretty_print(res):
 
     print(f"\n📊 EVALUATION RESULTS:")
     print("=" * 50)
-    print(f"🎯 Macro-F1: {res['macro_f1']:.4f}")
-
-    print("\n📈 Per-class F1 scores:")
-    for name, f in zip(res["class_names"], res["class_f1"]):
-        print(f"  F1 '{name}': {f:.4f}")
+    # F1 metric removed — show core metrics instead
 
     print("\n🔢 Confusion matrix:")
     print(np.array(res["conf_mat"]))
@@ -197,16 +193,13 @@ def evaluate_comprehensive(test_loader, model, params, data_file):
     
     # Calculate comprehensive metrics
     conf_mat = confusion_matrix(all_true_labels, all_predictions)
-    class_f1 = f1_score(all_true_labels, all_predictions, average=None)
-    macro_f1 = f1_score(all_true_labels, all_predictions, average='macro')
+    # F1 score computation removed for streamlined metrics
     
     # System stats
     system_stats = get_system_stats()
     
     # Compile results
     results = {
-        'macro_f1': macro_f1,
-        'class_f1': class_f1.tolist(),
         'class_names': class_names,
         'conf_mat': conf_mat.tolist(),
         'avg_inf_time': np.mean(inference_times),
@@ -270,7 +263,8 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         
         # Still return traditional accuracy metrics for backward compatibility
         acc_mean = results['accuracy'] * 100  # Convert accuracy to percentage scale
-        acc_std = np.std([f1 * 100 for f1 in results['class_f1']])  # Std of class F1s
+        # Use episode-level standard deviation for variability (was previously class-F1 std)
+        acc_std = np.std(results.get('episode_accuracies', [acc_mean/100]))*100
         
         return acc_mean, acc_std, results
     else:
@@ -309,17 +303,10 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
         acc_mean = np.mean(acc_all)
         acc_std = np.std(acc_all)
         
-        # Calculate and display per-class F1 scores
+        # F1 score calculation removed — keep accuracy only
         all_preds = np.array(all_preds)
         all_labels = np.array(all_labels)
-        class_f1 = f1_score(all_labels, all_preds, average=None)
-        macro_f1 = f1_score(all_labels, all_preds, average='macro')
-        
-        print(f"\n📊 F1 Score Results:")
-        print(f"Macro-F1: {macro_f1:.4f}")
-        print("\nPer-class F1 scores:")
-        for i, f1 in enumerate(class_f1):
-            print(f"  Class {i}: {f1:.4f}")
+        # report accuracy only
         
         return acc_mean, acc_std
 
@@ -545,7 +532,6 @@ if __name__ == '__main__':
             if params.wandb:
                 wandb.log({
                     'Test Acc': acc_mean,
-                    'Macro F1': detailed_results['macro_f1'],
                     'Avg Inference Time': detailed_results['avg_inf_time'],
                     'Model Size (M params)': detailed_results['param_count']
                 })

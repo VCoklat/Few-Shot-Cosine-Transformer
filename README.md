@@ -96,7 +96,7 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
 + **Comprehensive Evaluation**:
   - **NEW**: The repository now includes comprehensive evaluation metrics including:
     - 95% Confidence Intervals from 10,000+ episodes
-    - Per-Class F1 Scores (harmonic mean of precision and recall)
+    - Per-Class F1 Scores (removed — use per-class precision/recall + confusion matrix)
     - Confusion Matrix analysis for error patterns
     - Feature collapse detection (dimensions with std < 1e-4)
     - Feature utilization and redundancy analysis

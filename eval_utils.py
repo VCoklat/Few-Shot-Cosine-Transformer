@@ -14,7 +14,6 @@ import psutil
 import GPUtil
 
 from sklearn.metrics import (
-    f1_score,
     confusion_matrix,
     accuracy_score,
     precision_recall_fscore_support,
@@ -50,8 +49,6 @@ def evaluate(loader, model, n_way, class_names=None,
         extract_features: If True, also extract features for feature analysis
 
     Returns a dict with:
-        macro_f1          – overall F1 (macro)
-        class_f1          – list of per-class F1
         conf_mat          – confusion matrix (list of lists)
         accuracy          – overall accuracy
         macro_precision   – macro-averaged precision
@@ -135,8 +132,6 @@ def evaluate(loader, model, n_way, class_names=None,
     )
 
     res = dict(
-        macro_f1        = float(f1_score(y_true, y_pred, average="macro")),
-        class_f1        = f1_score(y_true, y_pred, average=None).tolist(),
         conf_mat        = confusion_matrix(y_true, y_pred).tolist(),
         accuracy        = accuracy_score(y_true, y_pred),
         macro_precision = macro_prec,
@@ -174,7 +169,8 @@ def evaluate(loader, model, n_way, class_names=None,
         cpu_util          = psutil.cpu_percent(),
         cpu_mem_used_MB   = psutil.virtual_memory().used  / 1_048_576,
         cpu_mem_total_MB  = psutil.virtual_memory().total / 1_048_576,
-        class_names       = class_names or list(range(len(res["class_f1"]))),
+        # Class names fall back to the confusion matrix size
+        class_names       = class_names or (list(range(len(res["conf_mat"]))) if "conf_mat" in res else []),
     )
 
     # Add features if extracted
@@ -205,14 +201,9 @@ def pretty_print(res: dict, show_feature_analysis: bool = False) -> None:
         print(f"  (±{ci['margin']:.4f} or ±{ci['margin']*100:.2f}%)")
         print(f"  Based on {len(res['episode_accuracies'])} episodes")
     
-    # F1 Scores
-    print(f"\nMacro-F1: {res['macro_f1']:.4f}")
-    print(f"Macro Precision: {res['macro_precision']:.4f}")
+    # Macro Precision/Recall
+    print(f"\nMacro Precision: {res['macro_precision']:.4f}")
     print(f"Macro Recall: {res['macro_recall']:.4f}")
-    
-    print("\nPer-Class F1 Scores:")
-    for name, f in zip(res["class_names"], res["class_f1"]):
-        print(f"  {name}: {f:.4f}")
     
     # Additional metrics
     print(f"\nCohen's κ: {res['kappa']:.4f}")
