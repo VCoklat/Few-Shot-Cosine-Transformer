@@ -109,7 +109,7 @@ To find the optimal number of attention heads:
    - Record results
 
 3. **Compare Results:**
-   - Compare accuracy, F1-scores, and other metrics
+   - Compare accuracy, confusion matrix, and other metrics
    - Analyze performance drop for each removed component
    - Identify most critical components
 
@@ -136,7 +136,7 @@ python test.py --method FSCT_cosine \
 
 1. **Accuracy:** Overall classification accuracy
 2. **95% Confidence Interval:** Uncertainty in performance estimates
-3. **Per-Class F1-Score:** Performance on individual classes
+3. **Per-Class Analysis:** Use confusion matrix and per-class precision/recall for per-class performance
 4. **Confusion Matrix:** Error patterns
 5. **Feature Quality Metrics:**
    - Feature collapse rate
@@ -156,16 +156,16 @@ This indicates the contribution of each component.
 
 ### Example Results Table
 
-| Configuration | Accuracy | Δ from Baseline | F1-Score | Key Observations |
+| Configuration | Accuracy | Δ from Baseline | Key Observations |
 |--------------|----------|-----------------|----------|------------------|
-| Full Model (Baseline) | 73.42% | - | 0.7340 | - |
-| w/o SE Blocks | 71.85% | -1.57% | 0.7180 | Minor drop in channel adaptation |
-| w/o Cosine Attention | 70.23% | -3.19% | 0.7020 | Significant impact on stability |
-| w/o VIC Regularization | 72.10% | -1.32% | 0.7205 | Affects feature quality |
-| w/o Dynamic Weighting | 71.50% | -1.92% | 0.7145 | Reduces adaptation capability |
-| 1 Head | 69.80% | -3.62% | 0.6975 | Insufficient attention capacity |
-| 2 Heads | 71.20% | -2.22% | 0.7115 | Better but still suboptimal |
-| 8 Heads | 72.90% | -0.52% | 0.7285 | Slight overfitting risk |
+| Full Model (Baseline) | 73.42% | - | - |
+| w/o SE Blocks | 71.85% | -1.57% | Minor drop in channel adaptation |
+| w/o Cosine Attention | 70.23% | -3.19% | Significant impact on stability |
+| w/o VIC Regularization | 72.10% | -1.32% | Affects feature quality |
+| w/o Dynamic Weighting | 71.50% | -1.92% | Reduces adaptation capability |
+| 1 Head | 69.80% | -3.62% | Insufficient attention capacity |
+| 2 Heads | 71.20% | -2.22% | Better but still suboptimal |
+| 8 Heads | 72.90% | -0.52% | Slight overfitting risk |
 
 ## Advanced Analysis
 

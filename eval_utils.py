@@ -14,7 +14,6 @@ import psutil
 import GPUtil
 
 from sklearn.metrics import (
-    f1_score,
     confusion_matrix,
     accuracy_score,
     precision_recall_fscore_support,
@@ -50,8 +49,6 @@ def evaluate(loader, model, n_way, class_names=None,
         extract_features: If True, also extract features for feature analysis
 
     Returns a dict with:
-        macro_f1          – overall F1 (macro)
-        class_f1          – list of per-class F1
         conf_mat          – confusion matrix (list of lists)
         accuracy          – overall accuracy
         macro_precision   – macro-averaged precision
@@ -89,19 +86,35 @@ def evaluate(loader, model, n_way, class_names=None,
         if extract_features:
             try:
                 with torch.no_grad():
-                    if hasattr(model, 'feature'):
-                        # For models with explicit feature extractor
-                        feats = model.feature(x.to(device)).cpu().numpy()
-                    elif hasattr(model, 'parse_feature'):
-                        # For meta-learning models
-                        z_support, z_query = model.parse_feature(x, is_feature=False)
-                        feats = torch.cat([z_support.view(-1, z_support.size(-1)), 
-                                          z_query.view(-1, z_query.size(-1))], dim=0).cpu().numpy()
+                    # Prefer parse_feature for meta-learning models (returns support/query split)
+                    # as it handles episodic reshaping internally. Fallback to `feature` when not available.
+                    if hasattr(model, 'parse_feature'):
+                        try:
+                            z_support, z_query = model.parse_feature(x, is_feature=False)
+                            # Only use query features to match the labels (which are only for query samples)
+                            feats = z_query.reshape(-1, z_query.size(-1)).cpu().numpy()
+                        except Exception as e:
+                            print(f"Warning: model.parse_feature failed: {e}")
+                            feats = None
+                    elif hasattr(model, 'feature'):
+                        try:
+                            # For models without parse_feature, extract all features
+                            # Note: This assumes the model's feature() returns features for query samples only
+                            feats = model.feature(x.to(device)).cpu().numpy()
+                        except Exception as e:
+                            print(f"Warning: model.feature failed: {e}")
+                            feats = None
                     else:
                         feats = None
-                    
-                    if feats is not None:
-                        all_features.append(feats)
+
+                if feats is not None:
+                    all_features.append(feats)
+                    # Debug: show feature extraction shape once
+                    if len(all_features) == 1:
+                        try:
+                            print(f"Extracted features: shape={feats.shape}")
+                        except Exception:
+                            pass
             except Exception as e:
                 # If feature extraction fails, continue without it
                 pass
@@ -135,8 +148,6 @@ def evaluate(loader, model, n_way, class_names=None,
     )
 
     res = dict(
-        macro_f1        = float(f1_score(y_true, y_pred, average="macro")),
-        class_f1        = f1_score(y_true, y_pred, average=None).tolist(),
         conf_mat        = confusion_matrix(y_true, y_pred).tolist(),
         accuracy        = accuracy_score(y_true, y_pred),
         macro_precision = macro_prec,
@@ -174,7 +185,8 @@ def evaluate(loader, model, n_way, class_names=None,
         cpu_util          = psutil.cpu_percent(),
         cpu_mem_used_MB   = psutil.virtual_memory().used  / 1_048_576,
         cpu_mem_total_MB  = psutil.virtual_memory().total / 1_048_576,
-        class_names       = class_names or list(range(len(res["class_f1"]))),
+        # Class names fall back to the confusion matrix size
+        class_names       = class_names or (list(range(len(res["conf_mat"]))) if "conf_mat" in res else []),
     )
 
     # Add features if extracted
@@ -205,14 +217,9 @@ def pretty_print(res: dict, show_feature_analysis: bool = False) -> None:
         print(f"  (±{ci['margin']:.4f} or ±{ci['margin']*100:.2f}%)")
         print(f"  Based on {len(res['episode_accuracies'])} episodes")
     
-    # F1 Scores
-    print(f"\nMacro-F1: {res['macro_f1']:.4f}")
-    print(f"Macro Precision: {res['macro_precision']:.4f}")
+    # Macro Precision/Recall
+    print(f"\nMacro Precision: {res['macro_precision']:.4f}")
     print(f"Macro Recall: {res['macro_recall']:.4f}")
-    
-    print("\nPer-Class F1 Scores:")
-    for name, f in zip(res["class_names"], res["class_f1"]):
-        print(f"  {name}: {f:.4f}")
     
     # Additional metrics
     print(f"\nCohen's κ: {res['kappa']:.4f}")
@@ -246,7 +253,8 @@ def pretty_print(res: dict, show_feature_analysis: bool = False) -> None:
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
     
     # Feature analysis (if available)
-    if show_feature_analysis and 'feature_analysis' in res:
+    # Make sure the feature_analysis entry is present and not None
+    if show_feature_analysis and res.get('feature_analysis'):
         print("\n" + "="*80)
         print("FEATURE SPACE ANALYSIS")
         print("="*80)
@@ -356,6 +364,7 @@ def evaluate_comprehensive(loader, model, n_way, class_names=None,
             print("\n⚠ Feature analysis module not available")
         else:
             print("\n⚠ Could not extract features for analysis")
+            print("   Make sure your model exposes `feature()` or `parse_feature()` methods and that SciPy/scikit-learn are installed.")
         res['feature_analysis'] = None
     
     # Clean up large arrays from result to save memory

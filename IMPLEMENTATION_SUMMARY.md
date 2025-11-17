@@ -16,14 +16,9 @@ This document maps each requirement from the problem statement to its implementa
 - **Output**: Displayed in `pretty_print()` with margin of error
 - **Usage**: Automatically computed when running test.py with comprehensive_eval=1
 
-#### ✅ Per-Class F1-Score
-**Requirement**: "Harmonic mean dari precision dan recall untuk setiap kelas"
-
-**Implementation**:
-- **File**: `eval_utils.py` - Uses sklearn's `f1_score` with `average=None`
-- **Method**: Computes F1 for each class individually
-- **Output**: Displayed in `pretty_print()` showing all per-class F1 scores
-- **Usage**: Always computed in comprehensive evaluation
+#### ⚠️ Per-Class F1-Score (REMOVED)
+Per-class F1-score has been removed from the comprehensive evaluation.
+Use macro precision/recall (and accuracy + confusion matrix) for class-level analysis.
 
 #### ✅ Confusion Matrix
 **Requirement**: "Untuk analisis pola kesalahan klasifikasi"
@@ -128,7 +123,7 @@ python example_comprehensive_metrics.py
 
 ✅ **All requirements implemented**:
 - 95% Confidence Intervals
-- Per-Class F1-Scores
+<!-- Per-Class F1-Scores removed; keep precision/recall and confusion matrix -->
 - Confusion Matrix Analysis
 - Feature Collapse Detection
 - Feature Utilization Metrics
