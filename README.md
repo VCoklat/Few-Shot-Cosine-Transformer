@@ -37,6 +37,9 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
 ## Experiments
 ### Dependencies environment
   + `pip install -r requirements.txt`
+  
+  **Note on NumPy Compatibility:** This project requires NumPy 1.x (< 2.0.0) to ensure compatibility with all dependencies, especially matplotlib. The requirements.txt file enforces this constraint. If you encounter `AttributeError: _ARRAY_API not found`, ensure you're using NumPy < 2.0.0.
+  
 ### Dataset
 + **_mini_-ImageNet**:  
   + Go to `/dataset/miniImagenet/`
