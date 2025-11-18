@@ -1,16 +1,69 @@
 import os
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import seaborn as sns
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
-import umap
-import torch
-from tqdm import tqdm
-import plotly.express as px
-import plotly.graph_objects as go
-import pandas as pd
+
+# Try to import matplotlib and related visualization libraries
+# Handle potential import errors gracefully (e.g., _ARRAY_API not found)
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend to avoid display issues
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    import seaborn as sns
+    MATPLOTLIB_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    print(f"Warning: matplotlib import failed ({e}). Visualization features will be limited.")
+    MATPLOTLIB_AVAILABLE = False
+    plt = None
+    Axes3D = None
+    sns = None
+
+try:
+    from sklearn.manifold import TSNE
+    from sklearn.decomposition import PCA
+    SKLEARN_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: scikit-learn import failed ({e}). Some visualization features will be unavailable.")
+    SKLEARN_AVAILABLE = False
+    TSNE = None
+    PCA = None
+
+try:
+    import umap
+    UMAP_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: umap-learn import failed ({e}). UMAP visualization will be unavailable.")
+    UMAP_AVAILABLE = False
+    umap = None
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    # Provide a simple fallback if tqdm is not available
+    tqdm = lambda x, **kwargs: x
+
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: plotly import failed ({e}). Interactive visualization will be unavailable.")
+    PLOTLY_AVAILABLE = False
+    px = None
+    go = None
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None
 
 class FeatureVisualizer:
     def __init__(self, model, device='cuda'):
@@ -21,6 +74,9 @@ class FeatureVisualizer:
             model: The trained model
             device: Device to run inference on
         """
+        if not TORCH_AVAILABLE:
+            raise ImportError("PyTorch is required for FeatureVisualizer but could not be imported.")
+        
         self.model = model
         self.device = device
         self.model.eval()
@@ -145,10 +201,16 @@ class FeatureVisualizer:
             embeddings: Reduced dimensionality embeddings
         """
         if method == 'tsne':
+            if not SKLEARN_AVAILABLE or TSNE is None:
+                raise ImportError("scikit-learn is required for t-SNE but could not be imported.")
             reducer = TSNE(n_components=n_components, **kwargs)
         elif method == 'pca':
+            if not SKLEARN_AVAILABLE or PCA is None:
+                raise ImportError("scikit-learn is required for PCA but could not be imported.")
             reducer = PCA(n_components=n_components, **kwargs)
         elif method == 'umap':
+            if not UMAP_AVAILABLE or umap is None:
+                raise ImportError("umap-learn is required for UMAP but could not be imported.")
             reducer = umap.UMAP(n_components=n_components, **kwargs)
         else:
             raise ValueError(f"Unknown dimensionality reduction method: {method}")
@@ -182,6 +244,9 @@ class FeatureVisualizer:
             
         if title is None:
             title = f"Feature Space Visualization ({method.upper()})"
+        
+        if not PANDAS_AVAILABLE or pd is None:
+            raise ImportError("pandas is required for visualization but could not be imported.")
             
         # Create a DataFrame for easy plotting
         df = pd.DataFrame()
@@ -196,6 +261,9 @@ class FeatureVisualizer:
         df['label'] = df['label'].astype(str)
             
         if interactive:
+            if not PLOTLY_AVAILABLE or px is None:
+                raise ImportError("plotly is required for interactive visualization but could not be imported.")
+            
             # Use plotly for interactive visualization
             if embeddings.shape[1] == 2:
                 fig = px.scatter(df, x='x', y='y', color='label', 
@@ -217,12 +285,25 @@ class FeatureVisualizer:
                 
             return fig
         else:
+            if not MATPLOTLIB_AVAILABLE or plt is None:
+                raise ImportError("matplotlib is required for static visualization but could not be imported. "
+                                "Try installing matplotlib with: pip install matplotlib>=3.5.0")
+            
             # Use matplotlib for static visualization
             plt.figure(figsize=(10, 8))
             
             if embeddings.shape[1] == 2:
                 # 2D plot
-                sns.scatterplot(data=df, x='x', y='y', hue='label', palette='viridis', **kwargs)
+                if sns is not None:
+                    sns.scatterplot(data=df, x='x', y='y', hue='label', palette='viridis', **kwargs)
+                else:
+                    # Fallback if seaborn is not available
+                    unique_labels = df['label'].unique()
+                    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
+                    for i, label in enumerate(unique_labels):
+                        mask = df['label'] == label
+                        plt.scatter(df.loc[mask, 'x'], df.loc[mask, 'y'], 
+                                   color=colors[i], label=label, alpha=0.6)
                 plt.xlabel('Component 1')
                 plt.ylabel('Component 2')
                 plt.legend(title='Class', bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -279,6 +360,10 @@ class FeatureVisualizer:
         Returns:
             Dictionary containing all embeddings and the figure object
         """
+        if not MATPLOTLIB_AVAILABLE or plt is None:
+            raise ImportError("matplotlib is required for visualize_all_projections but could not be imported. "
+                            "Try installing matplotlib with: pip install matplotlib>=3.5.0")
+        
         if self.features is None or len(self.features) == 0:
             raise ValueError("No features available. Call extract_features() first.")
         
@@ -428,14 +513,22 @@ def visualize_features_from_results(features, labels, show=True, save_dir=None,
         title_prefix: Prefix for plot titles
         
     Returns:
-        Dictionary containing all embeddings and the figure object
+        Dictionary containing all embeddings and the figure object, or None if dependencies are missing
     """
-    from sklearn.manifold import TSNE
-    from sklearn.decomposition import PCA
-    import umap
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
-    import numpy as np
+    # Check for required dependencies
+    if not SKLEARN_AVAILABLE or TSNE is None or PCA is None:
+        print("Error: scikit-learn is required for visualization but could not be imported.")
+        print("Please install it with: pip install scikit-learn>=1.0.0")
+        return None
+    
+    if not UMAP_AVAILABLE or umap is None:
+        print("Warning: umap-learn is not available. UMAP visualizations will be skipped.")
+        print("To enable UMAP, install it with: pip install umap-learn")
+    
+    if not MATPLOTLIB_AVAILABLE or plt is None:
+        print("Error: matplotlib is required for visualization but could not be imported.")
+        print("Please install it with: pip install matplotlib>=3.5.0")
+        return None
     
     print(f"\n{'='*60}")
     print("Generating Feature Space Visualizations")
@@ -446,46 +539,57 @@ def visualize_features_from_results(features, labels, show=True, save_dir=None,
     methods = {
         'PCA': PCA,
         't-SNE': TSNE,
-        'UMAP': lambda n_components: umap.UMAP(n_components=n_components, random_state=42)
     }
+    
+    if UMAP_AVAILABLE and umap is not None:
+        methods['UMAP'] = lambda n_components: umap.UMAP(n_components=n_components, random_state=42)
     
     projections = {}
     
     # Create 2x3 grid: 2 rows (2D, 3D) x 3 columns (PCA, t-SNE, UMAP)
+    n_methods = len(methods)
     fig = plt.figure(figsize=figsize)
     
     for idx, (method_name, method_class) in enumerate(methods.items()):
         # 2D projection
         print(f"\n{method_name} 2D projection...")
-        if method_name == 'PCA':
-            reducer_2d = method_class(n_components=2, random_state=42)
-        elif method_name == 't-SNE':
-            reducer_2d = method_class(n_components=2, random_state=42, perplexity=min(30, len(features)-1))
-        else:  # UMAP
-            reducer_2d = method_class(2)
-        
-        embeddings_2d = reducer_2d.fit_transform(features)
-        projections[f'{method_name}_2D'] = embeddings_2d
-        
-        # Plot 2D
-        ax = fig.add_subplot(2, 3, idx + 1)
-        _plot_2d_scatter(ax, embeddings_2d, labels, f'{title_prefix} - {method_name} 2D')
+        try:
+            if method_name == 'PCA':
+                reducer_2d = method_class(n_components=2, random_state=42)
+            elif method_name == 't-SNE':
+                reducer_2d = method_class(n_components=2, random_state=42, perplexity=min(30, len(features)-1))
+            else:  # UMAP
+                reducer_2d = method_class(2)
+            
+            embeddings_2d = reducer_2d.fit_transform(features)
+            projections[f'{method_name}_2D'] = embeddings_2d
+            
+            # Plot 2D
+            ax = fig.add_subplot(2, n_methods, idx + 1)
+            _plot_2d_scatter(ax, embeddings_2d, labels, f'{title_prefix} - {method_name} 2D')
+        except Exception as e:
+            print(f"Error computing {method_name} 2D projection: {e}")
+            continue
         
         # 3D projection
         print(f"{method_name} 3D projection...")
-        if method_name == 'PCA':
-            reducer_3d = method_class(n_components=3, random_state=42)
-        elif method_name == 't-SNE':
-            reducer_3d = method_class(n_components=3, random_state=42, perplexity=min(30, len(features)-1))
-        else:  # UMAP
-            reducer_3d = method_class(3)
-        
-        embeddings_3d = reducer_3d.fit_transform(features)
-        projections[f'{method_name}_3D'] = embeddings_3d
-        
-        # Plot 3D
-        ax = fig.add_subplot(2, 3, idx + 4, projection='3d')
-        _plot_3d_scatter(ax, embeddings_3d, labels, f'{title_prefix} - {method_name} 3D')
+        try:
+            if method_name == 'PCA':
+                reducer_3d = method_class(n_components=3, random_state=42)
+            elif method_name == 't-SNE':
+                reducer_3d = method_class(n_components=3, random_state=42, perplexity=min(30, len(features)-1))
+            else:  # UMAP
+                reducer_3d = method_class(3)
+            
+            embeddings_3d = reducer_3d.fit_transform(features)
+            projections[f'{method_name}_3D'] = embeddings_3d
+            
+            # Plot 3D
+            ax = fig.add_subplot(2, n_methods, idx + n_methods + 1, projection='3d')
+            _plot_3d_scatter(ax, embeddings_3d, labels, f'{title_prefix} - {method_name} 3D')
+        except Exception as e:
+            print(f"Error computing {method_name} 3D projection: {e}")
+            continue
     
     plt.tight_layout()
     
@@ -511,6 +615,9 @@ def visualize_features_from_results(features, labels, show=True, save_dir=None,
 
 def _plot_2d_scatter(ax, embeddings, labels, title):
     """Helper function to plot 2D scatter plot."""
+    if not MATPLOTLIB_AVAILABLE or plt is None:
+        raise ImportError("matplotlib is required for plotting but could not be imported.")
+    
     unique_labels = np.unique(labels)
     colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
     
@@ -528,6 +635,9 @@ def _plot_2d_scatter(ax, embeddings, labels, title):
 
 def _plot_3d_scatter(ax, embeddings, labels, title):
     """Helper function to plot 3D scatter plot."""
+    if not MATPLOTLIB_AVAILABLE or plt is None:
+        raise ImportError("matplotlib is required for plotting but could not be imported.")
+    
     unique_labels = np.unique(labels)
     colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
     

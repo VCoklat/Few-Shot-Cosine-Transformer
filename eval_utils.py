@@ -419,8 +419,10 @@ def visualize_feature_projections(loader, model, n_way, device: str = "cuda",
     """
     try:
         from feature_visualizer import visualize_features_from_results
-    except ImportError:
-        print("Error: feature_visualizer module not found")
+    except (ImportError, AttributeError) as e:
+        print(f"Error: Could not import visualization module: {e}")
+        print("Visualization features require matplotlib, scikit-learn, and other dependencies.")
+        print("Please ensure all requirements are installed: pip install -r requirements.txt")
         return None
     
     # Extract features first
@@ -441,12 +443,17 @@ def visualize_feature_projections(loader, model, n_way, device: str = "cuda",
     print(f"Classes: {np.unique(labels)}")
     
     # Generate visualizations
-    result = visualize_features_from_results(
-        features, 
-        labels, 
-        show=show, 
-        save_dir=save_dir,
-        title_prefix=f"Few-Shot {n_way}-Way"
-    )
+    try:
+        result = visualize_features_from_results(
+            features, 
+            labels, 
+            show=show, 
+            save_dir=save_dir,
+            title_prefix=f"Few-Shot {n_way}-Way"
+        )
+    except (ImportError, AttributeError) as e:
+        print(f"\n⚠ Error during visualization: {e}")
+        print("This may be due to missing or incompatible dependencies.")
+        return None
     
     return result
