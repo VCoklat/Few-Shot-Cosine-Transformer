@@ -39,6 +39,40 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
   + `pip install -r requirements.txt`
   
   **Note on NumPy Compatibility:** This project requires NumPy 1.x (< 2.0.0) to ensure compatibility with all dependencies, especially matplotlib. The requirements.txt file enforces this constraint. If you encounter `AttributeError: _ARRAY_API not found`, ensure you're using NumPy < 2.0.0.
+
+#### Installation in Kaggle or Pre-configured Environments
+
+If you're running this code in **Kaggle**, **Google Colab**, or other environments where packages are pre-installed, you may encounter matplotlib import errors due to numpy/matplotlib binary incompatibility. Follow these steps:
+
+**Quick Fix (Recommended):**
+```bash
+# Run the automated fix script
+python fix_visualization_deps.py
+```
+
+**Manual Fix:**
+```bash
+# 1. Install numpy 1.x first
+pip install 'numpy>=1.23.0,<2.0.0'
+
+# 2. Force reinstall matplotlib and visualization dependencies
+pip install --force-reinstall --no-cache-dir 'matplotlib>=3.5.0,<3.9.0' 'numba>=0.57.0,<0.60.0' 'scikit-learn>=1.0.0' 'umap-learn>=0.5.3' seaborn pandas plotly
+
+# 3. Restart your Python kernel/runtime
+```
+
+**Verification:**
+```bash
+# Check if all dependencies work
+python fix_visualization_deps.py --verify
+```
+
+**Common Issues:**
+- `AttributeError: _ARRAY_API not found` → matplotlib was compiled with numpy 2.x, needs reinstallation
+- `Numba needs NumPy 1.26 or less` → numpy 2.x is installed, downgrade to 1.x
+- `numpy.core.multiarray failed to import` → Binary incompatibility, force reinstall matplotlib
+
+See [VISUALIZATION_TROUBLESHOOTING.md](VISUALIZATION_TROUBLESHOOTING.md) for detailed troubleshooting guide.
   
 ### Dataset
 + **_mini_-ImageNet**:  
