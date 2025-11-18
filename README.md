@@ -42,29 +42,22 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
 
 #### Installation in Kaggle or Pre-configured Environments
 
-If you're running this code in **Kaggle**, **Google Colab**, or other environments where packages are pre-installed, you may encounter matplotlib import errors due to numpy/matplotlib binary incompatibility. Follow these steps:
+If you're running this code in **Kaggle**, **Google Colab**, or other environments where packages are pre-installed, you may encounter matplotlib import errors due to numpy/matplotlib binary incompatibility.
+
+**📖 See [KAGGLE_INSTALLATION.md](KAGGLE_INSTALLATION.md) for detailed Kaggle-specific instructions**
 
 **Quick Fix (Recommended):**
 ```bash
 # Run the automated fix script
 python fix_visualization_deps.py
-```
 
-**Manual Fix:**
-```bash
-# 1. Install numpy 1.x first
-pip install 'numpy>=1.23.0,<2.0.0'
-
-# 2. Force reinstall matplotlib and visualization dependencies
-pip install --force-reinstall --no-cache-dir 'matplotlib>=3.5.0,<3.9.0' 'numba>=0.57.0,<0.60.0' 'scikit-learn>=1.0.0' 'umap-learn>=0.5.3' seaborn pandas plotly
-
-# 3. Restart your Python kernel/runtime
+# Then restart your kernel/runtime
 ```
 
 **Verification:**
 ```bash
 # Check if all dependencies work
-python fix_visualization_deps.py --verify
+python test_visualization_fix.py
 ```
 
 **Common Issues:**
@@ -72,7 +65,7 @@ python fix_visualization_deps.py --verify
 - `Numba needs NumPy 1.26 or less` → numpy 2.x is installed, downgrade to 1.x
 - `numpy.core.multiarray failed to import` → Binary incompatibility, force reinstall matplotlib
 
-See [VISUALIZATION_TROUBLESHOOTING.md](VISUALIZATION_TROUBLESHOOTING.md) for detailed troubleshooting guide.
+See [VISUALIZATION_TROUBLESHOOTING.md](VISUALIZATION_TROUBLESHOOTING.md) for comprehensive troubleshooting guide.
   
 ### Dataset
 + **_mini_-ImageNet**:  
