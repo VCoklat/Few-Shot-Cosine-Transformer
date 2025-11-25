@@ -53,7 +53,7 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
   + Go to `/dataset/Omniglot/`
   + Run `source download_Omniglot.sh`
 + **Yoga**:
-  + This is our custom dataset with 50 yoga pose categories and 2480 images, including 50 categiores for training, 13 for validating, and 12 for testing set
+  + This is our custom dataset with 50 yoga pose categories and 2480 images, including 50 categories for training, 13 for validating, and 12 for testing set
   + Go to `/dataset/Yoga/`
   + Run `source yoga_processing.sh`
 + **HAM10000** (Skin Lesion Classification):
