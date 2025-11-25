@@ -6,3 +6,4 @@ data_dir['Omniglot']        = '/kaggle/working/Few-Shot-Cosine-Transformer/datas
 data_dir['emnist']          = '/kaggle/working/Few-Shot-Cosine-Transformer/dataset/emnist/' 
 data_dir['Yoga']            = '/kaggle/working/Few-Shot-Cosine-Transformer/dataset/Yoga/'
 data_dir['CIFAR']           = '/kaggle/working/Few-Shot-Cosine-Transformer/dataset/CIFAR_FS/'
+data_dir['HAM10000']        = '/kaggle/working/Few-Shot-Cosine-Transformer/dataset/HAM10000/'
