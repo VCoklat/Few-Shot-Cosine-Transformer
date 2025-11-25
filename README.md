@@ -56,6 +56,11 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
   + This is our custom dataset with 50 yoga pose categories and 2480 images, including 50 categiores for training, 13 for validating, and 12 for testing set
   + Go to `/dataset/Yoga/`
   + Run `source yoga_processing.sh`
++ **HAM10000** (Skin Lesion Classification):
+  + Go to `/dataset/HAM10000/`
+  + Download the dataset following instructions in `download.txt`
+  + Organize images into class folders under `Dataset/` (akiec, bcc, bkl, df, mel, nv, vasc)
+  + Run `python write_ham10000_filelist.py` to generate the JSON files
 + **Custom dataset**:
   + Require three data split json file: `base.json`, `val.json`, `novel.json`  
   + The format should follow:
@@ -78,7 +83,7 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
       + `OptimalFewShot` is the **new unified algorithm** optimized for 8GB VRAM (see [OPTIMAL_FEW_SHOT.md](OPTIMAL_FEW_SHOT.md))
-    + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
+    + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`/`HAM10000`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
   - `--FETI`: Using FETI (Feature Extractor Trained partially on ImageNet) for ResNet Backbone if `1`, none if `0` (default `0`)  
