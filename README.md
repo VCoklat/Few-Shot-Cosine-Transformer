@@ -1,23 +1,4 @@
 # Enhancing Few-shot Image Classification with Cosine Transformer
-
-## 🚀 NEW: Accuracy & OOM Prevention Improvements
-
-**Major updates to increase accuracy and prevent out-of-memory errors!**
-
-✨ **What's New:**
-- 📈 **+10-15% accuracy improvement** (34.38% → 45-50% expected)
-- 💾 **60% memory reduction** - Safe on 8GB GPUs
-- ⚡ **1.5-2x faster training** with mixed precision
-- 🎯 **Dynamic weighting** enabled by default
-- 🧠 **Advanced attention** active from start
-- 🚫 **No OOM errors** with optimized chunking
-
-**📖 Quick Start:** See [QUICKSTART.md](QUICKSTART.md) for usage  
-**📚 Full Guide:** See [IMPROVEMENTS_GUIDE.md](IMPROVEMENTS_GUIDE.md) for technical details  
-**✅ Validate:** Run `python test_improvements.py` to verify improvements
-
----
-
 This repo contains the official implementation code for the paper [**Enhancing Few-shot Image Classification with Cosine Transformer**](https://ieeexplore.ieee.org/document/10190567/) (IEEE Access). In this project, we developed a transformer-based algorithm FS-CT for few-shot classification and cross-attention mechansim, where we proved that cosine similarity benefits attention mechanism and and improve few-shot algorithms across settings and datasets. In particular, with the proposed Cosine attention, we achieve a more stable and consistent output as correlation map between support and query feature and thus improve ViT-bases few-shot algorithms' performance greatly. 
 
 ## 🆕 NEW: Optimal Few-Shot Learning Algorithm
@@ -53,33 +34,9 @@ python train_test.py --method OptimalFewShot --dataset miniImagenet --n_way 5 --
 
 ![](figures/FSCosineTransformer.png)***The overall architecture of the proposed Few-shot Cosine Transformer***, which includes two main components: (a) *learnable prototypical embedding* that calculates the categorical proto representation given random support features that might be either in the far margin of the distribution or very close to each other and (b) *Cosine transformer* that determines the similarity matrix between proto representations and query samples for the few-shot classification tasks. The heart of the transformer architecture is *Cosine attention*, an attention mechanism with cosine similarity and no softmax function to deal with two different sets of features. The Cosine transformer shares a similar architecture with a standard transformer encoder block, with two skip connections to preserve information, a two-layer feed-forward network, and layer normalization between them to reduce noise. The outcome value is through a cosine linear layer, with cosine similarity replacing the dot-product, before feeding to softmax for query prediction.
 
-### NEW: Hybrid FS-CT + ProFONet Method
-
-We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
-- **Few-Shot Cosine Transformer** architecture with cosine attention
-- **VIC Regularization** (Variance-Invariance-Covariance) from ProFONet
-- **Dynamic Weight Scheduling** for adaptive regularization during training
-- **Memory optimizations** for 8GB VRAM constraint (gradient checkpointing, mixed precision)
-
-**Key improvements**:
-- Prevents representation collapse with VIC regularization
-- More stable training with dynamic weight adjustment
-- Optimized for limited GPU memory
-- Target: >20% accuracy improvement over baseline
-
-**Quick start**: See `FSCT_ProFONet_QUICKSTART.md` for usage examples.  
-**Full documentation**: See `FSCT_ProFONet_DOCUMENTATION.md` for algorithm details.
-
 ## Experiments
 ### Dependencies environment
   + `pip install -r requirements.txt`
-  
-  **Note:** If you encounter `ValueError: numpy.dtype size changed, may indicate binary incompatibility` error, run:
-  ```bash
-  pip install --upgrade --force-reinstall numpy scikit-learn
-  ```
-  This ensures NumPy and scikit-learn are properly compatible.
-  
 ### Dataset
 + **_mini_-ImageNet**:  
   + Go to `/dataset/miniImagenet/`
@@ -96,16 +53,14 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
   + Go to `/dataset/Omniglot/`
   + Run `source download_Omniglot.sh`
 + **Yoga**:
-  + This is our custom dataset with 50 yoga pose categories and 2480 images, including 50 categiores for training, 13 for validating, and 12 for testing set
+  + This is our custom dataset with 50 yoga pose categories and 2480 images, including 50 categories for training, 13 for validating, and 12 for testing set
   + Go to `/dataset/Yoga/`
   + Run `source yoga_processing.sh`
-+ **HAM10000**:
-  + Skin cancer dataset with 10,000+ dermatoscopic images across 7 classes of skin lesions
++ **HAM10000** (Skin Lesion Classification):
   + Go to `/dataset/HAM10000/`
-  + Download instructions in `download_HAM10000.txt`
-  + Prepare your image list CSV (see `write_HAM10000_filelist.py` for format)
-  + Run `source HAM10000_processing.sh` for processing dataset
-  + When complete, there are three JSON files `base.json`, `val.json`, and `novel.json` for experiments
+  + Download the dataset following instructions in `download.txt`
+  + Organize images into class folders under `Dataset/` (akiec, bcc, bkl, df, mel, nv, vasc)
+  + Run `python write_ham10000_filelist.py` to generate the JSON files
 + **Custom dataset**:
   + Require three data split json file: `base.json`, `val.json`, `novel.json`  
   + The format should follow:
@@ -128,7 +83,7 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
       + `softmax` is the baseline _scaled dot-product attention mechanism_
       + `cosine` is our proposed _Cosine attention mechanism_
       + `OptimalFewShot` is the **new unified algorithm** optimized for 8GB VRAM (see [OPTIMAL_FEW_SHOT.md](OPTIMAL_FEW_SHOT.md))
-    + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`
+    + Dataset: `miniImagenet`/`CUB`/`CIFAR`/`Omniglot`/`Yoga`/`HAM10000`
 + **Main parameters**:
   - `--backbone`: backbone model (default `ResNet34`)
   - `--FETI`: Using FETI (Feature Extractor Trained partially on ImageNet) for ResNet Backbone if `1`, none if `0` (default `0`)  
@@ -160,12 +115,7 @@ We have implemented a **hybrid method (FSCT_ProFONet)** that combines:
   - Configurations for testing without SE blocks, cosine attention, VIC regularization, etc.
   - See [ABLATION_STUDIES.md](ABLATION_STUDIES.md) for detailed instructions
 + **Example**:  
-  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`
-+ **Example with HAM10000 dataset**:  
-  `python train_test.py --method FSCT_cosine --dataset HAM10000 --backbone ResNet34 --n_way 5 --k_shot 5 --train_aug 1 --wandb 1`
-+ **Example with new FSCT_ProFONet method**:  
-  `python train.py --method FSCT_ProFONet --dataset miniImagenet --backbone Conv4 --n_way 5 --k_shot 5 --n_query 10 --num_epoch 50`  
-  See `FSCT_ProFONet_QUICKSTART.md` for more details on the hybrid method.  
+  `python train_test.py --method FSCT_cosine --dataset miniImagenet --backbone ResNet34 --FETI 1 --n_way 5 --k_shot 5 --train_aug 0 --wandb 1`  
 + **Bash script for multiple running**:
   + `source run_script.sh`
   + Parameters can be modified within the script for specific experiments, including dataset, backbone, method, n_way, k_shot, augmentation
