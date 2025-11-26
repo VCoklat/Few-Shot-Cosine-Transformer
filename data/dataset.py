@@ -16,6 +16,12 @@ class SetDataset:
         with open(data_file, 'r') as f:
             self.meta = json.load(f)
  
+        # NEW ➜ save readable class names if the JSON provides them
+        self.class_labels = self.meta.get(
+            "label_names",
+            [str(i) for i in sorted(set(self.meta["image_labels"]))]
+        )
+        
         self.cl_list = np.unique(self.meta['image_labels']).tolist()
 
         self.sub_meta = {}

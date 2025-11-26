@@ -443,11 +443,9 @@ if __name__ == '__main__':
             # Get dataset-specific configuration
             config = DATASET_CONFIGS.get(params.dataset, DATASET_CONFIGS['miniImagenet'])
             
-            # Create feature model function based on backbone parameter
+            # Create a dummy model function (not used since we override in OptimalFewShotModel)
             def feature_model():
-                if params.dataset in ['Omniglot', 'cross_char']:
-                    params.backbone = change_model(params.backbone)
-                return model_dict[params.backbone](params.FETI, params.dataset, flatten=True) if 'ResNet' in params.backbone else model_dict[params.backbone](params.dataset, flatten=True)
+                return None
             
             # Create model with dataset-specific parameters
             use_focal_loss = config.get('focal_loss', False)

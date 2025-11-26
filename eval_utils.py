@@ -91,15 +91,15 @@ def evaluate(loader, model, n_way, class_names=None,
                     if hasattr(model, 'parse_feature'):
                         try:
                             z_support, z_query = model.parse_feature(x, is_feature=False)
-                            # Only use query features to match the labels (which are only for query samples)
-                            feats = z_query.reshape(-1, z_query.size(-1)).cpu().numpy()
+                            feats = torch.cat([
+                                z_support.view(-1, z_support.size(-1)),
+                                z_query.view(-1, z_query.size(-1))
+                            ], dim=0).cpu().numpy()
                         except Exception as e:
                             print(f"Warning: model.parse_feature failed: {e}")
                             feats = None
                     elif hasattr(model, 'feature'):
                         try:
-                            # For models without parse_feature, extract all features
-                            # Note: This assumes the model's feature() returns features for query samples only
                             feats = model.feature(x.to(device)).cpu().numpy()
                         except Exception as e:
                             print(f"Warning: model.feature failed: {e}")
