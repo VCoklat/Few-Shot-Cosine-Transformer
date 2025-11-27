@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Script to process HAM10000 skin cancer dataset for few-shot learning.
-This script reads the image list CSV and generates base.json, val.json, and novel.json
+This script reads the metadata CSV and generates base.json, val.json, and novel.json
 files compatible with the Few-Shot Cosine Transformer framework.
 
 Dataset structure expected:
-- CSV file with image names and labels
-- Images in HAM10000_images_part_1 and HAM10000_images_part_2 directories
+- CSV metadata file with image_id and dx (diagnosis) columns
+- Images organized in Dataset folder by class (akiec, bcc, bkl, df, mel, nv, vasc)
 """
 
 import numpy as np
@@ -17,35 +17,23 @@ import random
 from os.path import join, isfile, isdir
 
 # --- Configuration ---
-# These paths should be configured by the user
-# Default paths assume Kaggle dataset structure
-dataset_base_path = '/kaggle/input/skin-cancer-the-ham10000-dataset/'
-path_part1 = os.path.join(dataset_base_path, 'HAM10000_images_part_1')
-path_part2 = os.path.join(dataset_base_path, 'HAM10000_images_part_2')
+# Path to the combined images folder (organized by class)
+dataset_base_path = 'dataset/HAM10000/Dataset'
 
-# Path to the CSV file listing 1000 images
-# This should be created by the user before running this script
-image_list_path = '/kaggle/input/d/rafiarrantisi/my-ham1000-final-list/final_1000_image_list.csv'
-
-# Alternative: Use local paths if running locally
-# Uncomment and modify these paths as needed:
-# dataset_base_path = './HAM10000_dataset/'
-# path_part1 = os.path.join(dataset_base_path, 'HAM10000_images_part_1')
-# path_part2 = os.path.join(dataset_base_path, 'HAM10000_images_part_2')
-# image_list_path = './final_1000_image_list.csv'
+# Path to the metadata CSV file
+image_list_path = 'HAM10000_metadata.csv'
 
 cwd = os.getcwd()
 savedir = './'
 dataset_list = ['base', 'val', 'novel']
 
-def load_ham10000_data(csv_path, img_dir_part1, img_dir_part2):
+def load_ham10000_data(csv_path, img_dir):
     """
-    Load HAM10000 dataset from CSV file and image directories.
+    Load HAM10000 dataset from CSV file and image directory.
     
     Args:
-        csv_path: Path to CSV file with image list
-        img_dir_part1: Path to first image directory
-        img_dir_part2: Path to second image directory
+        csv_path: Path to metadata CSV file
+        img_dir: Path to image directory (organized by class folders)
     
     Returns:
         DataFrame with image paths and labels
@@ -73,25 +61,28 @@ def load_ham10000_data(csv_path, img_dir_part1, img_dir_part2):
     # Use 'dx' as label if it exists, otherwise use 'label'
     label_col = 'dx' if 'dx' in df.columns else 'label'
     
-    # Build full image paths
+    # Build full image paths - images are organized by class folder
     image_paths = []
-    for img_id in df['image_id']:
+    not_found_count = 0
+    for idx, row in df.iterrows():
+        img_id = row['image_id']
+        label = row[label_col]
+        
         # Remove .jpg extension if present
         img_id_clean = img_id.replace('.jpg', '')
         
-        # Try to find image in both directories
-        path1 = os.path.join(img_dir_part1, f"{img_id_clean}.jpg")
-        path2 = os.path.join(img_dir_part2, f"{img_id_clean}.jpg")
+        # Image path: Dataset/<class>/<image_id>.jpg
+        img_path = os.path.join(img_dir, label, f"{img_id_clean}.jpg")
         
-        if os.path.exists(path1):
-            image_paths.append(path1)
-        elif os.path.exists(path2):
-            image_paths.append(path2)
+        if os.path.exists(img_path):
+            image_paths.append(img_path)
         else:
             # If running without actual images, use the path anyway
-            # This allows the script to generate JSON files for structure
-            image_paths.append(path1)
-            print(f"⚠️  Warning: Image not found: {img_id_clean}.jpg")
+            image_paths.append(img_path)
+            not_found_count += 1
+    
+    if not_found_count > 0:
+        print(f"⚠️  Warning: {not_found_count} images not found")
     
     df['image_path'] = image_paths
     df['label'] = df[label_col]
@@ -185,57 +176,10 @@ def main():
     print("HAM10000 Dataset Processing for Few-Shot Learning")
     print("=" * 60)
     
-    # Check if running in Kaggle environment
-    is_kaggle = os.path.exists('/kaggle')
-    
-    if not is_kaggle:
-        print("\n⚠️  Note: Not running in Kaggle environment.")
-        print("Please configure the paths at the top of this script:")
-        print("  - dataset_base_path")
-        print("  - image_list_path")
-        print("\nOr run this script in Kaggle with the HAM10000 dataset.")
-        
-        # For demonstration, create sample JSON files with example structure
-        print("\n📝 Creating sample JSON files for demonstration...")
-        
-        # Create sample data
-        sample_classes = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
-        sample_data = {
-            'base': {
-                'image_names': [f'./HAM10000_images_part_1/sample_{i}.jpg' for i in range(10)],
-                'image_labels': [i % 5 for i in range(10)]
-            },
-            'val': {
-                'image_names': [f'./HAM10000_images_part_1/sample_{i}.jpg' for i in range(10, 13)],
-                'image_labels': [5, 5, 5]
-            },
-            'novel': {
-                'image_names': [f'./HAM10000_images_part_1/sample_{i}.jpg' for i in range(13, 16)],
-                'image_labels': [6, 6, 6]
-            }
-        }
-        
-        for split_name in dataset_list:
-            json_data = {
-                "label_names": sample_classes,
-                "image_names": sample_data[split_name]['image_names'],
-                "image_labels": sample_data[split_name]['image_labels']
-            }
-            
-            output_path = os.path.join(savedir, f"{split_name}.json")
-            with open(output_path, 'w') as f:
-                json.dump(json_data, f, indent=2)
-            
-            print(f"✅ Sample {split_name}.json created")
-        
-        print("\n✅ Sample JSON files created successfully!")
-        print("Replace these with actual data when you have the dataset.")
-        return
-    
     try:
         # Load the dataset
         print("\n📂 Loading HAM10000 dataset...")
-        df = load_ham10000_data(image_list_path, path_part1, path_part2)
+        df = load_ham10000_data(image_list_path, dataset_base_path)
         
         # Get all unique classes
         all_classes = sorted(df['label'].unique().tolist())
@@ -260,8 +204,8 @@ def main():
     except FileNotFoundError as e:
         print(f"\n❌ Error: {e}")
         print("\nPlease ensure:")
-        print("  1. The CSV file path is correct")
-        print("  2. The image directories exist")
+        print("  1. The metadata CSV file path is correct")
+        print("  2. The Dataset directory exists with class folders")
         print("  3. You have downloaded the HAM10000 dataset")
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
