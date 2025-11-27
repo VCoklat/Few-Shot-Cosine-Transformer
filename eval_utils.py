@@ -147,6 +147,16 @@ def evaluate(loader, model, n_way, class_names=None,
         y_true, y_pred, average="macro", zero_division=0
     )
 
+    # Compute top-k accuracy, handling binary classification specially
+    # sklearn's top_k_accuracy_score expects 1D scores for binary classification
+    if n_way == 2:
+        # For binary classification, use probability of positive class (class 1)
+        top5_acc = top_k_accuracy_score(y_true, y_scores[:, 1], k=1)
+    else:
+        top5_acc = top_k_accuracy_score(
+            y_true, y_scores, k=min(5, n_way), labels=list(range(n_way))
+        )
+
     res = dict(
         conf_mat        = confusion_matrix(y_true, y_pred).tolist(),
         accuracy        = accuracy_score(y_true, y_pred),
@@ -154,9 +164,7 @@ def evaluate(loader, model, n_way, class_names=None,
         macro_recall    = macro_rec,
         kappa           = cohen_kappa_score(y_true, y_pred),
         mcc             = matthews_corrcoef(y_true, y_pred),
-        top5_accuracy   = top_k_accuracy_score(
-                            y_true, y_scores, k=min(5, n_way), labels=list(range(n_way))
-                          ),
+        top5_accuracy   = top5_acc,
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
         episode_accuracies = episode_accuracies,
