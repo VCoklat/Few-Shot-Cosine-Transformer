@@ -11,6 +11,10 @@ import cv2 as cv
 
 identity = lambda x:x
 
+# Maximum depth to search upward for dataset files
+MAX_SEARCH_DEPTH = 5
+
+
 def resolve_image_path(image_path, data_file_dir):
     """
     Resolve image path that may be absolute or relative.
@@ -19,12 +23,18 @@ def resolve_image_path(image_path, data_file_dir):
     if os.path.exists(image_path):
         return image_path
     
+    # Normalize path and split into components using pathlib for robustness
+    from pathlib import Path
+    normalized_path = Path(image_path)
+    path_parts = normalized_path.parts
+    
     # Try to extract relative path from absolute path
-    # Look for common dataset directory patterns
-    for pattern in ['dataset/', 'Dataset/', 'data/', 'Data/']:
-        if pattern in image_path:
+    # Look for common dataset directory patterns as complete directory components
+    patterns = ['dataset', 'Dataset', 'data', 'Data']
+    for i, part in enumerate(path_parts):
+        if part in patterns:
             # Get the relative path starting from dataset directory
-            rel_path = image_path[image_path.find(pattern):]
+            rel_path = str(Path(*path_parts[i:]))
             # Go up from data_file_dir to find dataset directory
             base_dir = data_file_dir
             while base_dir and not os.path.exists(os.path.join(base_dir, rel_path)):
@@ -37,15 +47,15 @@ def resolve_image_path(image_path, data_file_dir):
             if os.path.exists(resolved):
                 return resolved
     
-    # If still not found, try just the filename in the same directory structure
-    # Extract the path components after the last known directory
-    path_parts = image_path.replace('\\', '/').split('/')
-    # Try progressively shorter paths
+    # If still not found, try progressively shorter paths
     for i in range(len(path_parts)):
-        rel_path = os.path.join(*path_parts[i:])
+        remaining_parts = path_parts[i:]
+        if not remaining_parts:
+            continue
+        rel_path = str(Path(*remaining_parts))
         # Search upward from data_file_dir
         search_dir = data_file_dir
-        for _ in range(5):  # Limit search depth
+        for _ in range(MAX_SEARCH_DEPTH):
             candidate = os.path.join(search_dir, rel_path)
             if os.path.exists(candidate):
                 return candidate
