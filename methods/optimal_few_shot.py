@@ -289,11 +289,25 @@ class OptimalFewShotModel(MetaTemplate):
         self.n_query = n_query
         self.change_way = True
         
-        # Create optimized feature extractor
-        self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset)
-        self.feat_dim = self.feature.final_feat_dim
+        # Create feature extractor from model_func
+        # If model_func returns None, use OptimizedConv4 (for backward compatibility)
+        if model_func is not None and model_func() is not None:
+            self.feature = model_func()
+        else:
+            self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset)
         
-        # Add projection layer to map Conv4 output to feature_dim for transformer
+        # Get feature dimension from backbone
+        if hasattr(self.feature, 'final_feat_dim'):
+            if isinstance(self.feature.final_feat_dim, list):
+                # For non-flattened features [C, H, W], flatten to get dimension
+                self.feat_dim = np.prod(self.feature.final_feat_dim)
+            else:
+                self.feat_dim = self.feature.final_feat_dim
+        else:
+            # Fallback for backbones without final_feat_dim attribute
+            self.feat_dim = 1600
+        
+        # Add projection layer to map backbone output to feature_dim for transformer
         self.projection = nn.Linear(self.feat_dim, feature_dim, bias=False)
         
         self.transformer = LightweightCosineTransformer(
@@ -324,6 +338,9 @@ class OptimalFewShotModel(MetaTemplate):
     def forward(self, x):
         """Forward pass through feature extractor"""
         out = self.feature.forward(x)
+        # Flatten if features are multi-dimensional (e.g., from ResNet)
+        if len(out.shape) > 2:
+            out = out.view(out.size(0), -1)
         return out
     
     def parse_feature(self, x, is_feature):
@@ -334,6 +351,9 @@ class OptimalFewShotModel(MetaTemplate):
         else:
             x = x.contiguous().view(self.n_way * (self.k_shot + self.n_query), *x.size()[2:])
             z_all = self.feature.forward(x)
+            # Flatten if features are multi-dimensional (e.g., from ResNet)
+            if len(z_all.shape) > 2:
+                z_all = z_all.view(z_all.size(0), -1)
             z_all = z_all.reshape(self.n_way, self.k_shot + self.n_query, -1)
             
         z_support = z_all[:, :self.k_shot]

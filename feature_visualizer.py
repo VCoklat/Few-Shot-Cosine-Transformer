@@ -212,9 +212,6 @@ class FeatureVisualizer:
             # Save if requested
             if save_path:
                 fig.write_html(save_path)
-            
-            # Display in Jupyter notebook
-            fig.show()
                 
             return fig
         else:
@@ -253,9 +250,6 @@ class FeatureVisualizer:
             # Save if requested
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            
-            # Display in Jupyter notebook
-            plt.show()
                 
             return plt.gcf()
 

@@ -41,7 +41,7 @@ class MetaTemplate(nn.Module):
         else:
             x           = x.contiguous().view( self.n_way * (self.k_shot + self.n_query), *x.size()[2:]) 
             z_all       = self.feature.forward(x)
-            z_all       = z_all.view( self.n_way, self.k_shot + self.n_query, *z_all.size()[1:])
+            z_all       = z_all.reshape( self.n_way, self.k_shot + self.n_query, *z_all.size()[1:])
             
         z_support   = z_all[:, :self.k_shot]
         z_query     = z_all[:, self.k_shot:]
@@ -69,10 +69,6 @@ class MetaTemplate(nn.Module):
                 optimizer.zero_grad()
                 acc, loss = self.set_forward_loss(x = x.to(device))
                 loss.backward()
-                
-                # Add gradient clipping for training stability and better convergence
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-                
                 optimizer.step()
                 avg_loss += loss.item()
                 avg_acc.append(acc)
