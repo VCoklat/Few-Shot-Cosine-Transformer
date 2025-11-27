@@ -11,8 +11,15 @@ from data.dataset import SetDataset, EpisodicBatchSampler
 from abc import abstractmethod
 
 # Set sharing strategy to file_descriptor to avoid "Trying to resize storage
-# that is not resizable" error with multiprocessing DataLoader
-torch.multiprocessing.set_sharing_strategy('file_descriptor')
+# that is not resizable" error with multiprocessing DataLoader. This is a
+# global setting that affects all DataLoaders in the process.
+# Note: 'file_descriptor' strategy may use more file descriptors but avoids
+# the memory-mapped file issue that causes tensor storage to be non-resizable.
+try:
+    torch.multiprocessing.set_sharing_strategy('file_descriptor')
+except RuntimeError:
+    # Some systems may not support file_descriptor strategy; continue with default
+    pass
 
 class TransformLoader:
     def __init__(self, image_size, 
