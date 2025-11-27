@@ -107,13 +107,15 @@ class SetDataset:
 
     def __getitem__(self,i):
         data, label = next(iter(self.sub_dataloader[i]))
-        # Clone tensors to ensure they have resizable storage
-        # This fixes "Trying to resize storage that is not resizable" error
-        # when using DataLoader with num_workers > 0
+        # Create new tensors with independent, resizable storage to fix
+        # "Trying to resize storage that is not resizable" error when using
+        # DataLoader with num_workers > 0. The clone() creates a copy,
+        # but we need to ensure the storage is independent, so we also
+        # call contiguous() which may create a new storage if needed.
         if torch.is_tensor(data):
-            data = data.clone()
+            data = data.clone().contiguous()
         if torch.is_tensor(label):
-            label = label.clone()
+            label = label.clone().contiguous()
         return data, label
 
     def __len__(self):

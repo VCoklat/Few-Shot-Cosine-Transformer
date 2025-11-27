@@ -1,6 +1,7 @@
 # This code is modified from https://github.com/facebookresearch/low-shot-shrink-hallucinate
 import pdb
 import torch
+import torch.multiprocessing
 from PIL import Image
 import numpy as np
 import random
@@ -8,6 +9,17 @@ import torchvision.transforms as transforms
 import data.additional_transforms as add_transforms
 from data.dataset import SetDataset, EpisodicBatchSampler
 from abc import abstractmethod
+
+# Set sharing strategy to file_descriptor to avoid "Trying to resize storage
+# that is not resizable" error with multiprocessing DataLoader. This is a
+# global setting that affects all DataLoaders in the process.
+# Note: 'file_descriptor' strategy may use more file descriptors but avoids
+# the memory-mapped file issue that causes tensor storage to be non-resizable.
+try:
+    torch.multiprocessing.set_sharing_strategy('file_descriptor')
+except RuntimeError:
+    # Some systems may not support file_descriptor strategy; continue with default
+    pass
 
 class TransformLoader:
     def __init__(self, image_size, 
@@ -82,7 +94,9 @@ class SetDataManager(DataManager):
                              transform)
         sampler = EpisodicBatchSampler(
             len(dataset), self.n_way, self.n_episode)
-        data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True, worker_init_fn=seed_worker, generator=g)     
+        # Use persistent_workers=True to keep worker processes alive between
+        # iterations, which helps avoid memory management issues with tensor storage.
+        data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True, worker_init_fn=seed_worker, generator=g, persistent_workers=True)     
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
         return data_loader
 
