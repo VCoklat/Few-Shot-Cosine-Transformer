@@ -11,10 +11,60 @@ import cv2 as cv
 
 identity = lambda x:x
 
+def resolve_image_path(image_path, data_file_dir):
+    """
+    Resolve image path that may be absolute or relative.
+    If the absolute path doesn't exist, try to make it relative to the JSON file location.
+    """
+    if os.path.exists(image_path):
+        return image_path
+    
+    # Try to extract relative path from absolute path
+    # Look for common dataset directory patterns
+    for pattern in ['dataset/', 'Dataset/', 'data/', 'Data/']:
+        if pattern in image_path:
+            # Get the relative path starting from dataset directory
+            rel_path = image_path[image_path.find(pattern):]
+            # Go up from data_file_dir to find dataset directory
+            base_dir = data_file_dir
+            while base_dir and not os.path.exists(os.path.join(base_dir, rel_path)):
+                parent = os.path.dirname(base_dir)
+                if parent == base_dir:  # Reached root
+                    break
+                base_dir = parent
+            
+            resolved = os.path.join(base_dir, rel_path)
+            if os.path.exists(resolved):
+                return resolved
+    
+    # If still not found, try just the filename in the same directory structure
+    # Extract the path components after the last known directory
+    path_parts = image_path.replace('\\', '/').split('/')
+    # Try progressively shorter paths
+    for i in range(len(path_parts)):
+        rel_path = os.path.join(*path_parts[i:])
+        # Search upward from data_file_dir
+        search_dir = data_file_dir
+        for _ in range(5):  # Limit search depth
+            candidate = os.path.join(search_dir, rel_path)
+            if os.path.exists(candidate):
+                return candidate
+            parent = os.path.dirname(search_dir)
+            if parent == search_dir:
+                break
+            search_dir = parent
+    
+    # Return original path if nothing works (will raise error on access)
+    return image_path
+
+
 class SetDataset:
     def __init__(self, data_file, batch_size, transform):
         with open(data_file, 'r') as f:
             self.meta = json.load(f)
+        
+        # Store the directory containing the JSON file for path resolution
+        self.data_file_dir = os.path.dirname(os.path.abspath(data_file))
  
         self.cl_list = np.unique(self.meta['image_labels']).tolist()
 
@@ -23,7 +73,9 @@ class SetDataset:
             self.sub_meta[cl] = []
 
         for x,y in zip(self.meta['image_names'],self.meta['image_labels']):
-            self.sub_meta[y].append(x)
+            # Resolve the image path relative to JSON file location if needed
+            resolved_path = resolve_image_path(x, self.data_file_dir)
+            self.sub_meta[y].append(resolved_path)
 
         self.sub_dataloader = [] 
         
