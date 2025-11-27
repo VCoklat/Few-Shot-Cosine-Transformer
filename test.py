@@ -35,7 +35,17 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.cuda.empty_cache()
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
-def direct_test(test_loader, model, params):
+def direct_test(test_loader, model, params, n_way=None):
+    """Testing function with optional n_way override.
+    
+    Args:
+        test_loader: DataLoader for test episodes
+        model: Model to evaluate
+        params: Parameters object
+        n_way: Number of ways for evaluation. If None, uses params.n_way
+    """
+    # Use provided n_way or fall back to params.n_way
+    eval_n_way = n_way if n_way is not None else params.n_way
     
     acc = []
     all_preds = []
@@ -59,7 +69,7 @@ def direct_test(test_loader, model, params):
                     scores = model.set_forward(x)
                     
             pred = scores.data.cpu().numpy().argmax(axis=1)
-            y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+            y = np.repeat(range(eval_n_way), pred.shape[0]//eval_n_way)
             
             all_preds.extend(pred.tolist())
             all_labels.extend(y.tolist())
@@ -216,9 +226,26 @@ if __name__ == '__main__':
         modelfile = get_assigned_file(params.checkpoint_dir, params.save_iter)
     else:
         modelfile = get_best_file(params.checkpoint_dir)
+    
+    # Check the number of classes in the test dataset and adjust n_way if necessary
+    test_n_way = params.n_way
+    try:
+        with open(testfile, 'r') as f:
+            test_meta = json.load(f)
+        test_classes = len(np.unique(test_meta['image_labels']))
+        if test_classes < params.n_way:
+            print(f"WARNING: Test dataset has only {test_classes} classes but n_way={params.n_way}.")
+            print(f"Adjusting n_way to {test_classes} for testing.")
+            test_n_way = test_classes
+    except Exception as e:
+        print(f"Warning: Could not check test dataset classes: {e}")
+
+    # Use adjusted n_way for test data manager
+    test_few_shot_params = dict(
+        n_way=test_n_way, k_shot=params.k_shot, n_query=params.n_query)
         
     test_datamgr = SetDataManager(
-        image_size, n_episode=iter_num,  **few_shot_params)
+        image_size, n_episode=iter_num, **test_few_shot_params)
     test_loader = test_datamgr.get_data_loader(testfile, aug=False)
  
     acc_all = []
@@ -247,17 +274,17 @@ if __name__ == '__main__':
     
     if comprehensive:
         # Get class names from data file
-        class_names = get_class_names_from_file(testfile, params.n_way)
+        class_names = get_class_names_from_file(testfile, test_n_way)
         
         # Use comprehensive evaluation with optional feature analysis
         if feature_analysis:
             print("\n🔬 Running comprehensive evaluation with feature analysis...")
-            results = eval_utils.evaluate_comprehensive(test_loader, model, params.n_way, 
+            results = eval_utils.evaluate_comprehensive(test_loader, model, test_n_way, 
                                                        class_names=class_names, device=device)
             eval_utils.pretty_print(results, show_feature_analysis=True)
         else:
             print("\n📊 Running standard comprehensive evaluation...")
-            results = eval_utils.evaluate(test_loader, model, params.n_way, 
+            results = eval_utils.evaluate(test_loader, model, test_n_way, 
                                          class_names=class_names, device=device)
             eval_utils.pretty_print(results, show_feature_analysis=False)
         
@@ -273,7 +300,7 @@ if __name__ == '__main__':
             acc_std = np.std(results.get('episode_accuracies', [acc_mean/100])) * 100
     else:
         # Use standard evaluation
-        acc_mean, acc_std = direct_test(test_loader, model, params)
+        acc_mean, acc_std = direct_test(test_loader, model, params, n_way=test_n_way)
         
     print('%d Test Acc = %4.2f%% +- %4.2f%%' %
             (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))
