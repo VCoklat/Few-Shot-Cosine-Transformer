@@ -106,7 +106,15 @@ class SetDataset:
         # pdb.set_trace()
 
     def __getitem__(self,i):
-        return next(iter(self.sub_dataloader[i]))
+        data, label = next(iter(self.sub_dataloader[i]))
+        # Clone tensors to ensure they have resizable storage
+        # This fixes "Trying to resize storage that is not resizable" error
+        # when using DataLoader with num_workers > 0
+        if torch.is_tensor(data):
+            data = data.clone()
+        if torch.is_tensor(label):
+            label = label.clone()
+        return data, label
 
     def __len__(self):
         return len(self.cl_list)
