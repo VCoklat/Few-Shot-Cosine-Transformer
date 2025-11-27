@@ -571,6 +571,12 @@ if __name__ == '__main__':
             tmp = torch.load(modelfile)
             model.load_state_dict(tmp['state'])
 
+        # Update model's n_way if test dataset has fewer classes
+        if test_n_way != params.n_way:
+            if hasattr(model, 'n_way'):
+                print(f"Updating model n_way from {model.n_way} to {test_n_way}")
+                model.n_way = test_n_way
+
         split = params.split
         if params.save_iter != -1:
             split_str = split + "_" + str(params.save_iter)
