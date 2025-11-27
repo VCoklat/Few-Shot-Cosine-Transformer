@@ -8,11 +8,15 @@ import random
 import torchvision.transforms as transforms
 import os
 import cv2 as cv
+from pathlib import Path
 
 identity = lambda x:x
 
 # Maximum depth to search upward for dataset files
 MAX_SEARCH_DEPTH = 5
+
+# Common dataset directory patterns to look for in paths
+DATASET_DIR_PATTERNS = ['dataset', 'Dataset', 'data', 'Data']
 
 
 def resolve_image_path(image_path, data_file_dir):
@@ -24,24 +28,26 @@ def resolve_image_path(image_path, data_file_dir):
         return image_path
     
     # Normalize path and split into components using pathlib for robustness
-    from pathlib import Path
     normalized_path = Path(image_path)
     path_parts = normalized_path.parts
     
     # Try to extract relative path from absolute path
     # Look for common dataset directory patterns as complete directory components
-    patterns = ['dataset', 'Dataset', 'data', 'Data']
     for i, part in enumerate(path_parts):
-        if part in patterns:
+        if part in DATASET_DIR_PATTERNS:
             # Get the relative path starting from dataset directory
             rel_path = str(Path(*path_parts[i:]))
             # Go up from data_file_dir to find dataset directory
             base_dir = data_file_dir
+            depth = 0
             while base_dir and not os.path.exists(os.path.join(base_dir, rel_path)):
                 parent = os.path.dirname(base_dir)
                 if parent == base_dir:  # Reached root
                     break
                 base_dir = parent
+                depth += 1
+                if depth >= MAX_SEARCH_DEPTH:
+                    break
             
             resolved = os.path.join(base_dir, rel_path)
             if os.path.exists(resolved):
