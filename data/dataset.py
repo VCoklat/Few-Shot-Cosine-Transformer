@@ -107,15 +107,16 @@ class SetDataset:
 
     def __getitem__(self,i):
         data, label = next(iter(self.sub_dataloader[i]))
-        # Create new tensors with independent, resizable storage to fix
+        # Create new tensors with completely independent storage to fix
         # "Trying to resize storage that is not resizable" error when using
-        # DataLoader with num_workers > 0. The clone() creates a copy,
-        # but we need to ensure the storage is independent, so we also
-        # call contiguous() which may create a new storage if needed.
+        # DataLoader with num_workers > 0. Simply using clone().contiguous()
+        # is not sufficient as the storage may still be marked non-resizable.
+        # Using torch.empty_like() + copy_() creates new tensors with 
+        # independent, resizable storage while preserving dtype and device.
         if torch.is_tensor(data):
-            data = data.clone().contiguous()
+            data = torch.empty_like(data).copy_(data)
         if torch.is_tensor(label):
-            label = label.clone().contiguous()
+            label = torch.empty_like(label).copy_(label)
         return data, label
 
     def __len__(self):
