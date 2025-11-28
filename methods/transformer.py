@@ -66,7 +66,8 @@ class FewShotTransformer(MetaTemplate):
            x = self.FFN(x) + x
         
         # Output is the probabilistic prediction for each class
-        return self.linear(x).squeeze()                                                                # (q, n)
+        # Use squeeze(-1) to only remove the last dimension, preserving 2D shape (q, n)
+        return self.linear(x).squeeze(-1)                                                              # (q, n)
     
     def set_forward_loss(self, x):
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))

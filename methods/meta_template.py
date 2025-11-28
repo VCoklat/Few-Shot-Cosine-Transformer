@@ -53,6 +53,9 @@ class MetaTemplate(nn.Module):
         y_query = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         y_query = Variable(y_query.to(device))
 
+        # Ensure scores has at least 2 dimensions for topk operation
+        if scores.dim() == 1:
+            scores = scores.unsqueeze(0)
         topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
         topk_ind = topk_labels
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
