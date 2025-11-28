@@ -47,7 +47,15 @@ class FewShotTransformer(MetaTemplate):
         z_support, z_query = self.parse_feature(x, is_feature)
                 
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
-        z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+        # Handle dynamic n_way changes by slicing or expanding proto_weight as needed
+        if self.n_way <= self.proto_weight.size(0):
+            proto_weight = self.proto_weight[:self.n_way]
+        else:
+            # Expand proto_weight with ones for additional ways beyond initialization
+            extra = torch.ones(self.n_way - self.proto_weight.size(0), self.k_shot, 1, 
+                              device=self.proto_weight.device, dtype=self.proto_weight.dtype)
+            proto_weight = torch.cat([self.proto_weight, extra], dim=0)
+        z_proto = (z_support * self.sm(proto_weight)).sum(1).unsqueeze(0)                              # (1, n, d)
         
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
 
