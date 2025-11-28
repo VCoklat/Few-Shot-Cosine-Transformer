@@ -1,0 +1,43 @@
+# Dataset Specification: miniImageNet
+
+## 1. Overview
+**miniImageNet** is the *de facto* standard benchmark for Few-Shot Learning (FSL) algorithms. Originally proposed by Vinyals et al. in "Matching Networks for One Shot Learning" (NeurIPS 2016), it is a subset of the massive ILSVRC-12 (ImageNet) dataset. Its primary purpose is to evaluate the ability of a model to generalize to novel classes of objects given only a few examples, without the computational overhead of the full ImageNet.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Source** | ILSVRC-12 (ImageNet) |
+| **Total Classes** | 100 Classes |
+| **Total Images** | 60,000 (600 per class) |
+| **Image Resolution** | $84 \times 84$ pixels (Resized from high-res) |
+| **Color Channels** | 3 (RGB) |
+
+### 2.1. Class Splits (Ravi & Larochelle)
+We utilize the standard split proposed by Ravi & Larochelle (ICLR 2017), which ensures no class overlap between training, validation, and testing:
+
+-   **Training (Base Classes)**: 64 Classes (e.g., House Finch, Robin, Triceratops). Used for meta-training the backbone and feature extractor.
+-   **Validation (Val Classes)**: 16 Classes (e.g., Miniskirt, Golden Retriever). Used for hyperparameter tuning and model selection.
+-   **Testing (Novel Classes)**: 20 Classes (e.g., Ant, Lion, Mixing Bowl). Used strictly for final evaluation.
+
+## 3. Role in Thesis
+miniImageNet serves as the **primary comparative benchmark**.
+-   **Challenge**: It contains high intra-class variance (e.g., "Dog" covers many breeds, poses, and backgrounds) and inter-class similarity.
+-   **Goal**: To demonstrate that the **Optimal Few-Shot Model** achieves State-of-the-Art (SOTA) or competitive performance against established baselines (ProtoNet, MAML, FEAT).
+-   **Success Metric**: 5-Way 1-Shot and 5-Way 5-Shot accuracy.
+
+## 4. Preprocessing and Augmentation
+To ensure fair comparison with literature:
+1.  **Resizing**: All images are downsampled to $84 \times 84$ pixels using Bilinear Interpolation.
+2.  **Normalization**: Standard ImageNet statistics:
+    -   Mean: `[0.485, 0.456, 0.406]`
+    -   Std: `[0.229, 0.224, 0.225]`
+3.  **Training Augmentation**:
+    -   RandomResizedCrop (scale=0.08~1.0)
+    -   RandomHorizontalFlip (p=0.5)
+    -   ColorJitter (brightness=0.4, contrast=0.4, saturation=0.4)
+
+## 5. Expected Performance (Baselines)
+-   **ProtoNet (Conv4)**: ~49% (1-shot), ~68% (5-shot)
+-   **RelationNet**: ~50% (1-shot), ~65% (5-shot)
+-   **Target (Ours)**: >60% (1-shot), >75% (5-shot)

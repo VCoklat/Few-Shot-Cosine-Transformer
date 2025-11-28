@@ -144,7 +144,14 @@ Wait, actually: $\mathcal{L} = \lambda \cdot L_{reg}$.
 $\frac{\partial \mathcal{L}}{\partial \lambda} = L_{reg}$.
 If we minimize $\mathcal{L}$, the gradient would just try to make $\lambda \to 0$.
 **Correction**: In standard joint training, this would collapse.
-**Thesis Detail**: The predictor is typically trained via a separate meta-objective or requires a bilevel optimization setup. In this simplified implementation, the predictor acts more as a **Contextual Gate** that conditions the loss landscape based on the input state, and the "learning" comes from the implicit alignment of the feature extractor to maximize the utility of these regularizers.
+**Thesis Detail**: The predictor is typically trained via a separate meta-objective or requires a bilevel optimization setup. In this simplified implementation, the predictor acts more as a **Contextual Gate** that conditions the loss landscape based on the input state.
+
+### 5.3. The "Collapse to Zero" Defense
+A critical theoretical question is: *Why doesn't the network simply predict $\lambda=0$ to minimize the total loss $\mathcal{L}_{total} = \mathcal{L}_{CE} + \lambda \mathcal{L}_{reg}$?*
+
+**Answer**: We enforce a strict **Lower Bound (Clamping)** on the output:
+$$ \lambda_{var} \in [0.05, 0.3], \quad \lambda_{cov} \in [0.005, 0.1] $$
+This constraint ensures that the regularization is **always active**. The predictor cannot "turn off" the structural constraints; it can only modulate their intensity. This forces the feature extractor to find a solution that satisfies both the classification objective and the minimum structural requirements (separability and diversity).
 
 ---
 

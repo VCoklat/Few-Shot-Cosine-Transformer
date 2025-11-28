@@ -1,0 +1,44 @@
+# Dataset Specification: HAM10000 (Human Against Machine)
+
+## 1. Overview
+**HAM10000** ("Human Against Machine with 10000 training images") is a dataset of dermatoscopic images of common pigmented skin lesions. It was collected from the Department of Dermatology at the Medical University of Vienna and released to train AI for skin cancer detection.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Source** | ISIC Archive |
+| **Total Classes** | 7 Diagnostic Categories |
+| **Total Images** | 10,015 |
+| **Image Resolution** | $84 \times 84$ pixels (Resized from $600 \times 450$) |
+| **Color Channels** | 3 (RGB) |
+
+### 2.1. The 7 Classes
+1.  **nv**: Melanocytic nevi (Common moles) - *Dominant Class (~67%)*
+2.  **mel**: Melanoma (Malignant)
+3.  **bkl**: Benign keratosis-like lesions
+4.  **bcc**: Basal cell carcinoma
+5.  **akiec**: Actinic keratoses
+6.  **vasc**: Vascular lesions
+7.  **df**: Dermatofibroma
+
+## 3. Role in Thesis
+HAM10000 represents the **Real-World / Medical Application** of the thesis.
+-   **Challenge 1: Imbalance**: The dataset is heavily imbalanced (6705 'nv' vs 115 'df'). This necessitates the use of **Focal Loss** in our model.
+-   **Challenge 2: High Similarity**: The visual difference between a benign mole and a malignant melanoma can be microscopic.
+-   **Challenge 3: Cross-Domain**: The model (pre-trained on miniImageNet) must adapt to a completely different visual domain (skin textures vs. natural objects).
+
+## 4. Experimental Setup (Episodic)
+Since there are only 7 classes, we cannot perform standard "Unseen Class" validation (which requires holding out classes). Instead, we perform **Randomized Episodic Testing**:
+-   We sample N-Way K-Shot tasks from the *entire* pool of 7 classes.
+-   This tests the model's ability to adapt to *new instances* and *new combinations* of known classes, rather than new classes entirely.
+-   **N-Way**: Typically 5 or 7.
+
+## 5. Preprocessing
+1.  **Resizing**: $84 \times 84$ pixels.
+2.  **Normalization**: ImageNet statistics.
+3.  **Focal Loss**: Enabled ($\gamma=2.0$) to prevent the 'nv' class from dominating the gradients.
+
+## 6. Expected Performance
+-   **Target**: >65% (5-way 5-shot).
+*Note: Accuracy is lower than natural image datasets due to the extreme difficulty of the medical task.*

@@ -39,6 +39,8 @@ $$ \mathbf{q} \cdot \mathbf{p}_y = \mathbf{q} \cdot \left( \frac{1}{K} \sum_{\ma
 -   If $\mathbf{q}$ is a "rotated cat" and $\mathbf{s}$ is a "standard cat", the loss forces their features to align.
 -   This *is* Invariance Learning.
 
+**Critical Requirement**: This mechanism ONLY works if we actively inject variance into the training process via **Data Augmentation**. If the support and query images are always identical (no crop, no jitter), the model learns "Identity Matching" rather than "Invariant Feature Extraction".
+
 ---
 
 ## 3. Visual Explanation

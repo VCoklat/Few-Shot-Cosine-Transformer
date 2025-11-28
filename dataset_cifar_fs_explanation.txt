@@ -1,0 +1,35 @@
+# Dataset Specification: CIFAR-FS (CIFAR Few-Shot)
+
+## 1. Overview
+**CIFAR-FS** (Bertinetto et al., 2018) is a few-shot adaptation of the CIFAR-100 dataset. It is characterized by its **low resolution** ($32 \times 32$ pixels), which presents a unique challenge: the model must extract meaningful semantic features from very limited pixel information.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Source** | CIFAR-100 |
+| **Total Classes** | 100 Classes |
+| **Total Images** | 60,000 (600 per class) |
+| **Image Resolution** | $32 \times 32$ pixels (Native) |
+| **Color Channels** | 3 (RGB) |
+
+### 2.1. Class Splits
+Identical structure to miniImageNet:
+-   **Training**: 64 Classes.
+-   **Validation**: 16 Classes.
+-   **Testing**: 20 Classes.
+
+## 3. Role in Thesis
+CIFAR-FS evaluates the **Backbone Efficiency** and **Robustness to Low Information**.
+-   **Challenge**: At $32 \times 32$, fine details are lost. The SE-Enhanced Conv4 backbone must rely on global shape and color cues rather than high-frequency textures.
+-   **Feature Dimension**: The backbone output is $64 \times 2 \times 2$ (after 4 pooling layers), resulting in a 256-dimensional vector (vs. 1600 for miniImageNet). This tests the **Projection Layer's** ability to work with smaller input embeddings.
+
+## 4. Preprocessing
+1.  **No Resizing**: Images are kept at their native $32 \times 32$ resolution.
+2.  **Normalization**: Standard ImageNet statistics.
+3.  **Augmentation**: Standard RandomCrop (padding=4) and HorizontalFlip.
+
+## 5. Expected Performance
+Due to the simpler nature of CIFAR classes (compared to ImageNet) and the smaller feature space, accuracies are generally higher than miniImageNet.
+-   **Baseline (ProtoNet)**: ~55% (1-shot), ~72% (5-shot)
+-   **Target (Ours)**: >70% (1-shot), >85% (5-shot)

@@ -4,6 +4,8 @@
 
 ### 1.1. The Concept
 The **Few-Shot Transformer (FST)** is a meta-learning architecture that treats the entire few-shot classification task as a **Set-to-Set** problem.
+
+> **Crucial Distinction**: The FST described in this chapter is a more complex **variant** of the Transformer approach. The final **Optimal Few-Shot Model** (implemented in `methods/optimal_few_shot.py`) uses a simplified "Lightweight Cosine Transformer" and **Mean Prototypes** instead of the **Weighted Prototypes** described below. This chapter serves to document the theoretical exploration of weighted prototyping.
 -   **Input**: A set of Support Images (labeled) and a set of Query Images (unlabeled).
 -   **Process**: A Transformer mechanism allows information to flow between the Support set and the Query set.
 -   **Output**: A set of classification scores for the Query images.
@@ -125,4 +127,4 @@ self.linear = nn.Sequential(
 | **Metric** | Cosine / Linear | Euclidean | Cosine |
 | **Best For** | Noisy Support Sets | Spatial Misalignment | General Performance |
 
-**Thesis Conclusion**: The FST introduces the critical idea of **Weighted Prototypes**, acknowledging that not all support examples are created equal. While our "Optimal Model" uses a simple average for stability, the FST demonstrates how learnable weighting can further improve robustness against outliers.
+**Thesis Conclusion**: The FST introduces the critical idea of **Weighted Prototypes**, acknowledging that not all support examples are created equal. While our final **Optimal Model** uses a simple average for stability and efficiency, the FST demonstrates how learnable weighting can theoretically improve robustness against outliers, albeit at the cost of higher overfitting risk in low-data regimes.

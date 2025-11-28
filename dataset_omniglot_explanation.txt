@@ -1,0 +1,34 @@
+# Dataset Specification: Omniglot
+
+## 1. Overview
+**Omniglot** (Lake et al., 2015) is often called the "Transpose of MNIST". It contains 1623 different handwritten characters from 50 different alphabets (e.g., Latin, Greek, Korean, Klingon). Unlike MNIST (which has thousands of examples for 10 classes), Omniglot has very few examples (20) for thousands of classes, making it the quintessential Few-Shot Learning dataset.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Source** | Handwritten characters collected via Amazon Mechanical Turk |
+| **Total Classes** | 1623 Characters |
+| **Total Images** | 32,460 (20 per class) |
+| **Image Resolution** | $28 \times 28$ pixels |
+| **Color Channels** | 1 (Grayscale) |
+
+### 2.1. Class Splits
+-   **Background Set (Train)**: 964 Alphabets (~1200 characters).
+-   **Evaluation Set (Test)**: 20 Alphabets (~423 characters).
+*Note: We follow the Vinyals et al. (2016) split.*
+
+## 3. Role in Thesis
+Omniglot serves as a **Sanity Check** and **Structural Benchmark**.
+-   **Challenge**: The features are purely geometric (strokes, curves, topology). Texture and color are irrelevant.
+-   **Goal**: To verify that the model can learn structural invariance.
+-   **Performance**: Modern FSL methods achieve >99% on Omniglot. It is primarily used to confirm the implementation is correct and converges.
+
+## 4. Preprocessing
+1.  **Inversion**: Images are inverted (White on Black) to match standard CNN input expectations (zero = background).
+2.  **Resizing**: $28 \times 28$ pixels.
+3.  **Augmentation**: Rotation by multiples of 90 degrees is often used in literature (Rotated Omniglot) to increase class count, but we stick to the standard setup unless specified.
+
+## 5. Expected Performance
+-   **Baseline**: ~98-99%
+-   **Target (Ours)**: >99.5% (Near perfect)

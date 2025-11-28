@@ -1,0 +1,42 @@
+# Dataset Specification: Yoga Pose Classification
+
+## 1. Overview
+The **Yoga** dataset is a fine-grained action/pose recognition dataset. It consists of images depicting various Yoga asanas (poses). This dataset challenges the model to learn **Structural and Geometric Features** (body configuration, limb angles) rather than texture or background context.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Structure** | Folder-based (One folder per pose class) |
+| **Total Classes** | Defined by folder count (typically ~82 for Yoga-82, or subset) |
+| **Image Resolution** | Variable (Resized to $84 \times 84$) |
+| **Color Channels** | 3 (RGB) |
+
+### 2.1. Class Splits
+The dataset is split using a deterministic modulo-based strategy (implemented in `write_yoga_filelist.py`):
+-   **Base (Train)**: Classes with index $i$ where $i \pmod 2 = 0$ (50% of classes).
+-   **Validation**: Classes with index $i$ where $i \pmod 4 = 1$ (25% of classes).
+-   **Novel (Test)**: Classes with index $i$ where $i \pmod 4 = 3$ (25% of classes).
+
+*Example*:
+-   Class 0 (Tree Pose) -> Train
+-   Class 1 (Downward Dog) -> Val
+-   Class 2 (Warrior I) -> Train
+-   Class 3 (Plank) -> Test
+
+## 3. Role in Thesis
+Yoga serves as a benchmark for **Geometric Invariance and Pose Estimation**.
+-   **Challenge**: The same pose can be viewed from different angles (front, side, back). The background varies wildly (studio, outdoor, home).
+-   **Invariance**: The model must learn to be invariant to the background and clothing, focusing solely on the *human body configuration*.
+-   **Comparison**: This contrasts with CUB (texture/color focus) and Omniglot (2D topology focus). Yoga requires 3D understanding from 2D images.
+
+## 4. Preprocessing
+1.  **File List Generation**: The script `write_yoga_filelist.py` scans the directory and generates standard FSL JSON splits.
+2.  **Resizing**: $84 \times 84$ pixels.
+3.  **Normalization**: ImageNet statistics.
+
+## 5. Expected Performance
+-   **Difficulty**: Moderate to High.
+-   **Key Factor**: The **Dynamic VIC Regularization** is crucial here.
+    -   **Variance Loss**: Ensures different poses (e.g., Warrior I vs Warrior II) are well-separated.
+    -   **Covariance Loss**: Ensures the model captures multiple independent aspects of the pose (e.g., "arm position" vs "leg position") rather than a single holistic feature.

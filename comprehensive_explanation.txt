@@ -7,8 +7,8 @@
 | **Backbone** | SE-Enhanced Conv4 | To extract robust, channel-calibrated features. | 4 blocks of Conv-BN-ReLU-SE-Pool. |
 | **Projection** | Linear Layer | To compress features and remove bias. | $W \mathbf{x}$ (no bias). |
 | **Refinement** | Cosine Transformer | To adapt prototypes to the query context (Transductive). | Cross-Attention between Support and Query sets. |
-| **Prototypes** | Mean Centroids | To represent classes in the embedding space. | Mean of refined support vectors + L2 Norm. |
-| **Regularization** | Dynamic VIC | To prevent dimensional collapse and ensure separability. | Penalizes high covariance and low variance with adaptive $\lambda$. |
+| **Prototypes** | Mean Centroids | To represent classes in the embedding space. | Mean of refined support vectors + L2 Norm. (Simple Mean chosen for stability). |
+| **Regularization** | Dynamic VIC | To prevent dimensional collapse and ensure separability. | Penalizes high covariance and low variance with adaptive $\lambda$ (Clamped). |
 | **Classification** | Cosine Classifier | To assign labels based on semantic direction. | Softmax of scaled Cosine Similarity. |
 
 ---
@@ -21,8 +21,10 @@ This repository implements the **Optimal Few-Shot Model**, a state-of-the-art ar
 ### 1.2. Key Innovations
 1.  **SE-Enhanced Backbone**: Adds attention mechanisms to the standard Conv4 feature extractor.
 2.  **Lightweight Cosine Transformer**: A specialized transformer that refines prototypes based on the query set (Transductive Inference).
-3.  **Dynamic VIC Regularization**: A meta-learned regularizer that adapts to the difficulty of each episode.
+3.  **Dynamic VIC Regularization**: A meta-learned regularizer that adapts to the difficulty of each episode, with strict lower-bound clamping to ensure structural constraints.
 4.  **Strict Cosine Geometry**: All operations (Attention, Classification, Loss) are performed on the hypersphere.
+
+*Note: This model is distinct from the "Few-Shot Transformer" (FST) and "CrossTransformers" (CTX) variants also discussed in the documentation. The Optimal Model prioritizes efficiency and stability (Mean Prototypes) over the complexity of Weighted Prototypes (FST) or Spatial Alignment (CTX).*
 
 ---
 

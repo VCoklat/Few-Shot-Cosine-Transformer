@@ -22,6 +22,8 @@ The raw prototype $\mathbf{p}'_c$ is calculated as the element-wise mean of the 
 
 $$ \mathbf{p}'_c = \frac{1}{K} \sum_{\mathbf{z}_i \in S_c} \mathbf{z}_i $$
 
+*Note on Weighted Averaging*: While some architectures (like the Few-Shot Transformer) employ learnable weighted averages to discount outliers, the **Optimal Few-Shot Model** strictly uses the **Simple Mean**. Empirical analysis showed that learnable weights in the prototype aggregation step often led to overfitting on the support set in the 5-shot regime. The Simple Mean acts as a stronger regularizer.
+
 ### 2.3. L2 Normalization (Crucial Step)
 Since we are using Cosine Similarity for classification, the magnitude of the prototype vector is irrelevant and potentially harmful (biasing the dot product). We project the prototype onto the unit hypersphere:
 

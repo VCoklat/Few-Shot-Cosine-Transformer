@@ -11,6 +11,8 @@ Most Few-Shot Learning methods (like Prototypical Networks) rely on **Global Ave
 **CrossTransformers (CTX)** addresses this by preserving the spatial dimensions ($H \times W$) and using an **Attention Mechanism** to find correspondences between local patches of the query image and local patches of the support images.
 -   It asks: *"For this specific pixel in the query image, where is the corresponding pixel in the support image?"*
 
+> **Note**: This chapter describes the **CrossTransformers (CTX)** method, which serves as a **baseline** and **comparative architecture** in this thesis. The final **Optimal Few-Shot Model** adopts a global-vector refinement approach (Lightweight Cosine Transformer) rather than this patch-based alignment, prioritizing computational efficiency over fine-grained spatial reconstruction.
+
 ---
 
 ## 2. Mathematical Formulation
