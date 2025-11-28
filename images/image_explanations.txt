@@ -1,0 +1,67 @@
+# Visual Guide to the Optimal Few-Shot Model
+
+This document provides detailed explanations for the visual diagrams generated for this project. These images are located in the `images/` directory.
+
+---
+
+## 1. SE-Enhanced Conv4 Backbone
+**File**: `images/se_conv4_backbone.png`
+
+### Description
+This diagram illustrates the feature extraction architecture.
+-   **Structure**: The network consists of 4 sequential blocks.
+-   **Block Detail**: Inside each block, you can see the standard Convolutional layer followed by Batch Normalization and ReLU.
+-   **The SE Module**: The key innovation is the "Squeeze-and-Excitation" side-path.
+    -   **Squeeze**: Global Average Pooling condenses the spatial information into a channel descriptor.
+    -   **Excitation**: A small neural network (dimensionality reduction $\to$ ReLU $\to$ expansion $\to$ Sigmoid) predicts importance weights for each channel.
+    -   **Scale**: These weights are multiplied with the original feature map, highlighting important features (e.g., "wings") and suppressing noise (e.g., "background").
+
+---
+
+## 2. Contextual Refinement Transformer
+**File**: `images/contextual_refinement.png`
+
+### Description
+This schematic shows how the model adapts to the specific task context (Transductive Inference).
+-   **Input**: Two sets of vectors: Support Set (Blue) and Query Set (Orange).
+-   **Cross-Attention**: The central block represents the Transformer mechanism. Arrows indicate information flow.
+    -   Query vectors "look at" Support vectors to find similarities.
+    -   Support vectors "look at" other Support vectors to reinforce class concepts.
+-   **Output**: The vectors on the right are "Refined". They have moved in the feature space to be better aligned, reducing the distribution shift between the support and query sets.
+
+---
+
+## 3. VIC Regularization Concept
+**File**: `images/vic_regularization.png`
+
+### Description
+A conceptual visualization of the two regularization forces applied to the prototypes.
+-   **Left (Variance)**: Shows colored spheres (prototypes) on a unit circle. The "Variance Loss" acts as a repulsive force (arrows), pushing them away from each other to maximize separability.
+-   **Right (Covariance)**: Shows a scatter plot of two feature dimensions.
+    -   **Before**: Points form a diagonal line (High Correlation/Redundancy).
+    -   **After**: Points form a spherical cloud (Zero Correlation/Independence). This ensures the model uses all available dimensions effectively.
+
+---
+
+## 4. Cosine Classification on the Hypersphere
+**File**: `images/cosine_classification.png`
+
+### Description
+A 3D geometric view of the final classification step.
+-   **The Sphere**: Represents the L2-normalized feature space (Hypersphere). All vectors have length 1.
+-   **Prototypes**: Colored arrows pointing to different locations on the surface (Class Centers).
+-   **Query**: A white arrow pointing to a location between the prototypes.
+-   **Metric**: The arcs represent the **Angle** ($\theta$). The classifier calculates the Cosine of this angle. The Query is assigned to the class with the smallest angle (highest Cosine Similarity).
+
+---
+
+## 5. CrossTransformers Spatial Alignment
+**File**: `images/crosstransformers_alignment.png`
+
+### Description
+Explains the spatial attention mechanism used in the CTX baseline.
+-   **Images**: A Support image (Dog on Left) and a Query image (Dog on Right).
+-   **Connections**: Colored lines connect specific patches of the images.
+    -   A line connects the "Head" of the support dog to the "Head" of the query dog.
+    -   A line connects the "Leg" to the "Leg".
+-   **Meaning**: This shows how the model finds semantic correspondence even when the object has moved. It "hallucinates" a spatially aligned prototype to match the query.
