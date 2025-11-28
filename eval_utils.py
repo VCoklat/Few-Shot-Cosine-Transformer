@@ -29,6 +29,14 @@ def evaluate(loader, model, n_way, class_names=None,
     """
     Evaluate `model` on an episodic `loader`.
 
+    Args:
+        loader: DataLoader providing episodic batches
+        model: Few-shot model with set_forward method and n_query attribute
+        n_way: Number of classes per episode
+        class_names: Optional list of class name strings
+        chunk: Deprecated, kept for backward compatibility (not used)
+        device: Device to run inference on
+
     Returns a dict with:
         macro_f1          – overall F1 (macro)
         class_f1          – list of per-class F1
@@ -48,32 +56,38 @@ def evaluate(loader, model, n_way, class_names=None,
 
     all_true, all_pred, all_scores, times = [], [], [], []
 
+    # Get n_query from model if available, otherwise infer from first batch
+    n_query = getattr(model, 'n_query', None)
+
     for x, _ in loader:                     # dataset's y is ignored
         t0 = time.time()
 
-        # forward pass in safe chunks
-        if x.size(0) > chunk:
-            scores = torch.cat(
-                [model.set_forward(x[i:i + chunk].to(device)).cpu()
-                 for i in range(0, x.size(0), chunk)],
-                dim=0
-            )
-        else:
-            scores = model.set_forward(x.to(device)).cpu()
+        # Forward pass for the complete episode
+        # Note: chunking along n_way dimension would break episodic structure,
+        # so we process each episode as a whole
+        scores = model.set_forward(x.to(device)).cpu()
+        
+        # Ensure scores has at least 2 dimensions for consistent processing
+        if scores.dim() == 1:
+            scores = scores.unsqueeze(0)
 
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         times.append(time.time() - t0)
 
         preds = scores.argmax(1).numpy()
         all_pred.append(preds)
         all_scores.append(scores.numpy())
 
-        n_query = len(preds) // n_way
+        # Calculate n_query from predictions if not available from model
+        if n_query is None:
+            n_query = len(preds) // n_way
         all_true.append(np.repeat(np.arange(n_way), n_query))
 
         del scores
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     y_true   = np.concatenate(all_true)
     y_pred   = np.concatenate(all_pred)
