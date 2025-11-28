@@ -47,7 +47,9 @@ class FewShotTransformer(MetaTemplate):
         z_support, z_query = self.parse_feature(x, is_feature)
                 
         z_support = z_support.contiguous().view(self.n_way, self.k_shot, -1)
-        z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+        # Use only the first n_way rows of proto_weight to handle dynamic n_way changes
+        proto_weight = self.proto_weight[:self.n_way]
+        z_proto = (z_support * self.sm(proto_weight)).sum(1).unsqueeze(0)                              # (1, n, d)
         
         z_query = z_query.contiguous().view(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
 
