@@ -86,6 +86,9 @@ def evaluate(loader, model, n_way, class_names=None,
 
         # Calculate n_query for this episode from actual predictions
         # Each episode may have different dimensions if n_classes < n_way
+        # Validate that predictions are evenly divisible by actual_n_way
+        if len(preds) % actual_n_way != 0:
+            raise ValueError(f"Episode has {len(preds)} predictions which is not divisible by actual_n_way={actual_n_way}")
         episode_n_query = len(preds) // actual_n_way
         all_true.append(np.repeat(np.arange(actual_n_way), episode_n_query))
 

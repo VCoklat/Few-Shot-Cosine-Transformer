@@ -187,6 +187,9 @@ def evaluate_comprehensive(test_loader, model, params, data_file):
                 # Get predictions
                 pred = scores.data.cpu().numpy().argmax(axis=1)
                 # Calculate ground truth using actual dimensions from this episode
+                # Validate that predictions are evenly divisible by actual_n_way
+                if pred.shape[0] % actual_n_way != 0:
+                    raise ValueError(f"Episode has {pred.shape[0]} predictions which is not divisible by actual_n_way={actual_n_way}")
                 y = np.repeat(range(actual_n_way), pred.shape[0]//actual_n_way)
                 
                 all_predictions.extend(pred)
@@ -310,6 +313,9 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
                     pred = scores.data.cpu().numpy().argmax(axis=1)
                     
                     # Calculate ground truth using actual dimensions from this episode
+                    # Validate that predictions are evenly divisible by actual_n_way
+                    if pred.shape[0] % actual_n_way != 0:
+                        raise ValueError(f"Episode has {pred.shape[0]} predictions which is not divisible by actual_n_way={actual_n_way}")
                     y = np.repeat(range(actual_n_way), pred.shape[0]//actual_n_way)
                     
                     all_preds.extend(pred.tolist())
