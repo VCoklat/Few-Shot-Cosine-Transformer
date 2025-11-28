@@ -109,6 +109,23 @@ def evaluate(loader, model, n_way, class_names=None,
         y_true, y_pred, average="macro", zero_division=0
     )
 
+    # Handle top-k accuracy for binary classification case
+    # sklearn's top_k_accuracy_score expects 1D y_score for binary classification
+    # with 2D y_scores, even if labels parameter is provided.
+    if actual_n_classes == 1:
+        # Edge case: only one class present, top-k accuracy is trivially 1.0
+        top_k_acc = 1.0
+    elif actual_n_classes == 2 and y_scores.ndim == 2 and y_scores.shape[1] == 2:
+        # For binary case, use probability of positive class (column 1).
+        # In few-shot episodic evaluation, labels are always remapped to 0, 1, ..., n_way-1
+        # so column 1 corresponds to class label 1 (the positive class by convention).
+        # Note: For binary classification, top-k where k>=2 is always 100%, so k=1 is used.
+        top_k_acc = top_k_accuracy_score(y_true, y_scores[:, 1], k=1)
+    else:
+        top_k_acc = top_k_accuracy_score(
+            y_true, y_scores, k=min(5, actual_n_classes), labels=list(range(actual_n_classes))
+        )
+
     res = dict(
         macro_f1        = float(f1_score(y_true, y_pred, average="macro")),
         class_f1        = f1_score(y_true, y_pred, average=None).tolist(),
@@ -118,9 +135,7 @@ def evaluate(loader, model, n_way, class_names=None,
         macro_recall    = macro_rec,
         kappa           = cohen_kappa_score(y_true, y_pred),
         mcc             = matthews_corrcoef(y_true, y_pred),
-        top5_accuracy   = top_k_accuracy_score(
-                            y_true, y_scores, k=min(5, actual_n_classes), labels=list(range(actual_n_classes))
-                          ),
+        top5_accuracy   = top_k_acc,
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
     )
