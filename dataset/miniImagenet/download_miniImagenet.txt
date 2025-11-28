@@ -1,2 +1,0 @@
-Mini-imagenet download: https://lyy.mpi-inf.mpg.de/mtl/download/
-There is another variant of ImageNet for Few-shot learning named tieredImageNet. You are feel free to explore that as well :D
