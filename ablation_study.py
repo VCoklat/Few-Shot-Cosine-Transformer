@@ -768,7 +768,7 @@ def extract_predictions_from_evaluation(
     return np.array(all_preds), np.array(all_labels)
 
 
-def compare_models_mcnemar(
+def compare_models_mcnemar_from_loader(
     loader,
     model_a,
     model_b,
@@ -778,7 +778,11 @@ def compare_models_mcnemar(
     device: str = "cuda"
 ) -> Dict:
     """
-    Compare two models using McNemar's test.
+    Compare two models using McNemar's test by evaluating them on a data loader.
+    
+    Note: This function evaluates the loader twice (once per model). For efficiency,
+    consider using `extract_predictions_from_evaluation` once per model and then
+    calling `mcnemar_test` directly with the cached predictions and labels.
     
     Args:
         loader: DataLoader for evaluation
