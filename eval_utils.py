@@ -56,11 +56,16 @@ def evaluate(loader, model, n_way, class_names=None,
 
     all_true, all_pred, all_scores, times = [], [], [], []
 
-    # Get n_query from model if available, otherwise infer from first batch
-    n_query = getattr(model, 'n_query', None)
-
     for x, _ in loader:                     # dataset's y is ignored
         t0 = time.time()
+
+        # Get the actual n_way from this batch (first dimension)
+        # This handles cases where n_classes < n_way in the dataset
+        actual_n_way = x.size(0)
+        
+        # Update model's n_way to match actual batch dimensions if model supports it
+        if hasattr(model, 'change_way') and model.change_way:
+            model.n_way = actual_n_way
 
         # Forward pass for the complete episode
         # Note: chunking along n_way dimension would break episodic structure,
@@ -79,10 +84,10 @@ def evaluate(loader, model, n_way, class_names=None,
         all_pred.append(preds)
         all_scores.append(scores.numpy())
 
-        # Calculate n_query from predictions if not available from model
-        if n_query is None:
-            n_query = len(preds) // n_way
-        all_true.append(np.repeat(np.arange(n_way), n_query))
+        # Calculate n_query for this episode from actual predictions
+        # Each episode may have different dimensions if n_classes < n_way
+        episode_n_query = len(preds) // actual_n_way
+        all_true.append(np.repeat(np.arange(actual_n_way), episode_n_query))
 
         del scores
         gc.collect()
@@ -93,6 +98,9 @@ def evaluate(loader, model, n_way, class_names=None,
     y_pred   = np.concatenate(all_pred)
     y_scores = np.concatenate(all_scores)
 
+    # Determine the actual number of classes seen in the data
+    actual_n_classes = len(np.unique(y_true))
+    
     # core classification metrics
     macro_prec, macro_rec, _, _ = precision_recall_fscore_support(
         y_true, y_pred, average="macro", zero_division=0
@@ -108,7 +116,7 @@ def evaluate(loader, model, n_way, class_names=None,
         kappa           = cohen_kappa_score(y_true, y_pred),
         mcc             = matthews_corrcoef(y_true, y_pred),
         top5_accuracy   = top_k_accuracy_score(
-                            y_true, y_scores, k=min(5, n_way), labels=list(range(n_way))
+                            y_true, y_scores, k=min(5, actual_n_classes), labels=list(range(actual_n_classes))
                           ),
         avg_inf_time    = float(np.mean(times)),
         param_count     = sum(p.numel() for p in model.parameters()) / 1e6,
