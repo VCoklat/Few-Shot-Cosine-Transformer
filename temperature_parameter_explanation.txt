@@ -1,0 +1,112 @@
+# Chapter: The Learnable Temperature Parameter ($\tau$) in Cosine Attention
+
+## 1. Introduction
+
+### 1.1. The Role of Temperature
+In the Softmax function, the "Temperature" parameter ($\tau$) acts as a control knob for the **entropy** (or "sharpness") of the resulting probability distribution.
+-   **Low Temperature ($\tau \to 0$)**: The distribution becomes "peaky". The model becomes extremely confident, placing almost all probability mass on the single highest scoring item (approximating an `argmax` operation).
+-   **High Temperature ($\tau \to \infty$)**: The distribution becomes "flat". The model becomes uncertain, spreading probability mass uniformly across all items.
+
+### 1.2. Why is it Critical for Cosine Similarity?
+Cosine Similarity outputs values strictly in the range $[-1, 1]$.
+-   Without scaling, the difference between a "good match" (0.9) and a "bad match" (0.1) is just 0.8.
+-   When passed to Softmax ($e^{0.9}$ vs $e^{0.1}$), the resulting probabilities are $\approx [0.69, 0.31]$. This is too "soft"; the model cannot attend strongly to the relevant item.
+-   The Temperature parameter scales these values (e.g., dividing by $\tau=0.1$ is multiplying by 10). The inputs become 9.0 and 1.0. Softmax then yields $\approx [0.999, 0.001]$.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. The Scaled Softmax
+Given a vector of raw similarity scores $\mathbf{s} \in \mathbb{R}^N$ (where $s_i = \cos(\mathbf{q}, \mathbf{k}_i)$):
+
+$$ \text{Attention}_i = \frac{\exp(s_i / \tau)}{\sum_{j=1}^N \exp(s_j / \tau)} $$
+
+Where $\tau > 0$ is the scalar temperature parameter.
+
+### 2.2. Gradient Analysis
+Let $p_i$ be the output probability. The gradient of the softmax w.r.t input $s_i$ is proportional to $1/\tau$.
+$$ \frac{\partial p_i}{\partial s_j} = \frac{1}{\tau} p_i (\delta_{ij} - p_j) $$
+
+-   **If $\tau$ is too large**: Gradients are scaled down by $1/\tau$. Learning is slow (Vanishing Gradients).
+-   **If $\tau$ is too small**: Gradients are scaled up. Learning is unstable (Exploding Gradients).
+-   **Learnable $\tau$**: Allows the model to find the "sweet spot" where gradients are large enough to learn but stable enough to converge.
+
+---
+
+## 3. Visualizing the Effect of $\tau$
+
+Consider a query attending to 3 keys with Cosine Similarities: $[0.9, 0.8, 0.1]$.
+
+| Temperature ($\tau$) | Scaled Scores ($s/\tau$) | Softmax Output (Probabilities) | Interpretation | Entropy |
+| :--- | :--- | :--- | :--- | :--- |
+| **10.0** (Hot) | $[0.09, 0.08, 0.01]$ | $[0.336, 0.333, 0.330]$ | **Uniform**. The model ignores the differences. | High |
+| **1.0** (Standard) | $[0.9, 0.8, 0.1]$ | $[0.38, 0.35, 0.17]$ | **Soft**. Slight preference for the best match. | Medium |
+| **0.1** (Warm) | $[9.0, 8.0, 1.0]$ | $[0.73, 0.27, 0.00]$ | **Discriminative**. Strong preference for the top 2. | Low |
+| **0.01** (Cold) | $[90, 80, 10]$ | $[0.9999, 0.0001, 0.0]$ | **Hard Argmax**. Only attends to the absolute best. | Zero |
+
+### 3.1. Diagram
+```mermaid
+graph TD
+    Scores[Raw Scores: 0.9, 0.8, 0.1]
+    
+    Scores -->|Divide by 1.0| Soft1[Softmax]
+    Scores -->|Divide by 0.05| Soft2[Softmax]
+    
+    Soft1 --> Out1[Output: 0.38, 0.35, 0.17]
+    Soft2 --> Out2[Output: 0.88, 0.12, 0.00]
+    
+    style Out1 fill:#eee,stroke:#333
+    style Out2 fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+---
+
+## 4. Why Make it Learnable?
+
+### 4.1. Dynamic Adaptation to Training Phase
+-   **Early Training**: The embeddings are random. Cosine similarities are meaningless noise. A **high $\tau$** is beneficial here to smooth out the noise and allow gradients to flow from all examples.
+-   **Late Training**: The embeddings are good. The model should trust the similarities. A **low $\tau$** allows the model to make sharp, confident decisions.
+-   By making $\tau$ a `nn.Parameter`, the optimizer (Adam) automatically adjusts this schedule.
+
+### 4.2. Adaptation to Dataset Difficulty
+-   **Easy Datasets (Omniglot)**: Features are distinct. Similarities are either 1.0 or 0.0. The model can afford a lower $\tau$.
+-   **Hard Datasets (CUB)**: Fine-grained differences. Similarities are clustered (e.g., 0.85 vs 0.82). The model might need a specific $\tau$ to amplify these small differences without causing instability.
+
+---
+
+## 5. Implementation Details
+
+### 5.1. Code Snippet (`methods/optimal_few_shot.py`)
+
+```python
+class CosineAttention(nn.Module):
+    def __init__(self, dim, temperature=0.05):
+        super().__init__()
+        # Initialize to a low value (sharp attention)
+        self.temperature = nn.Parameter(torch.tensor(temperature))
+        
+    def forward(self, q, k, v):
+        # ... normalization ...
+        
+        # Clamp to avoid division by zero or negative temperatures
+        temp = self.temperature.clamp(min=0.01)
+        
+        # Scale
+        attn = torch.matmul(q, k.transpose(-2, -1)) / temp
+        
+        # Softmax
+        attn = F.softmax(attn, dim=-1)
+```
+
+### 5.2. Initialization Strategy
+We initialize $\tau \approx 0.05$ (equivalent to multiplying scores by 20).
+-   Raw range: $[-1, 1]$.
+-   Scaled range: $[-20, 20]$.
+-   $e^{20}$ is huge, $e^{-20}$ is zero. This initialization encourages the model to be "peaky" (confident) from the start, which works well for Few-Shot Learning where we often want to find the *single* most similar support example.
+
+---
+
+## 6. Thesis Conclusion
+
+The learnable temperature parameter $\tau$ is not a minor detail; it is the **bridge** between the bounded geometry of the hypersphere (Cosine Similarity) and the probability space required for Attention and Classification. It allows the neural network to self-regulate its "confidence" and "focus," adapting the sharpness of its attention mechanism to the evolving quality of its feature representations.

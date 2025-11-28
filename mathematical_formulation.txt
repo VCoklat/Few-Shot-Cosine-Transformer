@@ -1,0 +1,144 @@
+# Thesis Technical Report: Mathematical Formulation of the Optimal Few-Shot Model
+
+## 1. Introduction
+This chapter provides a rigorous mathematical definition of the entire pipeline, from feature extraction to final classification. We define the notation, the transformations at each layer, and the loss functions used for optimization.
+
+---
+
+## 2. Notation Table
+
+| Symbol | Definition | Dimension (Typical) |
+| :--- | :--- | :--- |
+| $\mathcal{S}$ | Support Set | $N_{way} \times K_{shot}$ images |
+| $\mathcal{Q}$ | Query Set | $N_{way} \times N_{query}$ images |
+| $\mathbf{X}$ | Input Image | $3 \times 84 \times 84$ |
+| $f_\theta(\cdot)$ | Backbone Function (Conv4+SE) | $\mathbb{R}^{1600}$ |
+| $\mathbf{z}_{raw}$ | Raw Feature Vector | $1600$ |
+| $\mathbf{W}_p$ | Projection Matrix | $64 \times 1600$ |
+| $\mathbf{z}$ | Projected Feature Vector | $64$ |
+| $\mathbf{P}$ | Class Prototypes | $N_{way} \times 64$ |
+| $\tau$ | Attention Temperature | Scalar (Learnable) |
+| $\alpha$ | Classification Temperature | Scalar (Learnable) |
+| $\lambda$ | Regularization Coefficient | Scalar (Dynamic) |
+
+---
+
+## 3. Feature Extraction & Projection
+
+### 3.1. Backbone Transformation
+The image $\mathbf{X}$ is processed by the SE-Enhanced Conv4 backbone $f_\theta$:
+$$ \mathbf{z}_{raw} = \text{Flatten}(\text{SE-Conv4}(\mathbf{X})) $$
+$$ \mathbf{z}_{raw} \in \mathbb{R}^{D_{backbone}} $$
+
+### 3.2. Linear Projection
+We map the high-dimensional raw features to the transformer dimension $D_{model}$:
+$$ \mathbf{z}_{proj} = \mathbf{W}_p \mathbf{z}_{raw} $$
+$$ \mathbf{z}_{proj} \in \mathbb{R}^{D_{model}} $$
+*Note: No bias term is added to preserve vector directionality.*
+
+---
+
+## 4. Contextual Refinement (Cosine Transformer)
+
+Let $\mathbf{Z} \in \mathbb{R}^{N_{total} \times D_{model}}$ be the matrix of all projected features in the episode (Support $\cup$ Query).
+
+### 4.1. Multi-Head Projections
+For head $h \in \{1 \dots H\}$:
+$$ \mathbf{Q}_h = \mathbf{Z}\mathbf{W}_Q^h, \quad \mathbf{K}_h = \mathbf{Z}\mathbf{W}_K^h, \quad \mathbf{V}_h = \mathbf{Z}\mathbf{W}_V^h $$
+
+### 4.2. Cosine Attention Mechanism
+The core innovation is the use of Cosine Similarity instead of Dot Product.
+
+1.  **L2 Normalization**:
+    $$ \hat{\mathbf{Q}}_h = \frac{\mathbf{Q}_h}{\|\mathbf{Q}_h\|_2}, \quad \hat{\mathbf{K}}_h = \frac{\mathbf{K}_h}{\|\mathbf{K}_h\|_2} $$
+
+2.  **Similarity Matrix**:
+    $$ \mathbf{A}_{raw} = \hat{\mathbf{Q}}_h (\hat{\mathbf{K}}_h)^T $$
+    Elements $a_{ij} \in [-1, 1]$.
+
+3.  **Softmax with Temperature**:
+    $$ \mathbf{A} = \text{softmax}\left( \frac{\mathbf{A}_{raw}}{\tau} \right) $$
+    $\tau$ is a learnable scalar, clamped to $\tau \ge 0.01$.
+
+4.  **Aggregation**:
+    $$ \mathbf{O}_h = \mathbf{A} \mathbf{V}_h $$
+
+### 4.3. Output Processing
+The heads are concatenated and passed through a residual FFN:
+$$ \mathbf{Z}_{attn} = \text{Concat}(\mathbf{O}_1 \dots \mathbf{O}_H)\mathbf{W}_O $$
+$$ \mathbf{Z}_{refined} = \text{LayerNorm}(\mathbf{Z} + \mathbf{Z}_{attn}) $$
+$$ \mathbf{Z}_{final} = \text{LayerNorm}(\mathbf{Z}_{refined} + \text{FFN}(\mathbf{Z}_{refined})) $$
+
+---
+
+## 5. Prototype Computation
+
+Let $S_c$ be the set of refined feature vectors belonging to class $c$.
+
+### 5.1. Mean Centroid
+$$ \mathbf{p}'_c = \frac{1}{|S_c|} \sum_{\mathbf{z} \in S_c} \mathbf{z} $$
+
+### 5.2. Prototype Normalization
+$$ \mathbf{p}_c = \frac{\mathbf{p}'_c}{\|\mathbf{p}'_c\|_2} $$
+This ensures prototypes lie on the unit hypersphere.
+
+---
+
+## 6. Classification (Inference)
+
+Given a refined query vector $\mathbf{q}$ and prototypes $\{\mathbf{p}_c\}_{c=1}^N$.
+
+### 6.1. Cosine Logits
+$$ s_c = \alpha \cdot \text{CosineSim}(\mathbf{q}, \mathbf{p}_c) = \alpha \cdot \frac{\mathbf{q} \cdot \mathbf{p}_c}{\|\mathbf{q}\| \|\mathbf{p}_c\|} $$
+Since vectors are normalized:
+$$ s_c = \alpha (\mathbf{q} \cdot \mathbf{p}_c) $$
+$\alpha$ is the learnable inverse temperature.
+
+### 6.2. Probability
+$$ P(y=c | \mathbf{q}) = \frac{\exp(s_c)}{\sum_{k=1}^N \exp(s_k)} $$
+
+---
+
+## 7. Loss Functions (Training)
+
+The total loss $\mathcal{L}$ is a weighted sum of the Classification Loss and the Regularization Loss.
+
+### 7.1. Classification Loss (Cross-Entropy)
+$$ \mathcal{L}_{CE} = - \sum_{(\mathbf{q}, y) \in \mathcal{Q}} \log P(y | \mathbf{q}) $$
+
+*Optionally Focal Loss:*
+$$ \mathcal{L}_{Focal} = - \sum (\mathbf{q}, y) (1 - P(y|\mathbf{q}))^\gamma \log P(y|\mathbf{q}) $$
+
+### 7.2. Dynamic VIC Regularization
+Applied to the batch of prototypes $\mathbf{P} \in \mathbb{R}^{N \times D}$.
+
+#### 7.2.1. Variance Loss (Separability)
+$$ \mathcal{L}_{var} = \frac{1}{N(N-1)} \sum_{i \neq j} \text{CosineSim}(\mathbf{p}_i, \mathbf{p}_j) $$
+*Minimizing this pushes prototypes apart.*
+
+#### 7.2.2. Covariance Loss (Decorrelation)
+Let $\bar{\mathbf{P}}$ be the centered prototypes.
+Covariance Matrix $\mathbf{C} = \frac{1}{N-1} \bar{\mathbf{P}}^T \bar{\mathbf{P}}$.
+$$ \mathcal{L}_{cov} = \frac{1}{D} \sum_{i \neq j} \mathbf{C}_{ij}^2 $$
+*Minimizing this forces off-diagonal correlations to zero.*
+
+### 7.3. Total Loss
+$$ \mathcal{L}_{total} = \mathcal{L}_{CE} + \lambda_{var} \mathcal{L}_{var} + \lambda_{cov} \mathcal{L}_{cov} $$
+
+Where $\lambda_{var}, \lambda_{cov}$ are predicted by the Episode-Adaptive Lambda network:
+$$ (\lambda_{var}, \lambda_{cov}) = \text{MLP}(\text{EpisodeStats}(\mathcal{S}, \mathcal{Q})) $$
+
+---
+
+## 8. Summary of Learnable Parameters
+
+The set of parameters $\Theta$ optimized during meta-training includes:
+
+1.  **Backbone**: Convolutional weights, SE block weights ($\mathbf{W}_1, \mathbf{W}_2$), BatchNorm params.
+2.  **Projection**: Matrix $\mathbf{W}_p$.
+3.  **Transformer**: $\mathbf{W}_{QKV}, \mathbf{W}_O$, FFN weights, LayerNorm params, Temperature $\tau$.
+4.  **Classifier**: Inverse Temperature $\alpha$.
+5.  **Regularizer**: MLP weights for $\lambda$ prediction, Dataset Embeddings.
+
+Total optimization objective:
+$$ \Theta^* = \arg\min_\Theta \mathbb{E}_{\text{Episode} \sim \mathcal{D}_{train}} [\mathcal{L}_{total}(\text{Episode}; \Theta)] $$

@@ -1,0 +1,130 @@
+# Chapter: The Lightweight Cosine Transformer
+
+## Executive Summary: What, Why, How
+
+| Aspect | Description |
+| :--- | :--- |
+| **What is it?** | A simplified, efficient variant of the Transformer architecture designed specifically for Few-Shot Learning. It replaces the standard Dot-Product Attention with **Cosine Attention**. |
+| **Why use it?** | Standard Transformers are data-hungry and prone to overfitting on small datasets (like 5-shot tasks). Also, Dot-Product Attention is sensitive to feature magnitude, which is noisy in FSL. Cosine Attention is scale-invariant and bounded, making it more robust. |
+| **How does it work?** | It uses a single layer (`depth=1`) with shared projection matrices to minimize parameters. The attention scores are computed using Cosine Similarity divided by a learnable temperature $\tau$, ensuring stable gradients and focusing purely on semantic direction. |
+
+---
+
+## 1. Introduction
+
+### 1.1. The Standard Transformer Bottleneck
+Standard Transformers (e.g., "Attention Is All You Need") rely on **Scaled Dot-Product Attention**. While powerful, this mechanism has significant drawbacks in the Few-Shot Learning (FSL) regime:
+1.  **Unbounded Values**: Dot products range from $(-\infty, \infty)$. This can lead to large variance in attention scores, especially when feature magnitudes fluctuate (common in low-data settings).
+2.  **Scale Sensitivity**: The standard scaling factor $\frac{1}{\sqrt{d_k}}$ assumes a specific variance distribution that may not hold for few-shot feature embeddings.
+3.  **Parameter Heaviness**: Standard blocks (Multi-Head Attention + huge MLP) are data-hungry and prone to overfitting when trained on small episodes.
+
+### 1.2. The Proposed Solution
+We introduce the **Lightweight Cosine Transformer**. It replaces the Dot-Product mechanism with **Cosine Similarity**, ensuring bounded, scale-invariant attention. It is also architecturally "pruned" (shared projections, shallow depth) to prevent overfitting.
+
+---
+
+## 2. Mathematical Formulation: Dot-Product vs. Cosine Attention
+
+### 2.1. Standard Scaled Dot-Product Attention
+$$ \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V $$
+-   **Metric**: Dot Product $q \cdot k$.
+-   **Scaling**: Fixed $\frac{1}{\sqrt{d_k}}$.
+-   **Issue**: If $\|q\|$ or $\|k\|$ is large, the dot product is large. The softmax enters regions with extremely small gradients (vanishing gradients), stalling learning.
+
+### 2.2. Cosine Attention (Our Method)
+$$ \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{\text{CosineSim}(Q, K)}{\tau}\right) V $$
+$$ \text{CosineSim}(Q, K) = \frac{Q K^T}{\|Q\|_2 \|K\|_2} $$
+
+-   **Metric**: Cosine Similarity (Angle).
+-   **Scaling**: Learnable Temperature $\tau$.
+-   **Advantage**:
+    1.  **Bounded**: Inputs to softmax are strictly in $[-1/\tau, 1/\tau]$. No explosion.
+    2.  **Scale Invariant**: The magnitude of feature vectors is explicitly removed via normalization. Only the *semantic direction* determines attention.
+    3.  **Learnable Sharpness**: $\tau$ allows the model to dynamically adjust how "peaky" the attention distribution is.
+
+---
+
+## 3. Architecture: The "Lightweight" Design
+
+We optimize the Transformer block specifically for FSL tasks where data is scarce.
+
+### 3.1. Shared Linear Projection
+**Standard**: 3 separate matrices $W_Q, W_K, W_V$.
+**Ours**: A single matrix $W_{QKV}$ that projects input $X$ to $3 \times d_{model}$.
+-   **Code**: `self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)`
+-   **Benefit**: Reduces memory fragmentation and CUDA kernel launches.
+
+### 3.2. Single Layer Depth
+**Standard**: 6-12 layers (BERT, ViT).
+**Ours**: 1 layer (`depth=1`).
+-   **Reasoning**: In FSL, we are aligning two sets (Support and Query). We don't need deep reasoning; we just need a single step of "contextual mixing" to align the distributions. Deeper layers leads to overfitting on the support set.
+
+### 3.3. Reduced MLP Expansion
+**Standard**: MLP hidden dim is $4 \times d_{model}$.
+**Ours**: MLP hidden dim is $2 \times d_{model}$.
+-   **Code**: `nn.Linear(d_model, d_model * 2, bias=False)`
+-   **Benefit**: Halves the parameter count of the FFN, further regularizing the model.
+
+---
+
+## 4. Visual Comparison
+
+### 4.1. Attention Score Distribution
+
+```mermaid
+graph TD
+    subgraph "Dot Product (Unbounded)"
+        A[-100] --- B[0] --- C[+100]
+        Note1[High Variance<br>Unstable Gradients]
+    end
+    
+    subgraph "Cosine (Bounded)"
+        D[-1.0] --- E[0] --- F[+1.0]
+        Note2[Bounded Range<br>Stable Gradients]
+    end
+    
+    style A fill:#f99
+    style C fill:#f99
+    style D fill:#9f9
+    style F fill:#9f9
+```
+
+### 4.2. The Effect of Temperature $\tau$
+
+The term $\frac{\cos(\theta)}{\tau}$ controls the entropy of the attention.
+
+-   **High $\tau$ (e.g., 1.0)**: Softmax is flat. The model averages over many support examples. (Good for noisy data).
+-   **Low $\tau$ (e.g., 0.01)**: Softmax is a "Hard Argmax". The model attends only to the single nearest neighbor. (Good for clean, distinct data).
+-   **Dynamic**: Since $\tau$ is a parameter, the network *learns* the optimal strategy for the dataset.
+
+---
+
+## 5. Detailed Example: The "Magnitude Trap"
+
+**Scenario**:
+-   Query $q$: A dark image of a "Cat". Feature vector small: $q = [0.1, 0.1]$.
+-   Key $k_1$: A bright image of a "Cat". Feature vector large: $k_1 = [10, 10]$.
+-   Key $k_2$: A generic "Dog". Feature vector medium: $k_2 = [5, 0]$.
+
+**1. Dot Product Attention**:
+-   $q \cdot k_1 = 0.1*10 + 0.1*10 = 2.0$.
+-   $q \cdot k_2 = 0.1*5 + 0.1*0 = 0.5$.
+-   Scores: 2.0 vs 0.5.
+-   **Result**: Correctly prefers Cat.
+-   *But wait*: What if $k_2$ (Dog) was also bright? $k_2 = [50, 0]$.
+    -   $q \cdot k_2 = 5.0$.
+    -   Now the Dog score (5.0) > Cat score (2.0). **Misclassification due to magnitude.**
+
+**2. Cosine Attention**:
+-   Normalize $q \to [0.707, 0.707]$.
+-   Normalize $k_1 \to [0.707, 0.707]$.
+-   Normalize $k_2 \to [1.0, 0.0]$.
+-   $Sim(q, k_1) = 0.707*0.707 + 0.707*0.707 = 1.0$.
+-   $Sim(q, k_2) = 0.707*1.0 + 0 = 0.707$.
+-   **Result**: Always prefers Cat (1.0 > 0.707), regardless of how "bright" (large magnitude) the Dog vector becomes.
+
+---
+
+## 6. Thesis Conclusion
+
+The **Lightweight Cosine Transformer** is not just a "smaller" Transformer; it is a fundamentally different architectural choice tailored for the geometry of Few-Shot Learning. By enforcing **Cosine Similarity** at the attention level, we ensure that the contextual refinement process is driven purely by semantic content, immune to the magnitude variations that plague low-sample regimes. The **Lightweight** constraints (depth, width) act as structural regularization, preventing the "memorization" of support sets and ensuring generalization to novel query classes.

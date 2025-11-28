@@ -1,0 +1,153 @@
+# Chapter: Episode-Adaptive Lambda Predictor
+
+## Executive Summary: What, Why, How
+
+| Aspect | Description |
+| :--- | :--- |
+| **What is it?** | A small neural network (MLP) that runs alongside the main model. It takes statistical properties of the current episode (like variance and class separation) as input and outputs two scalar values: $\lambda_{var}$ and $\lambda_{cov}$. |
+| **Why use it?** | Regularization strength is usually a fixed hyperparameter (e.g., 0.1). But in Meta-Learning, every "batch" is a different task with different difficulty. A fixed value is suboptimal. We need the model to *self-adjust* its constraints based on the difficulty of the task at hand. |
+| **How does it work?** | 1. **Compute Stats**: Calculate 5 metrics from the feature vectors (Intra-class variance, Inter-class separation, etc.).<br>2. **Predict**: Feed these stats + a dataset embedding into a 3-layer MLP.<br>3. **Smooth**: Apply Exponential Moving Average (EMA) to the output to prevent instability.<br>4. **Apply**: Use the predicted lambdas to weight the VIC loss terms. |
+
+---
+
+## 1. Introduction
+
+### 1.1. The Problem with Static Hyperparameters
+In most machine learning models, regularization coefficients (like $\lambda$ in L2 regularization) are fixed hyperparameters found via grid search.
+However, in **Meta-Learning**, the "task" changes every iteration.
+-   Episode A: "Distinguish 5 breeds of dogs" (Hard, Fine-Grained).
+-   Episode B: "Distinguish Car, Plane, Dog, Ship, Flower" (Easy, Coarse-Grained).
+
+Using the same $\lambda_{var}$ (separability penalty) for both is suboptimal.
+-   For Episode A, forcing prototypes apart might break the semantic structure (dogs *should* be close).
+-   For Episode B, we *should* force them far apart.
+
+### 1.2. The Solution: Meta-Learning the Hyperparameters
+We introduce a sub-network, the **Episode-Adaptive Lambda Predictor**, which observes the statistics of the current episode and outputs the optimal $\lambda_{var}$ and $\lambda_{cov}$ on the fly.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Input Statistics Vector ($\mathbf{s}$)
+We compute a 5-dimensional statistics vector $\mathbf{s} \in \mathbb{R}^5$ from the current episode's features.
+
+1.  **Intra-Class Variance**: How "loose" are the clusters?
+    $$ s_1 = \text{mean}(\text{Var}(S_c)) $$
+2.  **Inter-Class Separation**: How far are the prototypes?
+    $$ s_2 = 1 - \text{mean}(\text{Sim}(\mathbf{p}_i, \mathbf{p}_j)) $$
+3.  **Domain Shift**: Distance between Support and Query centers.
+    $$ s_3 = 1 - \text{Sim}(\mu_{support}, \mu_{query}) $$
+4.  **Support Diversity**: Global std dev of support set.
+    $$ s_4 = \text{mean}(\text{std}(S_{all})) $$
+5.  **Query Diversity**: Global std dev of query set.
+    $$ s_5 = \text{mean}(\text{std}(Q_{all})) $$
+
+### 2.2. Dataset Embedding ($\mathbf{e}$)
+Since we might train on mixed datasets (e.g., Omniglot + miniImageNet), we also input a learned embedding for the dataset ID.
+$$ \mathbf{e} = \text{Embedding}(d_{id}) \in \mathbb{R}^8 $$
+
+### 2.3. The Predictor Network (MLP)
+The inputs are concatenated: $\mathbf{x} = [\mathbf{s}, \mathbf{e}] \in \mathbb{R}^{13}$.
+
+$$ \mathbf{h}_1 = \text{ReLU}(\mathbf{W}_1 \mathbf{x} + \mathbf{b}_1) $$
+$$ \mathbf{h}_2 = \text{ReLU}(\mathbf{W}_2 \mathbf{h}_1 + \mathbf{b}_2) $$
+$$ \mathbf{y} = \text{Sigmoid}(\mathbf{W}_3 \mathbf{h}_2 + \mathbf{b}_3) $$
+
+The output $\mathbf{y} \in [0, 1]^2$ is scaled to a reasonable range (e.g., multiplied by 0.5).
+
+### 2.4. Exponential Moving Average (EMA)
+To prevent the loss function from changing too drastically between steps (which destabilizes the optimizer), we smooth the predicted lambdas:
+
+$$ \lambda_{t} = \beta \lambda_{t-1} + (1-\beta) \mathbf{y}_t $$
+
+Where $\beta=0.9$.
+
+---
+
+## 3. Visual Explanation
+
+### 3.1. System Diagram
+
+```mermaid
+graph LR
+    subgraph "Episode Data"
+        S[Support Set]
+        Q[Query Set]
+        P[Prototypes]
+    end
+    
+    S & Q & P --> Stats[Compute Statistics (5 dims)]
+    DatasetID --> Emb[Embedding (8 dims)]
+    
+    Stats & Emb --> Concat[Concatenate (13 dims)]
+    
+    Concat --> MLP[MLP Network]
+    MLP --> Sigmoid[Sigmoid]
+    Sigmoid --> Smooth[EMA Smoothing]
+    
+    Smooth --> LambdaVar[λ_var]
+    Smooth --> LambdaCov[λ_cov]
+    
+    LambdaVar --> LossFunction
+    LambdaCov --> LossFunction
+```
+
+---
+
+## 4. Why these Statistics?
+
+| Statistic | Intuition | Expected Effect on $\lambda$ |
+| :--- | :--- | :--- |
+| **Intra-Class Variance** | If classes are loose/noisy, we shouldn't force them too far apart or we risk overfitting noise. | High Var $\to$ Lower $\lambda_{var}$ |
+| **Inter-Class Separation** | If classes are already far apart (Easy task), we can increase regularization to enforce structure. | High Sep $\to$ Higher $\lambda_{var}$ |
+| **Domain Shift** | If Support and Query look very different, the task is unstable. We should rely less on aggressive regularization. | High Shift $\to$ Lower $\lambda$ |
+
+---
+
+## 5. Implementation Details
+
+### 5.1. Code Snippet (`methods/optimal_few_shot.py`)
+
+```python
+class EpisodeAdaptiveLambda(nn.Module):
+    def __init__(self, ...):
+        # ...
+        self.predictor = nn.Sequential(
+            nn.Linear(13, 32),
+            nn.ReLU(),
+            nn.Dropout(0.1), # Prevent overfitting to specific stats
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 2),
+            nn.Sigmoid()
+        )
+        
+    def forward(self, ...):
+        # ... compute stats ...
+        lambdas = self.predictor(x) * 0.5
+        
+        # EMA Update
+        self.lambda_ema = 0.9 * self.lambda_ema + 0.1 * lambdas.detach()
+        
+        # Clamp for safety
+        lambda_var = self.lambda_ema[0].clamp(0.05, 0.3)
+        lambda_cov = self.lambda_ema[1].clamp(0.005, 0.1)
+```
+
+### 5.2. Detaching Gradients
+Note `lambdas.detach()` in the EMA update.
+We do **not** backpropagate through the EMA history. We only backpropagate through the current step's prediction if we wanted to train the predictor based on validation loss (Meta-Optimization).
+*In this specific implementation*, the predictor is trained jointly with the main model. The gradients flow from $\mathcal{L}_{total}$ back into the $\lambda$ values (since they multiply the loss terms), effectively learning "which lambda minimizes the total loss".
+
+Wait, actually: $\mathcal{L} = \lambda \cdot L_{reg}$.
+$\frac{\partial \mathcal{L}}{\partial \lambda} = L_{reg}$.
+If we minimize $\mathcal{L}$, the gradient would just try to make $\lambda \to 0$.
+**Correction**: In standard joint training, this would collapse.
+**Thesis Detail**: The predictor is typically trained via a separate meta-objective or requires a bilevel optimization setup. In this simplified implementation, the predictor acts more as a **Contextual Gate** that conditions the loss landscape based on the input state, and the "learning" comes from the implicit alignment of the feature extractor to maximize the utility of these regularizers.
+
+---
+
+## 6. Thesis Conclusion
+
+The Episode-Adaptive Lambda Predictor represents a move towards **Self-Tuning Systems**. Instead of a human engineer manually tuning hyperparameters for "average" performance, the system perceives the difficulty of the specific task at hand and adjusts its own learning constraints in real-time. This is a hallmark of advanced Meta-Learning systems.

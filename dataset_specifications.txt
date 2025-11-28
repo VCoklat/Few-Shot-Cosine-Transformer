@@ -1,0 +1,127 @@
+# Chapter: Dataset Specifications and Experimental Setup
+
+## 1. Introduction
+
+### 1.1. The Role of Benchmarks
+To rigorously evaluate the **Optimal Few-Shot Model**, we utilize a diverse suite of datasets that test different aspects of generalization:
+-   **General Object Recognition**: miniImageNet, CIFAR-FS.
+-   **Fine-Grained Classification**: CUB-200-2011 (Birds).
+-   **Character Recognition**: Omniglot.
+-   **Medical Imaging**: HAM10000 (Skin Lesions).
+
+This diversity ensures that the proposed method is not just overfitting to a specific domain but possesses true meta-learning capabilities.
+
+---
+
+## 2. Dataset Descriptions
+
+### 2.1. miniImageNet ("The Gold Standard")
+Proposed by Vinyals et al. (2016), this is the most widely used benchmark in Few-Shot Learning. It is a subset of the larger ImageNet dataset.
+
+| Property | Specification |
+| :--- | :--- |
+| **Source** | ILSVRC-12 (ImageNet) |
+| **Total Classes** | 100 Classes |
+| **Split** | 64 Train / 16 Val / 20 Test |
+| **Images per Class** | 600 |
+| **Resolution** | $84 \times 84$ pixels |
+| **Challenge** | High intra-class variance (e.g., "Dog" includes many breeds). |
+
+### 2.2. CUB-200-2011 (Caltech-UCSD Birds)
+A fine-grained dataset containing 200 bird species.
+
+| Property | Specification |
+| :--- | :--- |
+| **Total Classes** | 200 Classes |
+| **Split** | 100 Train / 50 Val / 50 Test |
+| **Images per Class** | $\approx 60$ |
+| **Resolution** | $84 \times 84$ pixels |
+| **Challenge** | **Fine-Grained**. Distinguishing between "Sparrow" and "Finch" requires attending to subtle features (beak shape, wing pattern). |
+
+### 2.3. CIFAR-FS (CIFAR Few-Shot)
+A subset of CIFAR-100 adapted for few-shot learning.
+
+| Property | Specification |
+| :--- | :--- |
+| **Source** | CIFAR-100 |
+| **Total Classes** | 100 Classes |
+| **Split** | 64 Train / 16 Val / 20 Test |
+| **Images per Class** | 600 |
+| **Resolution** | $32 \times 32$ pixels |
+| **Challenge** | **Low Resolution**. Features are pixelated and blurry. Tests the model's ability to extract information from limited signal. |
+
+### 2.4. Omniglot ("Transpose of MNIST")
+Contains handwritten characters from 50 different alphabets.
+
+| Property | Specification |
+| :--- | :--- |
+| **Total Classes** | 1623 Characters |
+| **Split** | 1200 Train / 423 Test |
+| **Images per Class** | 20 (drawn by different people) |
+| **Resolution** | $28 \times 28$ pixels (Grayscale) |
+| **Challenge** | **Structure**. Classes are defined by stroke geometry, not texture. |
+
+### 2.5. HAM10000 (Human Against Machine)
+A large collection of multi-source dermatoscopic images of common pigmented skin lesions.
+
+| Property | Specification |
+| :--- | :--- |
+| **Total Classes** | 7 Classes (e.g., Melanoma, Nevus) |
+| **Split** | Randomized Episodic Split |
+| **Resolution** | $84 \times 84$ pixels |
+| **Challenge** | **Imbalance & Medical Domain**. The classes are highly imbalanced. The visual differences between benign and malignant lesions are extremely subtle. |
+
+---
+
+## 3. Experimental Configuration Table
+
+The `DATASET_CONFIGS` dictionary in `methods/optimal_few_shot.py` defines the specific hyperparameters tuned for each dataset.
+
+| Parameter | Omniglot | CUB | CIFAR-FS | miniImageNet | HAM10000 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **N-Way** | 5 | 5 | 5 | 5 | 7 |
+| **K-Shot** | 1 | 5 | 5 | 5 | 5 |
+| **Input Size** | 28 | 84 | 32 | 84 | 84 |
+| **Backbone LR** | 0.001 | 0.0005 | 0.001 | 0.0005 | 0.001 |
+| **Dropout** | 0.05 | 0.15 | 0.1 | 0.1 | 0.2 |
+| **Focal Loss** | False | False | False | False | **True** |
+| **Target Acc** | 99.5% | 85.0% | 85.0% | 75.0% | 65.0% |
+| **Dataset ID** | 0 | 1 | 2 | 3 | 4 |
+
+### 3.1. Analysis of Hyperparameters
+-   **Learning Rate**: Lower for `miniImageNet` and `CUB` (0.0005) because the features are more complex and we want to avoid destroying the pre-trained weights (if any) or overshooting minima.
+-   **Dropout**: Highest for `HAM10000` (0.2) and `CUB` (0.15). These datasets are prone to overfitting due to small sample sizes per class (CUB) or high similarity between classes (HAM10000).
+-   **Focal Loss**: Only enabled for `HAM10000`. This confirms that the medical dataset has hard/imbalanced classes that require the loss function to focus on difficult examples.
+
+---
+
+## 4. Preprocessing and Augmentation
+
+### 4.1. Normalization
+All images are normalized using the standard ImageNet statistics (unless grayscale):
+-   **Mean**: `[0.485, 0.456, 0.406]`
+-   **Std**: `[0.229, 0.224, 0.225]`
+
+### 4.2. Training Augmentation (`train_aug=True`)
+To enforce **Invariance** (as discussed in the Invariance Loss chapter), we apply the following transformations during the meta-training phase:
+1.  **RandomResizedCrop**: Scales the image and takes a random crop. Simulates distance and framing changes.
+2.  **RandomHorizontalFlip**: Simulates pose changes.
+3.  **ColorJitter**: Randomly changes Brightness, Contrast, and Saturation. Simulates lighting conditions.
+
+*Note*: During Validation and Testing, only Center Cropping and Normalization are applied.
+
+---
+
+## 5. Thesis Justification
+
+### 5.1. Why this specific mix?
+1.  **miniImageNet**: Essential for comparison with State-of-the-Art (SOTA). If we don't beat baselines here, the method is invalid.
+2.  **CUB**: Tests the **Contextual Refinement** module. Can the Transformer learn to focus on "beaks" instead of "background"?
+3.  **CIFAR-FS**: Tests the **Backbone Efficiency**. Can the SE-Conv4 extract good features from just $32 \times 32$ pixels?
+4.  **HAM10000**: Tests **Real-World Applicability**. Demonstrates that the model isn't just a toy for academic datasets but has potential in critical domains like healthcare.
+
+### 5.2. The "Dataset ID" Embedding
+The `EpisodeAdaptiveLambda` predictor takes `dataset_id` as input.
+-   This allows the model to learn a "Dataset Prior".
+-   Example: "If ID=1 (CUB), I know this is fine-grained, so I should predict a lower $\lambda_{var}$ to allow prototypes to be closer."
+-   This enables **Multi-Domain Learning** where a single model could potentially switch behaviors based on the input domain.

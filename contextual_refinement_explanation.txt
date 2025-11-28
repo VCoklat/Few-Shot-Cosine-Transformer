@@ -1,0 +1,158 @@
+# Chapter: Contextual Refinement via Lightweight Cosine Transformer
+
+## Executive Summary: What, Why, How
+
+| Aspect | Description |
+| :--- | :--- |
+| **What is it?** | A module that refines the feature vectors of Support and Query images by allowing them to "attend" to each other using a Transformer mechanism. |
+| **Why use it?** | Standard Few-Shot Learning is "Inductive": it builds a prototype solely from the Support set. This ignores the Query set. If the Query image is slightly different (e.g., different lighting), the prototype might not match. **Transductive** learning (looking at the Query) allows us to adjust the prototype to bridge this gap. |
+| **How does it work?** | We feed both Support and Query features into a Transformer. The Attention mechanism calculates similarities (Cosine) between all pairs. Each feature is then updated by a weighted sum of the others. This "pulls" similar features closer together in the embedding space before classification. |
+
+---
+
+## 1. Introduction
+
+### 1.1. The Problem: Static Embeddings
+In traditional Prototypical Networks, the embedding function $f_\theta$ processes each image independently.
+-   Image A $\to$ Vector A.
+-   Image B $\to$ Vector B.
+-   The relationship between A and B is only calculated *after* the embedding is fixed (during classification).
+
+This is suboptimal because the "meaning" of an image can depend on the context.
+-   In a task "Dogs vs. Wolves", the feature "ear shape" is critical.
+-   In a task "Dogs vs. Cars", the feature "ear shape" is irrelevant; "has wheels" is critical.
+-   A static embedding cannot adapt to these different contexts.
+
+### 1.2. The Solution: Contextual Refinement
+We introduce a **Lightweight Cosine Transformer** layer *after* the backbone and *before* the prototype calculation.
+This layer takes the entire set of features (Support + Query) as a sequence and allows them to interact.
+-   The model can look at the other images in the episode to decide which features to emphasize.
+-   It effectively performs **Metric Learning on the fly**.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Input Sequence
+Let $\mathcal{S}$ be the support set and $\mathcal{Q}$ be the query set.
+We combine them into a single sequence of feature vectors $\mathbf{Z} \in \mathbb{R}^{(N_S + N_Q) \times D}$.
+$$ \mathbf{Z} = [\mathbf{z}_{s1}, \dots, \mathbf{z}_{sK}, \mathbf{z}_{q1}, \dots, \mathbf{z}_{qM}] $$
+
+### 2.2. Cosine Attention Mechanism
+Standard Transformers use Dot-Product Attention. We use **Cosine Attention** for scale invariance (critical for Few-Shot Learning).
+
+For a single head $h$:
+1.  **Projections**:
+    $$ \mathbf{Q}_h = \mathbf{Z}\mathbf{W}_Q^h, \quad \mathbf{K}_h = \mathbf{Z}\mathbf{W}_K^h, \quad \mathbf{V}_h = \mathbf{Z}\mathbf{W}_V^h $$
+2.  **Cosine Similarity**:
+    $$ \mathbf{A}_{ij} = \frac{\mathbf{Q}_{h,i} \cdot \mathbf{K}_{h,j}}{\|\mathbf{Q}_{h,i}\| \|\mathbf{K}_{h,j}\|} $$
+3.  **Softmax (with Temperature)**:
+    $$ \mathbf{W}_{ij} = \frac{\exp(\mathbf{A}_{ij} / \tau)}{\sum_k \exp(\mathbf{A}_{ik} / \tau)} $$
+    Where $\tau$ is a learnable temperature parameter.
+4.  **Aggregation**:
+    $$ \mathbf{O}_h = \mathbf{W} \mathbf{V}_h $$
+
+### 2.3. Residual Connection & FFN
+The output is processed via a Feed-Forward Network (FFN) with residual connections:
+$$ \mathbf{Z}' = \text{LayerNorm}(\mathbf{Z} + \mathbf{O}) $$
+$$ \mathbf{Z}_{refined} = \text{LayerNorm}(\mathbf{Z}' + \text{FFN}(\mathbf{Z}')) $$
+
+---
+
+## 3. Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph "Input"
+        S[Support Features]
+        Q[Query Features]
+    end
+    
+    S & Q --> Concat[Concatenate -> Sequence Z]
+    
+    Concat --> Norm1[LayerNorm]
+    
+    subgraph "Cosine Attention Block"
+        Norm1 --> Q_proj[W_q]
+        Norm1 --> K_proj[W_k]
+        Norm1 --> V_proj[W_v]
+        
+        Q_proj & K_proj --> CosSim[Cosine Similarity / τ]
+        CosSim --> Softmax
+        Softmax & V_proj --> MatMul[Weighted Sum]
+    end
+    
+    MatMul --> Add1[Add Residual]
+    Concat --> Add1
+    
+    Add1 --> Norm2[LayerNorm]
+    Norm2 --> FFN[Feed Forward Network]
+    FFN --> Add2[Add Residual]
+    Add1 --> Add2
+    
+    Add2 --> Split[Split Sequence]
+    
+    Split --> S_new[Refined Support]
+    Split --> Q_new[Refined Query]
+```
+
+---
+
+## 4. Why "Lightweight"?
+
+Standard Transformers (like BERT or ViT) are very heavy (millions of parameters). In Few-Shot Learning, we have very little data (e.g., 5 images per class). A heavy Transformer would **overfit** instantly.
+
+Our design choices for efficiency:
+1.  **Single Layer**: We use `depth=1`. We only need one step of refinement to align the distributions.
+2.  **Shared Projections**: Often we share weights for Q, K, V or use lower dimensions.
+3.  **Small MLP**: The FFN expansion ratio is small (e.g., 2x instead of 4x).
+4.  **Cosine Attention**: Removes the need for complex scaling heuristics and stabilizes training gradients.
+
+---
+
+## 5. Detailed Example: "Dogs vs. Wolves"
+
+**Scenario**:
+-   **Support**: 1 image of a Husky (looks like a wolf). Label: "Dog".
+-   **Query**: 1 image of a Wolf. Label: "Wolf".
+-   **Problem**: Without context, the Husky looks more like the Wolf than like a Poodle.
+
+**Refinement Process**:
+1.  **Input**: The sequence contains [Husky, Poodle, Wolf].
+2.  **Attention**:
+    -   The Husky feature attends to the Poodle feature (since they are both in the "Dog" support set, implicitly or explicitly).
+    -   The Transformer notices that "curly tail" is a feature present in the Poodle but not the Wolf.
+    -   It *updates* the Husky vector to emphasize the "tail" feature and de-emphasize the "grey fur" feature (which is confusingly similar to the Wolf).
+3.  **Result**:
+    -   The refined Husky vector moves *closer* to the Poodle vector.
+    -   The refined Husky vector moves *further* from the Wolf vector.
+4.  **Classification**: The Query Wolf is now correctly classified as "Wolf" because the "Dog" prototype has shifted away from the "Wolf-like" region of the feature space.
+
+---
+
+## 6. Implementation Analysis
+
+### 6.1. Code Snippet (`methods/optimal_few_shot.py`)
+
+```python
+# 1. Project to Transformer Dimension
+support_features = self.projection(support_features)
+query_features = self.projection(query_features)
+
+# 2. Concatenate
+# Shape: [Batch, N_Support + N_Query, Dim]
+x = torch.cat([support_features, query_features], dim=1)
+
+# 3. Transformer Pass
+# The transformer handles the Q/K/V logic internally
+x = self.transformer(x)
+
+# 4. Split back
+support_features = x[:, :n_support, :]
+query_features = x[:, n_support:, :]
+```
+
+### 6.2. Transductive vs. Inductive
+-   **Inductive**: Train on Support, Test on Query. (Query is unseen).
+-   **Transductive**: Train on Support + Unlabeled Query. (Query statistics are used).
+-   **Our Method**: It is **Transductive Inference**. We don't use the *labels* of the query set, but we use their *features* to adjust the metric space. This is a standard and powerful setting in Few-Shot Learning.

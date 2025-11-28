@@ -1,0 +1,142 @@
+# Chapter: Covariance Loss ($L_{cov}$) for Feature Decorrelation
+
+## 1. Introduction
+
+### 1.1. The Curse of Redundancy
+In high-dimensional feature spaces (e.g., $D=64$), deep networks often fall into a trap where multiple dimensions encode the exact same information.
+-   Example: Dimension 5 encodes "Has Fur". Dimension 12 also encodes "Has Fur".
+-   Result: The effective capacity of the embedding is reduced. We are wasting dimensions.
+
+### 1.2. The Goal: Decorrelation
+The **Covariance Loss** ($L_{cov}$) forces the feature dimensions to be statistically independent. It ensures that knowing the value of Dimension $i$ gives you **zero information** about the value of Dimension $j$. This maximizes the **Entropy** and **Information Content** of the representation.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Centering the Data
+Let $\mathbf{P} \in \mathbb{R}^{N \times D}$ be the batch of prototypes (where $N$ is batch size, $D$ is feature dim).
+First, we calculate the mean vector $\bar{\mathbf{p}} \in \mathbb{R}^D$:
+$$ \bar{\mathbf{p}} = \frac{1}{N} \sum_{i=1}^N \mathbf{p}_i $$
+
+We center the batch:
+$$ \mathbf{Z} = \mathbf{P} - \bar{\mathbf{p}} $$
+
+### 2.2. The Covariance Matrix
+We compute the empirical covariance matrix $\mathbf{C} \in \mathbb{R}^{D \times D}$:
+$$ \mathbf{C} = \frac{1}{N-1} \mathbf{Z}^T \mathbf{Z} $$
+$$ C_{ij} = \frac{1}{N-1} \sum_{k=1}^N Z_{ki} Z_{kj} $$
+
+-   **Diagonal Elements ($C_{ii}$)**: The variance of dimension $i$. We want this to be $>0$ (handled by Variance Loss implicitly).
+-   **Off-Diagonal Elements ($C_{ij}, i \neq j$)**: The covariance between dim $i$ and dim $j$. We want this to be **Zero**.
+
+### 2.3. The Loss Function
+The loss is the sum of the squared off-diagonal elements:
+
+$$ L_{cov} = \frac{1}{D} \sum_{i \neq j} C_{ij}^2 $$
+
+$$ L_{cov} = \frac{1}{D} \left( \|\mathbf{C}\|_F^2 - \|\text{diag}(\mathbf{C})\|_2^2 \right) $$
+
+Where $\|\cdot\|_F$ is the Frobenius norm.
+
+---
+
+## 3. Visual Explanation
+
+### 3.1. Scatter Plots of Dimensions
+
+Imagine plotting the values of Dimension 1 vs Dimension 2 for a batch of data.
+
+```mermaid
+graph TD
+    subgraph "High Covariance (Bad)"
+        A1[Points form a diagonal line]
+        Note1[Correlation ≈ 1.0<br>Redundant]
+    end
+    
+    subgraph "Zero Covariance (Good)"
+        B1[Points form a circle/blob]
+        Note2[Correlation ≈ 0.0<br>Independent]
+    end
+    
+    style A1 fill:#f99
+    style B1 fill:#9f9
+```
+
+-   **Left**: If $Dim_2 = 2 \times Dim_1$, then storing $Dim_2$ is a waste of memory/compute.
+-   **Right**: $Dim_1$ and $Dim_2$ vary independently. Each contributes unique information to the classification decision.
+
+---
+
+## 4. Detailed Example Calculation
+
+**Batch**: $N=3$ samples, $D=2$ dimensions.
+$$ \mathbf{P} = \begin{bmatrix} 1 & 2 \\ 2 & 4 \\ 3 & 6 \end{bmatrix} $$
+*(Note: Here Dim 2 is exactly $2 \times$ Dim 1. Perfect correlation.)*
+
+**Step 1: Compute Mean**
+$$ \bar{\mathbf{p}} = [\frac{1+2+3}{3}, \frac{2+4+6}{3}] = [2, 4] $$
+
+**Step 2: Center Data ($\mathbf{Z}$)**
+$$ \mathbf{Z} = \begin{bmatrix} -1 & -2 \\ 0 & 0 \\ 1 & 2 \end{bmatrix} $$
+
+**Step 3: Compute Covariance Matrix ($\mathbf{C}$)**
+$$ \mathbf{C} = \frac{1}{2} \mathbf{Z}^T \mathbf{Z} = \frac{1}{2} \begin{bmatrix} -1 & 0 & 1 \\ -2 & 0 & 2 \end{bmatrix} \begin{bmatrix} -1 & -2 \\ 0 & 0 \\ 1 & 2 \end{bmatrix} $$
+$$ \mathbf{C} = \frac{1}{2} \begin{bmatrix} 2 & 4 \\ 4 & 8 \end{bmatrix} = \begin{bmatrix} 1 & 2 \\ 2 & 4 \end{bmatrix} $$
+
+**Step 4: Compute Loss**
+-   Off-diagonals are $2$ and $2$.
+-   $L_{cov} = \frac{1}{2} (2^2 + 2^2) = \frac{1}{2} (8) = 4.0$.
+
+**Gradient Descent Effect**:
+The optimizer tries to reduce $L_{cov}$. It must change the weights such that Dim 2 is no longer a linear multiple of Dim 1.
+
+---
+
+## 5. Theoretical Justification
+
+### 5.1. Maximum Entropy Principle
+In Information Theory, for a fixed variance, the distribution that maximizes entropy is the Gaussian distribution with a diagonal covariance matrix.
+By minimizing off-diagonal covariance, we are pushing the feature distribution towards this Maximum Entropy state.
+$$ H(\mathbf{z}) \approx \sum \log(\text{Var}(z_i)) - \log(|\text{Corr}(\mathbf{z})|) $$
+Minimizing correlation maximizes entropy $H(\mathbf{z})$.
+
+### 5.2. Whitening
+This process is analogous to "Soft Whitening".
+-   **Hard Whitening (PCA)**: Explicitly multiplies data by $\mathbf{C}^{-1/2}$. Computationally expensive ($O(D^3)$) and not differentiable in all cases.
+-   **Soft Whitening ($L_{cov}$)**: Adds a penalty term. Iteratively guides the network to learn whitened features. $O(D^2)$.
+
+---
+
+## 6. Implementation Details
+
+### 6.1. Code Snippet (`methods/optimal_few_shot.py`)
+
+```python
+# 1. Center
+centered = prototypes - prototypes.mean(dim=0, keepdim=True)
+
+# 2. Covariance (Unbiased estimator: divide by N-1)
+cov = (centered.T @ centered) / max(N - 1, 1)
+
+# 3. Zero out diagonal
+# We create a matrix with only diagonal elements
+diag = torch.diag(torch.diag(cov))
+# Subtract it to leave only off-diagonals
+off_diag = cov - diag
+
+# 4. Sum of Squares
+cov_loss = (off_diag ** 2).sum() / D
+```
+
+### 6.2. Batch Size Consideration
+Covariance estimation is noisy for small batch sizes ($N$).
+In Few-Shot Learning, $N$ is the number of ways (e.g., 5).
+-   Estimating a $64 \times 64$ covariance matrix from 5 samples is mathematically ill-posed (rank deficient).
+-   **However**, we are not inverting it. We are just pushing the observed correlations to zero. Even with $N=5$, if two dimensions are consistently correlated across many episodes, the gradient will accumulate and correct it.
+
+---
+
+## 7. Thesis Conclusion
+
+The Covariance Loss $L_{cov}$ is an **Information Maximization** regularizer. It combats the "Dimensional Collapse" phenomenon common in self-supervised and meta-learning. By ensuring that every dimension of the 64-dim embedding vector carries unique, independent information, we maximize the representational power of the model without increasing the parameter count.
