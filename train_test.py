@@ -167,6 +167,14 @@ def evaluate_comprehensive(test_loader, model, params, data_file):
     with torch.no_grad():
         with tqdm.tqdm(total=len(test_loader)) as pbar:
             for i, (x, _) in enumerate(test_loader):
+                # Get the actual n_way from this batch (first dimension)
+                # This handles cases where n_classes < n_way in the dataset
+                actual_n_way = x.size(0)
+                
+                # Update model's n_way to match actual batch dimensions if model supports it
+                if hasattr(model, 'change_way') and model.change_way:
+                    model.n_way = actual_n_way
+                
                 # Measure inference time
                 start_time = time.time()
                 
@@ -178,7 +186,11 @@ def evaluate_comprehensive(test_loader, model, params, data_file):
                 
                 # Get predictions
                 pred = scores.data.cpu().numpy().argmax(axis=1)
-                y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                # Calculate ground truth using actual dimensions from this episode
+                # Validate that predictions are evenly divisible by actual_n_way
+                if pred.shape[0] % actual_n_way != 0:
+                    raise ValueError(f"Episode has {pred.shape[0]} predictions which is not divisible by actual_n_way={actual_n_way}")
+                y = np.repeat(range(actual_n_way), pred.shape[0]//actual_n_way)
                 
                 all_predictions.extend(pred)
                 all_true_labels.extend(y)
@@ -288,12 +300,23 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
 
         with tqdm.tqdm(total=len(test_loader)) as pbar:
             for i, (x, _) in enumerate(test_loader):
+                # Get the actual n_way from this batch (first dimension)
+                # This handles cases where n_classes < n_way in the dataset
+                actual_n_way = x.size(0)
+                
+                # Update model's n_way to match actual batch dimensions if model supports it
+                if hasattr(model, 'change_way') and model.change_way:
+                    model.n_way = actual_n_way
+                
                 with torch.cuda.amp.autocast(enabled=True):
                     scores = model.set_forward(x)
                     pred = scores.data.cpu().numpy().argmax(axis=1)
                     
-                    # Move computation to CPU and free GPU memory
-                    y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                    # Calculate ground truth using actual dimensions from this episode
+                    # Validate that predictions are evenly divisible by actual_n_way
+                    if pred.shape[0] % actual_n_way != 0:
+                        raise ValueError(f"Episode has {pred.shape[0]} predictions which is not divisible by actual_n_way={actual_n_way}")
+                    y = np.repeat(range(actual_n_way), pred.shape[0]//actual_n_way)
                     
                     all_preds.extend(pred.tolist())
                     all_labels.extend(y.tolist())
