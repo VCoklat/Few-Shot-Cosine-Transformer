@@ -1,8 +1,9 @@
 import os
 
-# Get base directory from environment variable or use default
+# Get base directory from environment variable or auto-detect from configs.py location
 # Can be set via: export FEW_SHOT_BASE_DIR=/path/to/Few-Shot-Cosine-Transformer
-_base_dir = os.environ.get('FEW_SHOT_BASE_DIR', '/kaggle/working/Few-Shot-Cosine-Transformer')
+_default_base_dir = os.path.dirname(os.path.abspath(__file__))
+_base_dir = os.environ.get('FEW_SHOT_BASE_DIR', _default_base_dir)
 
 save_dir                    = ''
 data_dir = {}
