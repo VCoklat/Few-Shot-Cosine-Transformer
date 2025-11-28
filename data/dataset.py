@@ -11,6 +11,72 @@ import cv2 as cv
 
 identity = lambda x:x
 
+
+def _correct_image_path(original_path, data_file):
+    """
+    Correct image path if it doesn't exist by remapping to the current dataset location.
+    
+    This handles the case where JSON files contain absolute paths from a different machine.
+    It extracts the relative path from 'dataset/' onwards and reconstructs using the 
+    actual location of the data_file.
+    
+    Args:
+        original_path: The original path from the JSON file
+        data_file: The path to the JSON file being loaded
+        
+    Returns:
+        Corrected path that should exist on the current system
+    """
+    if os.path.exists(original_path):
+        return original_path
+    
+    # Try to find 'dataset/' in the path and extract the relative portion
+    dataset_markers = ['/dataset/', '\\dataset\\']
+    for marker in dataset_markers:
+        if marker in original_path:
+            # Get the relative path starting from the dataset name
+            # e.g., "/old/path/dataset/DatasetIndo/train/..." -> "DatasetIndo/train/..."
+            relative_path = original_path.split(marker, 1)[1]
+            
+            # Get the base directory from the data_file path
+            # data_file is something like "/current/path/dataset/DatasetIndo/base.json"
+            data_file_dir = os.path.dirname(os.path.abspath(data_file))
+            
+            # Find where 'dataset' folder is relative to data_file
+            # Go up from data_file directory to find the dataset root
+            current_dir = data_file_dir
+            while current_dir and os.path.basename(current_dir) != 'dataset':
+                parent = os.path.dirname(current_dir)
+                if parent == current_dir:  # Reached root
+                    break
+                current_dir = parent
+            
+            if os.path.basename(current_dir) == 'dataset':
+                new_path = os.path.join(current_dir, relative_path)
+                if os.path.exists(new_path):
+                    return new_path
+    
+    # Alternative: try to reconstruct path relative to data_file's parent directories
+    # This handles cases where the structure is consistent but base paths differ
+    path_parts = original_path.replace('\\', '/').split('/')
+    data_file_abs = os.path.abspath(data_file)
+    
+    # Find common structure (e.g., dataset name, train/test/valid, class folder, filename)
+    # Look for the dataset folder name in the path
+    for i, part in enumerate(path_parts):
+        if part in ['train', 'test', 'valid', 'val']:
+            # Reconstruct from this point
+            relative_from_split = '/'.join(path_parts[i:])
+            # data_file is in the dataset folder, so go up one level from its directory
+            dataset_dir = os.path.dirname(data_file_abs)
+            new_path = os.path.join(dataset_dir, relative_from_split)
+            if os.path.exists(new_path):
+                return new_path
+    
+    # Return original path if no correction found (will fail later with a clearer error)
+    return original_path
+
+
 class SetDataset:
     def __init__(self, data_file, batch_size, transform):
         with open(data_file, 'r') as f:
@@ -22,8 +88,13 @@ class SetDataset:
         for cl in self.cl_list:
             self.sub_meta[cl] = []
 
-        for x,y in zip(self.meta['image_names'],self.meta['image_labels']):
-            self.sub_meta[y].append(x)
+        # Store data_file path for path correction
+        self._data_file = data_file
+        
+        for x, y in zip(self.meta['image_names'], self.meta['image_labels']):
+            # Correct the path if it doesn't exist
+            corrected_path = _correct_image_path(x, data_file)
+            self.sub_meta[y].append(corrected_path)
 
         self.sub_dataloader = [] 
         
