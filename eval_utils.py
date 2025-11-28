@@ -1,7 +1,7 @@
 """
 Extended evaluation utilities for few-shot classification.
 Tracks F1 plus a richer set of metrics and system stats.
-Includes comprehensive feature analysis and confidence intervals.
+Includes comprehensive feature analysis, confidence intervals, and McNemar's test.
 
 Author: dvh
 """
@@ -31,6 +31,21 @@ try:
 except ImportError:
     FEATURE_ANALYSIS_AVAILABLE = False
     print("Warning: feature_analysis module not available. Advanced metrics disabled.")
+
+try:
+    from ablation_study import (
+        mcnemar_test,
+        mcnemar_test_multiple,
+        compute_contingency_table,
+        format_contingency_table,
+        AblationStudy,
+        AblationConfig,
+        AblationType
+    )
+    ABLATION_STUDY_AVAILABLE = True
+except ImportError:
+    ABLATION_STUDY_AVAILABLE = False
+    print("Warning: ablation_study module not available. McNemar's test disabled.")
 
 # ──────────────────────────────────────────────────────────────
 @torch.no_grad()
@@ -382,3 +397,287 @@ def evaluate_comprehensive(loader, model, n_way, class_names=None,
         del res['feature_labels']
     
     return res
+
+
+# ──────────────────────────────────────────────────────────────
+# McNemar's Test Integration
+# ──────────────────────────────────────────────────────────────
+
+@torch.no_grad()
+def evaluate_with_predictions(loader, model, n_way, class_names=None,
+                              chunk: int = 16, device: str = "cuda"):
+    """
+    Evaluate model and return predictions for McNemar's test comparison.
+    
+    This is similar to evaluate() but also returns the raw predictions
+    and true labels needed for McNemar's statistical comparison.
+    
+    Args:
+        loader: DataLoader for episodic evaluation
+        model: Model to evaluate
+        n_way: Number of ways (classes per episode)
+        class_names: Optional list of class names for display
+        chunk: Batch size for chunked processing
+        device: Device to run on
+    
+    Returns:
+        Tuple of (results_dict, predictions, true_labels)
+    """
+    model.eval()
+    
+    all_true, all_pred, all_scores, times = [], [], [], []
+    episode_accuracies = []
+    
+    for x, _ in loader:
+        t0 = time.time()
+        
+        if x.size(0) > chunk:
+            scores = torch.cat(
+                [model.set_forward(x[i:i + chunk].to(device)).cpu()
+                 for i in range(0, x.size(0), chunk)],
+                dim=0
+            )
+        else:
+            scores = model.set_forward(x.to(device)).cpu()
+        
+        torch.cuda.synchronize()
+        times.append(time.time() - t0)
+        
+        preds = scores.argmax(1).numpy()
+        all_pred.append(preds)
+        all_scores.append(scores.numpy())
+        
+        n_query = len(preds) // n_way
+        y_episode = np.repeat(np.arange(n_way), n_query)
+        all_true.append(y_episode)
+        
+        episode_acc = np.mean(preds == y_episode)
+        episode_accuracies.append(episode_acc)
+        
+        del scores
+        gc.collect()
+        torch.cuda.empty_cache()
+    
+    y_true = np.concatenate(all_true)
+    y_pred = np.concatenate(all_pred)
+    y_scores = np.concatenate(all_scores)
+    
+    macro_prec, macro_rec, _, _ = precision_recall_fscore_support(
+        y_true, y_pred, average="macro", zero_division=0
+    )
+    
+    if n_way == 2:
+        top5_acc = top_k_accuracy_score(y_true, y_scores[:, 1], k=1)
+    else:
+        top5_acc = top_k_accuracy_score(
+            y_true, y_scores, k=min(5, n_way), labels=list(range(n_way))
+        )
+    
+    res = dict(
+        conf_mat=confusion_matrix(y_true, y_pred).tolist(),
+        accuracy=accuracy_score(y_true, y_pred),
+        macro_precision=macro_prec,
+        macro_recall=macro_rec,
+        kappa=cohen_kappa_score(y_true, y_pred),
+        mcc=matthews_corrcoef(y_true, y_pred),
+        top5_accuracy=top5_acc,
+        avg_inf_time=float(np.mean(times)),
+        param_count=sum(p.numel() for p in model.parameters()) / 1e6,
+        episode_accuracies=episode_accuracies,
+    )
+    
+    if FEATURE_ANALYSIS_AVAILABLE and len(episode_accuracies) > 1:
+        mean_acc, lower_ci, upper_ci = compute_confidence_interval(
+            np.array(episode_accuracies), confidence=0.95
+        )
+        res.update(
+            confidence_interval_95={
+                'mean': float(mean_acc),
+                'lower': float(lower_ci),
+                'upper': float(upper_ci),
+                'margin': float(mean_acc - lower_ci)
+            }
+        )
+    
+    gpus = GPUtil.getGPUs()
+    res.update(
+        gpu_mem_used_MB=sum(g.memoryUsed for g in gpus) if gpus else 0,
+        gpu_mem_total_MB=sum(g.memoryTotal for g in gpus) if gpus else 0,
+        gpu_util=float(sum(g.load for g in gpus)/len(gpus)) if gpus else 0,
+        cpu_util=psutil.cpu_percent(),
+        cpu_mem_used_MB=psutil.virtual_memory().used / 1_048_576,
+        cpu_mem_total_MB=psutil.virtual_memory().total / 1_048_576,
+        class_names=class_names or list(range(len(res["conf_mat"]))),
+    )
+    
+    return res, y_pred, y_true
+
+
+def compare_models_mcnemar(
+    predictions_a: np.ndarray,
+    predictions_b: np.ndarray,
+    true_labels: np.ndarray,
+    model_a_name: str = "Model A",
+    model_b_name: str = "Model B"
+) -> dict:
+    """
+    Compare two models using McNemar's test.
+    
+    McNemar's test determines if there is a statistically significant 
+    difference between the error rates of two classifiers.
+    
+    Args:
+        predictions_a: Predictions from first model
+        predictions_b: Predictions from second model
+        true_labels: True class labels
+        model_a_name: Name for first model
+        model_b_name: Name for second model
+    
+    Returns:
+        Dictionary with McNemar's test results
+    """
+    if not ABLATION_STUDY_AVAILABLE:
+        raise ImportError("ablation_study module not available. Please ensure it is installed.")
+    
+    result = mcnemar_test(predictions_a, predictions_b, true_labels)
+    result['model_a_name'] = model_a_name
+    result['model_b_name'] = model_b_name
+    result['model_a_accuracy'] = float(np.mean(predictions_a == true_labels))
+    result['model_b_accuracy'] = float(np.mean(predictions_b == true_labels))
+    
+    return result
+
+
+def print_mcnemar_comparison(result: dict) -> None:
+    """
+    Print a formatted McNemar's test comparison result.
+    
+    Args:
+        result: Result dictionary from compare_models_mcnemar
+    """
+    print("\n" + "=" * 80)
+    print("McNEMAR'S TEST COMPARISON")
+    print("=" * 80)
+    
+    model_a = result.get('model_a_name', 'Model A')
+    model_b = result.get('model_b_name', 'Model B')
+    
+    print(f"\nComparing: {model_a} vs {model_b}")
+    
+    if 'model_a_accuracy' in result:
+        print(f"\n{model_a} Accuracy: {result['model_a_accuracy']:.4f}")
+    if 'model_b_accuracy' in result:
+        print(f"{model_b} Accuracy: {result['model_b_accuracy']:.4f}")
+    
+    print(f"\nContingency Table:")
+    n00, n01, n10, n11 = result['contingency_table']
+    print(f"  Both correct: {n11}")
+    print(f"  Both wrong: {n00}")
+    print(f"  {model_a} correct, {model_b} wrong: {n10}")
+    print(f"  {model_a} wrong, {model_b} correct: {n01}")
+    
+    print(f"\nDiscordant pairs: {result['discordant_pairs']}")
+    print(f"Test type: {result['test_type']}")
+    print(f"Test statistic: {result['statistic']:.4f}")
+    print(f"P-value: {result['p_value']:.6f}")
+    
+    print(f"\nResult: {result['effect_description']}")
+    
+    if result['significant_at_0.05']:
+        if result['algorithm_a_better']:
+            print(f"✓ {model_a} performs significantly better than {model_b}")
+        elif result['algorithm_b_better']:
+            print(f"✓ {model_b} performs significantly better than {model_a}")
+    else:
+        print("○ No statistically significant difference detected")
+    
+    print("=" * 80)
+
+
+def run_ablation_comparison(
+    loader,
+    models: list,
+    model_names: list,
+    n_way: int,
+    device: str = "cuda",
+    baseline_index: int = 0
+) -> dict:
+    """
+    Run ablation comparison across multiple models using McNemar's test.
+    
+    Args:
+        loader: DataLoader for evaluation
+        models: List of models to compare
+        model_names: Names for each model
+        n_way: Number of ways (classes per episode)
+        device: Device to run on
+        baseline_index: Index of the baseline model for comparisons
+    
+    Returns:
+        Dictionary with all comparison results
+    """
+    if not ABLATION_STUDY_AVAILABLE:
+        raise ImportError("ablation_study module not available.")
+    
+    if len(models) != len(model_names):
+        raise ValueError("Number of models must match number of names")
+    
+    print(f"\nRunning ablation comparison across {len(models)} models...")
+    
+    # Evaluate all models
+    all_results = []
+    all_predictions = []
+    true_labels = None
+    
+    for i, (model, name) in enumerate(zip(models, model_names)):
+        print(f"\nEvaluating {name}...")
+        res, preds, labels = evaluate_with_predictions(
+            loader, model, n_way, device=device
+        )
+        all_results.append(res)
+        all_predictions.append(preds)
+        
+        if true_labels is None:
+            true_labels = labels
+        
+        print(f"  Accuracy: {res['accuracy']:.4f}")
+    
+    # Create ablation study
+    study = AblationStudy(baseline_name=model_names[baseline_index])
+    
+    for i, (name, res, preds) in enumerate(zip(model_names, all_results, all_predictions)):
+        config = AblationConfig(
+            name=name,
+            ablation_type=AblationType.FULL_MODEL if i == baseline_index else AblationType.CUSTOM,
+            description=f"Model configuration: {name}"
+        )
+        
+        ci = res.get('confidence_interval_95', {})
+        ci_tuple = (ci.get('lower', 0.0), ci.get('upper', 0.0))
+        
+        study.add_result(
+            name=name,
+            config=config,
+            accuracy=res['accuracy'],
+            std=np.std(res['episode_accuracies']),
+            predictions=preds,
+            true_labels=true_labels,
+            confidence_interval=ci_tuple,
+            additional_metrics=res,
+            is_baseline=(i == baseline_index)
+        )
+    
+    # Generate and print report
+    print("\n" + study.generate_report())
+    
+    # Perform pairwise McNemar's tests
+    pairwise_results = mcnemar_test_multiple(
+        all_predictions, model_names, true_labels
+    )
+    
+    return {
+        'individual_results': {name: res for name, res in zip(model_names, all_results)},
+        'ablation_study': study,
+        'pairwise_mcnemar': pairwise_results,
+        'baseline': model_names[baseline_index]
+    }

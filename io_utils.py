@@ -47,6 +47,15 @@ def parse_args():
                         help='[1:0] - [True:False]; Use comprehensive evaluation with detailed metrics')
     parser.add_argument('--feature_analysis', type=int, default=0,
                         help='[1:0] - [True:False]; Perform comprehensive feature space analysis (collapse, redundancy, etc.)')
+    
+    # Ablation study and McNemar's test arguments
+    parser.add_argument('--ablation_study', type=int, default=0,
+                        help='[1:0] - [True:False]; Run ablation study comparing model configurations')
+    parser.add_argument('--mcnemar_compare', type=str, default='',
+                        help='Comma-separated list of methods to compare using McNemar\'s test (e.g., "FSCT_cosine,FSCT_softmax")')
+    parser.add_argument('--ablation_output', type=str, default='./record/ablation_results.json',
+                        help='Output path for ablation study results')
+    
     return parser.parse_args()
 
 
