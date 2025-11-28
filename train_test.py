@@ -251,16 +251,28 @@ def train(base_loader, val_loader, model, optimization, num_epoch, params):
         print()
     return model
 
-def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
-    """Enhanced testing function with optional comprehensive evaluation"""
+def direct_test(test_loader, model, params, data_file=None, comprehensive=True, n_way=None):
+    """Enhanced testing function with optional comprehensive evaluation
+    
+    Args:
+        test_loader: DataLoader for test episodes
+        model: Model to evaluate
+        params: Parameters object
+        data_file: Path to data file (for class names)
+        comprehensive: If True, use comprehensive evaluation
+        n_way: Number of ways for evaluation. If None, uses params.n_way
+    """
+    # Use provided n_way or fall back to params.n_way
+    eval_n_way = n_way if n_way is not None else params.n_way
+    
     if comprehensive and data_file:
         # Get class names from data file
-        class_names = get_class_names_from_file(data_file, params.n_way)
+        class_names = get_class_names_from_file(data_file, eval_n_way)
         
         # Use eval_utils comprehensive evaluation. If feature_analysis is requested,
         # call the comprehensive variant which runs the feature space metrics.
         if getattr(params, 'feature_analysis', False):
-            results = eval_utils.evaluate_comprehensive(test_loader, model, params.n_way,
+            results = eval_utils.evaluate_comprehensive(test_loader, model, eval_n_way,
                                                        class_names=class_names, device=device)
             eval_utils.pretty_print(results, show_feature_analysis=True)
             # Explicitly print key feature-analysis fields for quick visibility
@@ -282,7 +294,7 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
                 except Exception as e:
                     print(f"Error printing feature analysis summary: {e}")
         else:
-            results = eval_utils.evaluate(test_loader, model, params.n_way,
+            results = eval_utils.evaluate(test_loader, model, eval_n_way,
                                           class_names=class_names, device=device)
             eval_utils.pretty_print(results, show_feature_analysis=False)
         
@@ -310,7 +322,7 @@ def direct_test(test_loader, model, params, data_file=None, comprehensive=True):
                     pred = scores.data.cpu().numpy().argmax(axis=1)
                     
                     # Move computation to CPU and free GPU memory
-                    y = np.repeat(range(params.n_way), pred.shape[0]//params.n_way)
+                    y = np.repeat(range(eval_n_way), pred.shape[0]//eval_n_way)
                     
                     all_preds.extend(pred.tolist())
                     all_labels.extend(y.tolist())
@@ -525,8 +537,25 @@ if __name__ == '__main__':
         else:
             modelfile = get_best_file(params.checkpoint_dir)
 
+        # Check the number of classes in the test dataset and adjust n_way if necessary
+        test_n_way = params.n_way
+        try:
+            with open(testfile, 'r') as f:
+                test_meta = json.load(f)
+            test_classes = len(np.unique(test_meta['image_labels']))
+            if test_classes < params.n_way:
+                print(f"WARNING: Test dataset has only {test_classes} classes but n_way={params.n_way}.")
+                print(f"Adjusting n_way to {test_classes} for testing.")
+                test_n_way = test_classes
+        except Exception as e:
+            print(f"Warning: Could not check test dataset classes: {e}")
+
+        # Use adjusted n_way for test data manager
+        test_few_shot_params = dict(
+            n_way=test_n_way, k_shot=params.k_shot, n_query=params.n_query)
+        
         test_datamgr = SetDataManager(
-            image_size, n_episode=iter_num, **few_shot_params)
+            image_size, n_episode=iter_num, **test_few_shot_params)
         test_loader = test_datamgr.get_data_loader(testfile, aug=False)
 
         # Add this before calling direct_test
@@ -542,6 +571,12 @@ if __name__ == '__main__':
             tmp = torch.load(modelfile)
             model.load_state_dict(tmp['state'])
 
+        # Update model's n_way if test dataset has fewer classes
+        if test_n_way != params.n_way:
+            if hasattr(model, 'n_way'):
+                print(f"Updating model n_way from {model.n_way} to {test_n_way}")
+                model.n_way = test_n_way
+
         split = params.split
         if params.save_iter != -1:
             split_str = split + "_" + str(params.save_iter)
@@ -552,7 +587,7 @@ if __name__ == '__main__':
         if params.comprehensive_eval:
             # Use comprehensive evaluation
             acc_mean, acc_std, detailed_results = direct_test(
-                test_loader, model, params, testfile, comprehensive=True
+                test_loader, model, params, testfile, comprehensive=True, n_way=test_n_way
             )
             
             # Log detailed results to wandb if available
@@ -564,7 +599,7 @@ if __name__ == '__main__':
                 })
         else:
             # Use standard evaluation
-            acc_mean, acc_std = direct_test(test_loader, model, params)
+            acc_mean, acc_std = direct_test(test_loader, model, params, n_way=test_n_way)
 
         print('%d Test Acc = %4.2f%% +- %4.2f%%' %
               (iter_num, acc_mean, 1.96 * acc_std/np.sqrt(iter_num)))

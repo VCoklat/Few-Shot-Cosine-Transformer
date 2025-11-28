@@ -8,79 +8,79 @@ import random
 import torchvision.transforms as transforms
 import os
 import cv2 as cv
-from pathlib import Path
 
 identity = lambda x:x
 
-# Maximum depth to search upward for dataset files
-MAX_SEARCH_DEPTH = 5
 
-# Common dataset directory patterns to look for in paths
-DATASET_DIR_PATTERNS = ['dataset', 'Dataset', 'data', 'Data']
-
-
-def resolve_image_path(image_path, data_file_dir):
+def _correct_image_path(original_path, data_file):
     """
-    Resolve image path that may be absolute or relative.
-    If the absolute path doesn't exist, try to make it relative to the JSON file location.
+    Correct image path if it doesn't exist by remapping to the current dataset location.
+    
+    This handles the case where JSON files contain absolute paths from a different machine.
+    It extracts the relative path from 'dataset/' onwards and reconstructs using the 
+    actual location of the data_file.
+    
+    Args:
+        original_path: The original path from the JSON file
+        data_file: The path to the JSON file being loaded
+        
+    Returns:
+        Corrected path that should exist on the current system
     """
-    if os.path.exists(image_path):
-        return image_path
+    if os.path.exists(original_path):
+        return original_path
     
-    # Normalize path and split into components using pathlib for robustness
-    normalized_path = Path(image_path)
-    path_parts = normalized_path.parts
-    
-    # Try to extract relative path from absolute path
-    # Look for common dataset directory patterns as complete directory components
-    for i, part in enumerate(path_parts):
-        if part in DATASET_DIR_PATTERNS:
-            # Get the relative path starting from dataset directory
-            rel_path = str(Path(*path_parts[i:]))
-            # Go up from data_file_dir to find dataset directory
-            base_dir = data_file_dir
-            depth = 0
-            while base_dir and not os.path.exists(os.path.join(base_dir, rel_path)):
-                parent = os.path.dirname(base_dir)
-                if parent == base_dir:  # Reached root
-                    break
-                base_dir = parent
-                depth += 1
-                if depth >= MAX_SEARCH_DEPTH:
-                    break
+    # Try to find 'dataset/' in the path and extract the relative portion
+    dataset_markers = ['/dataset/', '\\dataset\\']
+    for marker in dataset_markers:
+        if marker in original_path:
+            # Get the relative path starting from the dataset name
+            # e.g., "/old/path/dataset/DatasetIndo/train/..." -> "DatasetIndo/train/..."
+            relative_path = original_path.split(marker, 1)[1]
             
-            resolved = os.path.join(base_dir, rel_path)
-            if os.path.exists(resolved):
-                return resolved
+            # Get the base directory from the data_file path
+            # data_file is something like "/current/path/dataset/DatasetIndo/base.json"
+            data_file_dir = os.path.dirname(os.path.abspath(data_file))
+            
+            # Find where 'dataset' folder is relative to data_file
+            # Go up from data_file directory to find the dataset root
+            current_dir = data_file_dir
+            while current_dir and os.path.basename(current_dir) != 'dataset':
+                parent = os.path.dirname(current_dir)
+                if parent == current_dir:  # Reached root
+                    break
+                current_dir = parent
+            
+            if os.path.basename(current_dir) == 'dataset':
+                new_path = os.path.join(current_dir, relative_path)
+                if os.path.exists(new_path):
+                    return new_path
     
-    # If still not found, try progressively shorter paths
-    for i in range(len(path_parts)):
-        remaining_parts = path_parts[i:]
-        if not remaining_parts:
-            continue
-        rel_path = str(Path(*remaining_parts))
-        # Search upward from data_file_dir
-        search_dir = data_file_dir
-        for _ in range(MAX_SEARCH_DEPTH):
-            candidate = os.path.join(search_dir, rel_path)
-            if os.path.exists(candidate):
-                return candidate
-            parent = os.path.dirname(search_dir)
-            if parent == search_dir:
-                break
-            search_dir = parent
+    # Alternative: try to reconstruct path relative to data_file's parent directories
+    # This handles cases where the structure is consistent but base paths differ
+    path_parts = original_path.replace('\\', '/').split('/')
+    data_file_abs = os.path.abspath(data_file)
     
-    # Return original path if nothing works (will raise error on access)
-    return image_path
+    # Find common structure (e.g., dataset name, train/test/valid, class folder, filename)
+    # Look for the dataset folder name in the path
+    for i, part in enumerate(path_parts):
+        if part in ['train', 'test', 'valid', 'val']:
+            # Reconstruct from this point
+            relative_from_split = '/'.join(path_parts[i:])
+            # data_file is in the dataset folder, so go up one level from its directory
+            dataset_dir = os.path.dirname(data_file_abs)
+            new_path = os.path.join(dataset_dir, relative_from_split)
+            if os.path.exists(new_path):
+                return new_path
+    
+    # Return original path if no correction found (will fail later with a clearer error)
+    return original_path
 
 
 class SetDataset:
     def __init__(self, data_file, batch_size, transform):
         with open(data_file, 'r') as f:
             self.meta = json.load(f)
-        
-        # Store the directory containing the JSON file for path resolution
-        self.data_file_dir = os.path.dirname(os.path.abspath(data_file))
  
         self.cl_list = np.unique(self.meta['image_labels']).tolist()
 
@@ -88,10 +88,13 @@ class SetDataset:
         for cl in self.cl_list:
             self.sub_meta[cl] = []
 
-        for x,y in zip(self.meta['image_names'],self.meta['image_labels']):
-            # Resolve the image path relative to JSON file location if needed
-            resolved_path = resolve_image_path(x, self.data_file_dir)
-            self.sub_meta[y].append(resolved_path)
+        # Store data_file path for path correction
+        self._data_file = data_file
+        
+        for x, y in zip(self.meta['image_names'], self.meta['image_labels']):
+            # Correct the path if it doesn't exist
+            corrected_path = _correct_image_path(x, data_file)
+            self.sub_meta[y].append(corrected_path)
 
         self.sub_dataloader = [] 
         
@@ -106,18 +109,7 @@ class SetDataset:
         # pdb.set_trace()
 
     def __getitem__(self,i):
-        data, label = next(iter(self.sub_dataloader[i]))
-        # Create new tensors with completely independent storage to fix
-        # "Trying to resize storage that is not resizable" error when using
-        # DataLoader with num_workers > 0. Simply using clone().contiguous()
-        # is not sufficient as the storage may still be marked non-resizable.
-        # Using torch.empty_like() + copy_() creates new tensors with 
-        # independent, resizable storage while preserving dtype and device.
-        if torch.is_tensor(data):
-            data = torch.empty_like(data).copy_(data)
-        if torch.is_tensor(label):
-            label = torch.empty_like(label).copy_(label)
-        return data, label
+        return next(iter(self.sub_dataloader[i]))
 
     def __len__(self):
         return len(self.cl_list)
