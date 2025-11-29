@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 import json
 import os
+import torch
+import torch.nn as nn
 
 
 class AblationType(Enum):
@@ -721,9 +723,6 @@ class AblationStudy:
         Returns:
             AblationResult with the experiment results
         """
-        import torch
-        import tqdm
-        
         # Create model from config
         model = create_model_from_config(
             config=config,
@@ -1030,8 +1029,6 @@ def create_model_from_config(
         ... )
         >>> model = create_model_from_config(config, model_func, 5, 5, 15)
     """
-    import torch
-    
     method = config.method
     variant = config.variant
     heads = config.heads
@@ -1088,13 +1085,9 @@ def create_model_from_config(
             feature_dim=64,
             n_heads=heads,
             dataset=dataset,
-            use_se=use_se
+            use_se=use_se,
+            use_vic=use_vic
         )
-        # Apply VIC setting - OptimalFewShotModel uses VIC by default
-        if not use_vic:
-            # Disable VIC regularization by setting lambda to 0
-            model.vic_lambda_var = 0.0
-            model.vic_lambda_cov = 0.0
     
     else:
         raise ValueError(f"Unknown method: {method}. Supported methods: "
@@ -1117,7 +1110,8 @@ def _create_backbone_without_se(original_model_func, dataset: str):
     don't have SE blocks by default.
     
     For models that do have SE blocks (like OptimizedConv4 from optimal_few_shot),
-    this creates a version with SE blocks disabled.
+    this creates a version with SE blocks disabled by replacing their forward
+    pass with an identity function.
     
     Args:
         original_model_func: Original model function
@@ -1129,11 +1123,7 @@ def _create_backbone_without_se(original_model_func, dataset: str):
     def backbone_without_se():
         model = original_model_func()
         
-        # Check if the model has SE blocks that can be disabled
-        if hasattr(model, 'use_se'):
-            model.use_se = False
-        
-        # For models with encoder containing SE blocks, we can try to bypass them
+        # For models with encoder containing SE blocks, bypass them
         if hasattr(model, 'encoder'):
             _disable_se_in_sequential(model.encoder)
         
@@ -1150,13 +1140,26 @@ def _disable_se_in_sequential(sequential_module):
     Args:
         sequential_module: nn.Sequential or similar module containing SE blocks
     """
-    import torch.nn as nn
-    
     for name, module in sequential_module.named_modules():
         # Check for SEBlock class
         if 'SEBlock' in module.__class__.__name__ or 'SqueezeExcitation' in module.__class__.__name__:
-            # Replace forward with identity
-            module.forward = lambda x: x
+            # Replace forward with identity - use a method to avoid closure issues
+            _make_identity_forward(module)
+
+
+def _make_identity_forward(module):
+    """
+    Replace a module's forward method with an identity function.
+    
+    This helper function avoids lambda closure issues by using a separate
+    function scope for each module.
+    
+    Args:
+        module: The module to modify
+    """
+    def identity_forward(x):
+        return x
+    module.forward = identity_forward
 
 
 # ========================================================================
@@ -1181,8 +1184,6 @@ def extract_predictions_from_evaluation(
     Returns:
         Tuple of (predictions, true_labels) as numpy arrays
     """
-    import torch
-    
     model.eval()
     all_preds = []
     all_labels = []

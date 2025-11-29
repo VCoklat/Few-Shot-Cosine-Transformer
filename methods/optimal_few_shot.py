@@ -44,16 +44,34 @@ class SEBlock(nn.Module):
 # ============================================================================
 
 class OptimizedConv4(nn.Module):
-    """Optimized Conv4 backbone with optional SE blocks and dropout"""
+    """
+    Optimized Conv4 backbone with optional SE (Squeeze-and-Excitation) blocks.
+    
+    This class builds a Conv4 backbone dynamically, optionally including SE blocks
+    for channel attention. The use_se flag controls whether SE blocks are included
+    in the encoder architecture.
+    
+    Args:
+        hid_dim: Hidden dimension for conv layers (default: 64)
+        dropout: Dropout rate (default: 0.1)
+        dataset: Dataset name for determining input channels and output size
+        use_se: If True, include SE blocks after each conv block (default: True)
+    
+    Attributes:
+        use_se: Boolean indicating whether SE blocks are included (for introspection)
+        encoder: Sequential module containing the conv layers
+        out_dim: Output dimension per spatial location
+        final_feat_dim: Total flattened feature dimension
+    """
     def __init__(self, hid_dim=64, dropout=0.1, dataset='miniImagenet', use_se=True):
         super().__init__()
         # Determine input channels based on dataset
         in_channels = 1 if dataset in ['Omniglot', 'cross_char'] else 3
         
-        # Store use_se flag for reference
+        # Store use_se flag for reference/introspection
         self.use_se = use_se
         
-        # Build encoder blocks with optional SE
+        # Build encoder blocks dynamically with optional SE
         layers = []
         
         # Block 1
@@ -302,7 +320,7 @@ class OptimalFewShotModel(MetaTemplate):
                  feature_dim=64, n_heads=4, dropout=0.1, 
                  num_datasets=5, dataset='miniImagenet',
                  use_focal_loss=False, label_smoothing=0.1,
-                 use_se=True):
+                 use_se=True, use_vic=True):
         # Call nn.Module.__init__ first
         nn.Module.__init__(self)
         
@@ -312,6 +330,7 @@ class OptimalFewShotModel(MetaTemplate):
         self.n_query = n_query
         self.change_way = True
         self.use_se = use_se
+        self.use_vic = use_vic
         
         # Create feature extractor from model_func
         # If model_func returns None, use OptimizedConv4 (for backward compatibility)
@@ -454,26 +473,29 @@ class OptimalFewShotModel(MetaTemplate):
         
         logits, prototypes, support_features, query_features = self._set_forward_full(x)
         
-        # Get dataset ID
-        dataset_id = self.dataset_id_map.get(self.current_dataset, 0)
-        
-        # Adaptive lambda
-        lambda_var, lambda_cov = self.lambda_predictor(
-            prototypes, support_features, query_features, dataset_id
-        )
-        
-        # VIC loss
-        vic_loss, vic_info = self.vic(
-            prototypes, support_features, lambda_var, lambda_cov
-        )
-        
         # Classification loss
         if self.use_focal_loss:
             ce_loss = self.focal_loss(logits, target)
         else:
             ce_loss = self.loss_fn(logits, target)
         
-        total_loss = ce_loss + vic_loss
+        # VIC loss (only if enabled)
+        if self.use_vic:
+            # Get dataset ID
+            dataset_id = self.dataset_id_map.get(self.current_dataset, 0)
+            
+            # Adaptive lambda
+            lambda_var, lambda_cov = self.lambda_predictor(
+                prototypes, support_features, query_features, dataset_id
+            )
+            
+            # VIC loss
+            vic_loss, vic_info = self.vic(
+                prototypes, support_features, lambda_var, lambda_cov
+            )
+            total_loss = ce_loss + vic_loss
+        else:
+            total_loss = ce_loss
         
         # Calculate accuracy
         predict = torch.argmax(logits, dim=1)
