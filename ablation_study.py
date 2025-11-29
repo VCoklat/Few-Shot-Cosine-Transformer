@@ -1087,7 +1087,8 @@ def create_model_from_config(
             n_query=n_query,
             feature_dim=64,
             n_heads=heads,
-            dataset=dataset
+            dataset=dataset,
+            use_se=use_se
         )
         # Apply VIC setting - OptimalFewShotModel uses VIC by default
         if not use_vic:

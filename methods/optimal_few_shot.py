@@ -44,43 +44,65 @@ class SEBlock(nn.Module):
 # ============================================================================
 
 class OptimizedConv4(nn.Module):
-    """Optimized Conv4 backbone with SE blocks and dropout"""
-    def __init__(self, hid_dim=64, dropout=0.1, dataset='miniImagenet'):
+    """Optimized Conv4 backbone with optional SE blocks and dropout"""
+    def __init__(self, hid_dim=64, dropout=0.1, dataset='miniImagenet', use_se=True):
         super().__init__()
         # Determine input channels based on dataset
         in_channels = 1 if dataset in ['Omniglot', 'cross_char'] else 3
         
-        self.encoder = nn.Sequential(
-            # Block 1
+        # Store use_se flag for reference
+        self.use_se = use_se
+        
+        # Build encoder blocks with optional SE
+        layers = []
+        
+        # Block 1
+        layers.extend([
             nn.Conv2d(in_channels, hid_dim, 3, padding=1, bias=False),
             nn.BatchNorm2d(hid_dim),
             nn.ReLU(inplace=True),
-            SEBlock(hid_dim),
+        ])
+        if use_se:
+            layers.append(SEBlock(hid_dim))
+        layers.extend([
             nn.MaxPool2d(2),
             nn.Dropout2d(dropout),
-            
-            # Block 2
+        ])
+        
+        # Block 2
+        layers.extend([
             nn.Conv2d(hid_dim, hid_dim, 3, padding=1, bias=False),
             nn.BatchNorm2d(hid_dim),
             nn.ReLU(inplace=True),
-            SEBlock(hid_dim),
+        ])
+        if use_se:
+            layers.append(SEBlock(hid_dim))
+        layers.extend([
             nn.MaxPool2d(2),
             nn.Dropout2d(dropout),
-            
-            # Block 3
+        ])
+        
+        # Block 3
+        layers.extend([
             nn.Conv2d(hid_dim, hid_dim, 3, padding=1, bias=False),
             nn.BatchNorm2d(hid_dim),
             nn.ReLU(inplace=True),
-            SEBlock(hid_dim),
-            nn.MaxPool2d(2),
-            
-            # Block 4
+        ])
+        if use_se:
+            layers.append(SEBlock(hid_dim))
+        layers.append(nn.MaxPool2d(2))
+        
+        # Block 4
+        layers.extend([
             nn.Conv2d(hid_dim, hid_dim, 3, padding=1, bias=False),
             nn.BatchNorm2d(hid_dim),
             nn.ReLU(inplace=True),
-            SEBlock(hid_dim),
-            nn.MaxPool2d(2)
-        )
+        ])
+        if use_se:
+            layers.append(SEBlock(hid_dim))
+        layers.append(nn.MaxPool2d(2))
+        
+        self.encoder = nn.Sequential(*layers)
         self.out_dim = hid_dim
         # Calculate final feature dimension based on dataset
         dim = 4 if dataset == 'CIFAR' else 5
@@ -279,7 +301,8 @@ class OptimalFewShotModel(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, 
                  feature_dim=64, n_heads=4, dropout=0.1, 
                  num_datasets=5, dataset='miniImagenet',
-                 use_focal_loss=False, label_smoothing=0.1):
+                 use_focal_loss=False, label_smoothing=0.1,
+                 use_se=True):
         # Call nn.Module.__init__ first
         nn.Module.__init__(self)
         
@@ -288,13 +311,14 @@ class OptimalFewShotModel(MetaTemplate):
         self.k_shot = k_shot
         self.n_query = n_query
         self.change_way = True
+        self.use_se = use_se
         
         # Create feature extractor from model_func
         # If model_func returns None, use OptimizedConv4 (for backward compatibility)
         if model_func is not None and model_func() is not None:
             self.feature = model_func()
         else:
-            self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset)
+            self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset, use_se=use_se)
         
         # Get feature dimension from backbone
         if hasattr(self.feature, 'final_feat_dim'):
