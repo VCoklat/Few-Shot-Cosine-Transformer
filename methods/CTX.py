@@ -64,10 +64,12 @@ class CTX(MetaTemplate):
             attn_weights = self.sm(dots / scale)
             
         else:
+            # Cosine attention: compute cosine similarity and normalize with softmax
             dots = torch.matmul(query_q, support_k)
             scale = torch.einsum('bq, nk -> nqk',
                         (torch.norm(query_q, 2, dim=-1), torch.norm(support_k, 2, dim=-2)))
-            attn_weights = dots / scale
+            # Apply softmax to normalize attention weights (ensures they sum to 1)
+            attn_weights = self.sm(dots / scale)
         
         out = torch.einsum('nqk, ndk -> qnd', attn_weights, support_v)
         
