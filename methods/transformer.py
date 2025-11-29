@@ -102,7 +102,11 @@ class Attention(nn.Module):
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
         if self.variant == "cosine":
-            dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
+            # Compute cosine similarity-based attention scores
+            # Shape: (h, num_queries, n_way, num_keys) where num_keys=1 in this architecture
+            dots = cosine_distance(f_q, f_k.transpose(-1, -2))
+            # Apply softmax to normalize attention weights (ensures they sum to 1)
+            dots = self.sm(dots)
             out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
         
         else: # self.variant == "softmax"
