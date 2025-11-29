@@ -56,6 +56,18 @@ def parse_args():
     parser.add_argument('--ablation_output', type=str, default='./record/ablation_results.json',
                         help='Output path for ablation study results')
     
+    # Ablation study configuration arguments
+    parser.add_argument('--num_heads', type=int, default=8,
+                        help='Number of attention heads for transformer models (default: 8)')
+    parser.add_argument('--use_se', type=int, default=1,
+                        help='[1:0] - [True:False]; Enable SE (Squeeze-and-Excitation) blocks')
+    parser.add_argument('--use_vic', type=int, default=1,
+                        help='[1:0] - [True:False]; Enable VIC (Variance-Invariance-Covariance) regularization')
+    parser.add_argument('--use_dynamic_weights', type=int, default=1,
+                        help='[1:0] - [True:False]; Enable dynamic prototype weighting')
+    parser.add_argument('--vic_components', type=str, default='all',
+                        help='VIC regularization components to use: "all", "variance", "invariance", "covariance", or comma-separated combination (e.g., "variance,covariance")')
+    
     return parser.parse_args()
 
 

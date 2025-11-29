@@ -65,11 +65,53 @@ study.save_results("ablation_results.json")
 
 ### Command-Line Usage
 
+The following CLI arguments are available for ablation study configurations:
+
+#### Basic Ablation Study Arguments
+
 ```bash
 # Run ablation study comparing methods
 python test.py --method FSCT_cosine --dataset miniImagenet --ablation_study 1 \
     --mcnemar_compare "FSCT_cosine,FSCT_softmax,CTX_cosine" \
     --ablation_output "./record/ablation_results.json"
+```
+
+#### Ablation Configuration Arguments
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--num_heads` | int | 8 | Number of attention heads for transformer models |
+| `--use_se` | int | 1 | Enable (1) or disable (0) SE (Squeeze-and-Excitation) blocks |
+| `--use_vic` | int | 1 | Enable (1) or disable (0) VIC regularization |
+| `--use_dynamic_weights` | int | 1 | Enable (1) or disable (0) dynamic prototype weighting |
+| `--vic_components` | str | "all" | VIC components: "all", "variance", "invariance", "covariance", or comma-separated |
+
+#### Examples
+
+```bash
+# Model with single attention head
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 1
+
+# Model with 4 attention heads
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 4
+
+# Model without dynamic weighting
+python train.py --method FSCT_cosine --dataset miniImagenet --use_dynamic_weights 0
+
+# Model without SE blocks (placeholder for future implementation)
+python train.py --method FSCT_cosine --dataset miniImagenet --use_se 0
+
+# Model without VIC regularization (placeholder for future implementation)
+python train.py --method FSCT_cosine --dataset miniImagenet --use_vic 0
+
+# Model with only variance component of VIC
+python train.py --method FSCT_cosine --dataset miniImagenet --vic_components variance
+
+# Model with variance and covariance VIC components
+python train.py --method FSCT_cosine --dataset miniImagenet --vic_components "variance,covariance"
+
+# Combined ablation: 4 heads without dynamic weights
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 4 --use_dynamic_weights 0
 ```
 
 ## McNemar's Test
@@ -172,13 +214,13 @@ To measure the contribution of Squeeze-and-Excitation (SE) blocks for channel at
 - Disable SE blocks in the backbone architecture
 - Keep all other components active
 
-**How to run:**
-Modify the backbone initialization in your model to set `use_se=False` if the parameter exists, or use a backbone variant without SE blocks.
-
-```python
-# In backbone.py or your model configuration
-# Set SE block usage to False
+**Command:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --use_se 0
+python test.py --method FSCT_cosine --dataset miniImagenet --use_se 0
 ```
+
+> Note: SE block support is a placeholder for future implementation in the backbone.
 
 ### 2. Model without Cosine Attention
 
@@ -186,9 +228,14 @@ To measure the impact of cosine attention vs. standard dot-product attention:
 
 **Configuration:**
 - Use `FSCT_softmax` or `CTX_softmax` instead of `FSCT_cosine` or `CTX_cosine`
+- The `--method` argument controls the attention type: `softmax` uses standard scaled dot-product attention while `cosine` uses cosine similarity-based attention
 
 **Command:**
 ```bash
+# Train model with standard softmax attention (no cosine attention)
+python train.py --method FSCT_softmax --dataset miniImagenet --n_way 5 --k_shot 5
+
+# Test model with standard softmax attention
 python test.py --method FSCT_softmax --dataset miniImagenet --n_way 5 --k_shot 5
 ```
 
@@ -198,56 +245,81 @@ To measure the contribution of Variance-Invariance-Covariance regularization:
 
 **Configuration:**
 - Disable VIC loss terms during training
-- Set VIC regularization weight to 0
 
-**How to run:**
-Modify the training script to disable VIC loss:
-```python
-# In your training loop
-vic_loss_weight = 0.0
+**Command:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --use_vic 0
+python test.py --method FSCT_cosine --dataset miniImagenet --use_vic 0
 ```
+
+> Note: VIC regularization support is a placeholder for future implementation.
 
 ### 4. Model without Dynamic Weighting
 
 To evaluate the impact of dynamic weight adjustment:
 
 **Configuration:**
-- Use fixed weights instead of learned/adaptive weights
-- Set dynamic weighting parameters to constant values
+- Use fixed uniform weights instead of learned/adaptive weights
+- The model uses simple mean prototypes instead of learned weighted prototypes
 
-**How to run:**
-Modify model to use fixed prototype weights or attention weights.
+**Command:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --use_dynamic_weights 0
+python test.py --method FSCT_cosine --dataset miniImagenet --use_dynamic_weights 0
+```
 
 ### 5. Model with Single VIC Component
 
 To analyze individual VIC components:
 
 **Variance Only:**
-- Enable variance regularization only
-- Disable invariance and covariance terms
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --vic_components variance
+```
 
 **Covariance Only:**
-- Enable covariance regularization only
-- Disable variance and invariance terms
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --vic_components covariance
+```
 
-**How to run:**
-Modify the VIC loss computation to include only selected terms.
+**Invariance Only:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --vic_components invariance
+```
+
+**Variance + Covariance:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --vic_components "variance,covariance"
+```
+
+> Note: VIC component selection is a placeholder for future implementation.
 
 ### 6. Varying Number of Attention Heads
 
 To find the optimal number of attention heads:
 
-**Configurations to test:**
-- 1 head
-- 2 heads
-- 4 heads (recommended optimal)
-- 8 heads
-
-**Command:**
+**Single Head (1):**
 ```bash
-# Modify the model initialization
-# In methods/transformer.py or methods/CTX.py
-# Change the 'heads' parameter: heads=1, heads=2, heads=4, heads=8
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 1
+python test.py --method FSCT_cosine --dataset miniImagenet --num_heads 1
+```
+
+**Two Heads:**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 2
+python test.py --method FSCT_cosine --dataset miniImagenet --num_heads 2
+```
+
+**Four Heads (recommended optimal):**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 4
+python test.py --method FSCT_cosine --dataset miniImagenet --num_heads 4
+```
+
+**Eight Heads (default):**
+```bash
+python train.py --method FSCT_cosine --dataset miniImagenet --num_heads 8
+python test.py --method FSCT_cosine --dataset miniImagenet --num_heads 8
 ```
 
 ## Running Ablation Studies
