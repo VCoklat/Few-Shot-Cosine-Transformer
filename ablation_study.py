@@ -348,7 +348,10 @@ class AblationStudy:
                 description="Complete model with all components",
                 method="FSCT_cosine",
                 variant="cosine",
-                heads=8
+                heads=8,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=True
             ),
             AblationConfig(
                 name="Without Cosine Attention",
@@ -356,7 +359,10 @@ class AblationStudy:
                 description="Using softmax attention instead of cosine attention",
                 method="FSCT_softmax",
                 variant="softmax",
-                heads=8
+                heads=8,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=True
             ),
             AblationConfig(
                 name="Single Attention Head",
@@ -364,7 +370,10 @@ class AblationStudy:
                 description="Using only 1 attention head instead of 8",
                 method="FSCT_cosine",
                 variant="cosine",
-                heads=1
+                heads=1,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=True
             ),
             AblationConfig(
                 name="Reduced Heads (4)",
@@ -372,7 +381,43 @@ class AblationStudy:
                 description="Using 4 attention heads instead of 8",
                 method="FSCT_cosine",
                 variant="cosine",
-                heads=4
+                heads=4,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=True
+            ),
+            AblationConfig(
+                name="No SE Blocks",
+                ablation_type=AblationType.NO_SE_BLOCKS,
+                description="Model without Squeeze-and-Excitation blocks in backbone",
+                method="FSCT_cosine",
+                variant="cosine",
+                heads=8,
+                use_se=False,
+                use_vic=True,
+                use_dynamic_weights=True
+            ),
+            AblationConfig(
+                name="No Dynamic Weighting",
+                ablation_type=AblationType.NO_DYNAMIC_WEIGHTING,
+                description="Using uniform weights for prototype computation",
+                method="FSCT_cosine",
+                variant="cosine",
+                heads=8,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=False
+            ),
+            AblationConfig(
+                name="No VIC Regularization",
+                ablation_type=AblationType.NO_VIC_REGULARIZATION,
+                description="Model without VIC regularization loss",
+                method="FSCT_cosine",
+                variant="cosine",
+                heads=8,
+                use_se=True,
+                use_vic=False,
+                use_dynamic_weights=True
             ),
             AblationConfig(
                 name="CTX Softmax Baseline",
@@ -380,7 +425,10 @@ class AblationStudy:
                 description="CTX method with softmax attention",
                 method="CTX_softmax",
                 variant="softmax",
-                heads=8
+                heads=8,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=True
             ),
             AblationConfig(
                 name="CTX Cosine",
@@ -388,7 +436,10 @@ class AblationStudy:
                 description="CTX method with cosine attention",
                 method="CTX_cosine",
                 variant="cosine",
-                heads=8
+                heads=8,
+                use_se=True,
+                use_vic=True,
+                use_dynamic_weights=True
             ),
         ]
     
@@ -626,6 +677,216 @@ class AblationStudy:
         # For full functionality, results need to be regenerated
         
         return study
+    
+    def run_ablation_experiment(
+        self,
+        config: AblationConfig,
+        loader,
+        model_func,
+        n_way: int,
+        k_shot: int,
+        n_query: int,
+        dataset: str = 'miniImagenet',
+        device: str = "cuda",
+        is_baseline: bool = False,
+        train_loader=None,
+        num_epochs: int = 0,
+        optimizer_class=None,
+        learning_rate: float = 1e-3
+    ) -> AblationResult:
+        """
+        Run a single ablation experiment with the given configuration.
+        
+        This method:
+        1. Creates a model using the config
+        2. Optionally trains the model if train_loader and num_epochs are provided
+        3. Evaluates the model on the provided loader
+        4. Automatically calls add_result() with the predictions
+        
+        Args:
+            config: AblationConfig specifying the model configuration
+            loader: DataLoader for evaluation
+            model_func: Function that returns a backbone model
+            n_way: Number of ways (classes) in few-shot task
+            k_shot: Number of support samples per class
+            n_query: Number of query samples per class
+            dataset: Dataset name
+            device: Device to run on
+            is_baseline: If True, mark this result as the baseline
+            train_loader: Optional DataLoader for training
+            num_epochs: Number of training epochs (0 = no training, use pretrained)
+            optimizer_class: Optimizer class (e.g., torch.optim.Adam)
+            learning_rate: Learning rate for optimizer
+        
+        Returns:
+            AblationResult with the experiment results
+        """
+        import torch
+        import tqdm
+        
+        # Create model from config
+        model = create_model_from_config(
+            config=config,
+            model_func=model_func,
+            n_way=n_way,
+            k_shot=k_shot,
+            n_query=n_query,
+            dataset=dataset,
+            device=device
+        )
+        
+        # Optional training
+        if train_loader is not None and num_epochs > 0:
+            if optimizer_class is None:
+                optimizer_class = torch.optim.Adam
+            
+            optimizer = optimizer_class(model.parameters(), lr=learning_rate)
+            model.train()
+            
+            for epoch in range(num_epochs):
+                for x, _ in train_loader:
+                    optimizer.zero_grad()
+                    _, loss = model.set_forward_loss(x.to(device))
+                    loss.backward()
+                    optimizer.step()
+        
+        # Evaluate model
+        model.eval()
+        all_preds = []
+        all_labels = []
+        acc_list = []
+        
+        with torch.no_grad():
+            for x, _ in loader:
+                scores = model.set_forward(x.to(device))
+                preds = scores.data.cpu().numpy().argmax(axis=1)
+                
+                n_query_per_way = len(preds) // n_way
+                labels = np.repeat(np.arange(n_way), n_query_per_way)
+                
+                all_preds.extend(preds)
+                all_labels.extend(labels)
+                
+                # Calculate per-episode accuracy
+                acc = np.mean(preds == labels)
+                acc_list.append(acc)
+        
+        predictions = np.array(all_preds)
+        true_labels = np.array(all_labels)
+        
+        # Calculate statistics
+        accuracy = np.mean(acc_list)
+        std = np.std(acc_list)
+        
+        # Calculate confidence interval
+        n_episodes = len(acc_list)
+        ci_margin = 1.96 * std / np.sqrt(n_episodes) if n_episodes > 0 else 0
+        confidence_interval = (accuracy - ci_margin, accuracy + ci_margin)
+        
+        # Add result to study
+        self.add_result(
+            name=config.name,
+            config=config,
+            accuracy=accuracy,
+            std=std,
+            predictions=predictions,
+            true_labels=true_labels,
+            confidence_interval=confidence_interval,
+            is_baseline=is_baseline
+        )
+        
+        return self.results[config.name]
+    
+    def run_all_standard_ablations(
+        self,
+        loader,
+        model_func,
+        n_way: int,
+        k_shot: int,
+        n_query: int,
+        dataset: str = 'miniImagenet',
+        device: str = "cuda",
+        train_loader=None,
+        num_epochs: int = 0,
+        optimizer_class=None,
+        learning_rate: float = 1e-3,
+        configs: Optional[List[AblationConfig]] = None,
+        verbose: bool = True
+    ) -> Dict[str, AblationResult]:
+        """
+        Run all standard ablation experiments and populate results.
+        
+        This convenience method runs all configurations from get_standard_ablations()
+        (or custom configs if provided) and returns the complete results dictionary.
+        
+        Args:
+            loader: DataLoader for evaluation
+            model_func: Function that returns a backbone model
+            n_way: Number of ways (classes) in few-shot task
+            k_shot: Number of support samples per class
+            n_query: Number of query samples per class
+            dataset: Dataset name
+            device: Device to run on
+            train_loader: Optional DataLoader for training
+            num_epochs: Number of training epochs (0 = no training)
+            optimizer_class: Optimizer class
+            learning_rate: Learning rate for optimizer
+            configs: Optional list of AblationConfig objects. If None, uses get_standard_ablations()
+            verbose: If True, print progress information
+        
+        Returns:
+            Dictionary mapping config names to AblationResult objects
+        """
+        if configs is None:
+            configs = self.get_standard_ablations()
+        
+        if verbose:
+            print(f"Running {len(configs)} ablation configurations...")
+        
+        for i, config in enumerate(configs):
+            if verbose:
+                print(f"\n[{i+1}/{len(configs)}] Running: {config.name}")
+                print(f"  Method: {config.method}, Variant: {config.variant}, "
+                      f"Heads: {config.heads}, SE: {config.use_se}, "
+                      f"Dynamic Weights: {config.use_dynamic_weights}")
+            
+            # First configuration (Full Model) is the baseline
+            is_baseline = (i == 0) or (config.ablation_type == AblationType.FULL_MODEL)
+            
+            try:
+                self.run_ablation_experiment(
+                    config=config,
+                    loader=loader,
+                    model_func=model_func,
+                    n_way=n_way,
+                    k_shot=k_shot,
+                    n_query=n_query,
+                    dataset=dataset,
+                    device=device,
+                    is_baseline=is_baseline,
+                    train_loader=train_loader,
+                    num_epochs=num_epochs,
+                    optimizer_class=optimizer_class,
+                    learning_rate=learning_rate
+                )
+                
+                if verbose:
+                    result = self.results[config.name]
+                    print(f"  Accuracy: {result.accuracy:.4f} ± {result.std:.4f}")
+            
+            except Exception as e:
+                if verbose:
+                    print(f"  Error: {e}")
+                warnings.warn(f"Failed to run ablation '{config.name}': {e}")
+        
+        if verbose:
+            print(f"\n{'='*60}")
+            print(f"Completed {len(self.results)}/{len(configs)} ablation experiments")
+            if self.baseline_result:
+                print(f"Baseline ({self.baseline_name}): {self.baseline_result.accuracy:.4f}")
+            print(f"{'='*60}")
+        
+        return self.results
 
 
 # ========================================================================
@@ -724,6 +985,177 @@ def format_contingency_table(n00: int, n01: int, n10: int, n11: int,
     ]
     
     return "\n".join(lines)
+
+
+# ========================================================================
+# Model Creation from Ablation Configuration
+# ========================================================================
+
+def create_model_from_config(
+    config: AblationConfig,
+    model_func,
+    n_way: int,
+    k_shot: int,
+    n_query: int,
+    dataset: str = 'miniImagenet',
+    device: str = "cuda"
+):
+    """
+    Create a model instance based on an AblationConfig.
+    
+    This function takes an AblationConfig and returns a properly configured model 
+    with the specified ablation settings (variant, heads, use_se, use_dynamic_weights, etc.).
+    
+    Args:
+        config: AblationConfig object specifying the model configuration
+        model_func: Function that returns a backbone model (e.g., Conv4, ResNet18)
+        n_way: Number of ways (classes) in few-shot task
+        k_shot: Number of support samples per class
+        n_query: Number of query samples per class
+        dataset: Dataset name for backbone configuration
+        device: Device to run on ('cuda' or 'cpu')
+    
+    Returns:
+        A configured model instance ready for training/evaluation
+    
+    Example:
+        >>> config = AblationConfig(
+        ...     name="Single Attention Head",
+        ...     ablation_type=AblationType.SINGLE_ATTENTION_HEAD,
+        ...     description="Using only 1 attention head",
+        ...     method="FSCT_cosine",
+        ...     variant="cosine",
+        ...     heads=1,
+        ...     use_dynamic_weights=True
+        ... )
+        >>> model = create_model_from_config(config, model_func, 5, 5, 15)
+    """
+    import torch
+    
+    method = config.method
+    variant = config.variant
+    heads = config.heads
+    use_se = config.use_se
+    use_dynamic_weights = config.use_dynamic_weights
+    use_vic = config.use_vic
+    
+    # Handle FSCT models (FewShotTransformer)
+    if method in ['FSCT_softmax', 'FSCT_cosine']:
+        from methods.transformer import FewShotTransformer
+        
+        # Create wrapper for model_func if SE blocks need to be disabled
+        if not use_se:
+            backbone_func = _create_backbone_without_se(model_func, dataset)
+        else:
+            backbone_func = model_func
+        
+        model = FewShotTransformer(
+            model_func=backbone_func,
+            n_way=n_way,
+            k_shot=k_shot,
+            n_query=n_query,
+            variant=variant,
+            heads=heads,
+            use_dynamic_weights=use_dynamic_weights
+        )
+    
+    # Handle CTX models
+    elif method in ['CTX_softmax', 'CTX_cosine']:
+        from methods.CTX import CTX
+        
+        # Determine input dimension based on backbone
+        # Default to 64 for Conv4/Conv6, 512 for ResNet
+        input_dim = 64  # Default for Conv backbones
+        
+        model = CTX(
+            model_func=model_func,
+            n_way=n_way,
+            k_shot=k_shot,
+            n_query=n_query,
+            variant=variant,
+            input_dim=input_dim
+        )
+    
+    # Handle OptimalFewShot models
+    elif method == 'OptimalFewShot':
+        from methods.optimal_few_shot import OptimalFewShotModel
+        
+        model = OptimalFewShotModel(
+            model_func=model_func,
+            n_way=n_way,
+            k_shot=k_shot,
+            n_query=n_query,
+            feature_dim=64,
+            n_heads=heads,
+            dataset=dataset
+        )
+        # Apply VIC setting - OptimalFewShotModel uses VIC by default
+        if not use_vic:
+            # Disable VIC regularization by setting lambda to 0
+            model.vic_lambda_var = 0.0
+            model.vic_lambda_cov = 0.0
+    
+    else:
+        raise ValueError(f"Unknown method: {method}. Supported methods: "
+                        "FSCT_softmax, FSCT_cosine, CTX_softmax, CTX_cosine, OptimalFewShot")
+    
+    # Move model to device
+    model = model.to(device)
+    
+    # Store config reference for later use
+    model._ablation_config = config
+    
+    return model
+
+
+def _create_backbone_without_se(original_model_func, dataset: str):
+    """
+    Create a wrapper model function that returns a backbone without SE blocks.
+    
+    For Conv4/Conv6 backbones, this returns the standard backbone since they 
+    don't have SE blocks by default.
+    
+    For models that do have SE blocks (like OptimizedConv4 from optimal_few_shot),
+    this creates a version with SE blocks disabled.
+    
+    Args:
+        original_model_func: Original model function
+        dataset: Dataset name for configuration
+    
+    Returns:
+        A model function that returns a backbone without SE blocks
+    """
+    def backbone_without_se():
+        model = original_model_func()
+        
+        # Check if the model has SE blocks that can be disabled
+        if hasattr(model, 'use_se'):
+            model.use_se = False
+        
+        # For models with encoder containing SE blocks, we can try to bypass them
+        if hasattr(model, 'encoder'):
+            _disable_se_in_sequential(model.encoder)
+        
+        return model
+    
+    return backbone_without_se
+
+
+def _disable_se_in_sequential(sequential_module):
+    """
+    Recursively disable SE blocks in a sequential module by replacing their
+    forward with an identity function.
+    
+    Args:
+        sequential_module: nn.Sequential or similar module containing SE blocks
+    """
+    import torch.nn as nn
+    
+    for name, module in sequential_module.named_modules():
+        # Check for SEBlock class
+        if 'SEBlock' in module.__class__.__name__ or 'SqueezeExcitation' in module.__class__.__name__:
+            # Replace forward with identity
+            module.forward = lambda x: x
 
 
 # ========================================================================
