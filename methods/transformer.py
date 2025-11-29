@@ -103,7 +103,8 @@ class Attention(nn.Module):
         
         if self.variant == "cosine":
             # Compute cosine similarity-based attention scores
-            dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
+            # Shape: (h, num_queries, n_way, num_keys) where num_keys=1 in this architecture
+            dots = cosine_distance(f_q, f_k.transpose(-1, -2))
             # Apply softmax to normalize attention weights (ensures they sum to 1)
             dots = self.sm(dots)
             out = torch.matmul(dots, f_v)                                                              # (h, q, n, d_h)
