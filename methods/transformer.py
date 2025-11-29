@@ -15,7 +15,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class FewShotTransformer(MetaTemplate):
     def __init__(self, model_func,  n_way, k_shot, n_query, variant = "softmax",
-                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512):
+                depth = 1, heads = 8, dim_head = 64, mlp_dim = 512,
+                use_dynamic_weights = True):
         super(FewShotTransformer, self).__init__(model_func,  n_way, k_shot, n_query)
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -23,12 +24,18 @@ class FewShotTransformer(MetaTemplate):
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
+        self.use_dynamic_weights = use_dynamic_weights
         dim = self.feat_dim
 
         self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
         
         self.sm = nn.Softmax(dim = -2)
-        self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+        # Dynamic weights for prototype computation (can be disabled for ablation)
+        if use_dynamic_weights:
+            self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+        else:
+            # Use fixed uniform weights when dynamic weighting is disabled
+            self.register_buffer('proto_weight', torch.ones(n_way, k_shot, 1) / k_shot)
         
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
@@ -47,7 +54,13 @@ class FewShotTransformer(MetaTemplate):
         z_support, z_query = self.parse_feature(x, is_feature)
                 
         z_support = z_support.contiguous().reshape(self.n_way, self.k_shot, -1)
-        z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                         # (1, n, d)
+        
+        if self.use_dynamic_weights:
+            # Dynamic weighted prototype computation
+            z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0)                     # (1, n, d)
+        else:
+            # Simple mean prototype (uniform weights)
+            z_proto = z_support.mean(1).unsqueeze(0)                                                   # (1, n, d)
         
         z_query = z_query.contiguous().reshape(self.n_way * self.n_query, -1).unsqueeze(1)                # (q, 1, d)
 
