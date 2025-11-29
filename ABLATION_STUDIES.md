@@ -228,10 +228,14 @@ To measure the impact of cosine attention vs. standard dot-product attention:
 
 **Configuration:**
 - Use `FSCT_softmax` or `CTX_softmax` instead of `FSCT_cosine` or `CTX_cosine`
+- The `--method` argument controls the attention type: `softmax` uses standard scaled dot-product attention while `cosine` uses cosine similarity-based attention
 
 **Command:**
 ```bash
+# Train model with standard softmax attention (no cosine attention)
 python train.py --method FSCT_softmax --dataset miniImagenet --n_way 5 --k_shot 5
+
+# Test model with standard softmax attention
 python test.py --method FSCT_softmax --dataset miniImagenet --n_way 5 --k_shot 5
 ```
 

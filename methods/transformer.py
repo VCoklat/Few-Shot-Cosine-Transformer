@@ -33,9 +33,7 @@ class FewShotTransformer(MetaTemplate):
         # Dynamic weights for prototype computation (can be disabled for ablation)
         if use_dynamic_weights:
             self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
-        else:
-            # Use fixed uniform weights when dynamic weighting is disabled
-            self.register_buffer('proto_weight', torch.ones(n_way, k_shot, 1) / k_shot)
+        # When dynamic weights are disabled, we use simple mean() in set_forward()
         
         self.FFN = nn.Sequential(
             nn.LayerNorm(dim),
