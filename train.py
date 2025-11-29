@@ -222,6 +222,12 @@ if __name__ == '__main__':
     params.checkpoint_dir += '_%dway_%dshot' % (
         params.n_way, params.k_shot)
     
+    # Add ablation parameters to checkpoint path for FSCT models
+    if params.method in ['FSCT_softmax', 'FSCT_cosine']:
+        params.checkpoint_dir += '_heads%d' % params.num_heads
+        if not params.use_dynamic_weights:
+            params.checkpoint_dir += '_nodyn'
+    
     if not os.path.isdir(params.checkpoint_dir):
         os.makedirs(params.checkpoint_dir)
     

@@ -448,6 +448,21 @@ When **discordant pairs < 25**, the exact binomial test is used instead of chi-s
 
 ## Implementation Notes
 
+### Checkpoint Directory Structure
+
+For FSCT models, checkpoints are saved in directories that include ablation parameters to ensure different configurations don't overwrite each other:
+
+```
+{save_dir}c/{dataset}/{backbone}_{method}[_aug][_FETI]_{n_way}way_{k_shot}shot_heads{num_heads}[_nodyn]
+```
+
+For example:
+- Default (8 heads, dynamic weights): `c/miniImagenet/ResNet18_FSCT_cosine_5way_5shot_heads8`
+- Single head: `c/miniImagenet/ResNet18_FSCT_cosine_5way_5shot_heads1`
+- 4 heads without dynamic weights: `c/miniImagenet/ResNet18_FSCT_cosine_5way_5shot_heads4_nodyn`
+
+**Important:** Always use the same ablation parameters (`--num_heads`, `--use_dynamic_weights`) during both training and testing to ensure the correct model checkpoint is loaded.
+
 ### Code Modifications
 
 Most ablation studies require minimal code changes:
