@@ -482,7 +482,10 @@ if __name__ == '__main__':
                 num_datasets=5,
                 dataset=params.dataset,
                 use_focal_loss=use_focal_loss,
-                label_smoothing=0.1
+                label_smoothing=0.1,
+                use_se=bool(params.use_se),
+                use_vic=bool(params.use_vic),
+                vic_components=params.vic_components
             )
 
         else:

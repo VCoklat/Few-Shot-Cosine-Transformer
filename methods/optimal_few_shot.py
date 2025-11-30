@@ -23,7 +23,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # ============================================================================
 
 class SEBlock(nn.Module):
-    """Squeeze-and-Excitation block for channel attention"""
+    """Squeeze-and-Excitation block for channel attention (4D tensors: B, C, H, W)"""
     def __init__(self, channel, reduction=4):
         super().__init__()
         self.fc = nn.Sequential(
@@ -37,6 +37,42 @@ class SEBlock(nn.Module):
         b, c, _, _ = x.size()
         y = x.view(b, c, -1).mean(dim=2)
         y = self.fc(y).view(b, c, 1, 1)
+        return x * y
+
+
+class SEBlock1D(nn.Module):
+    """Squeeze-and-Excitation block for 1D feature vectors (B, D)
+    
+    This allows SE-style attention to be applied to flattened features
+    from any backbone, including ResNet.
+    
+    Args:
+        feature_dim: The dimension of the input feature vectors
+        reduction: Reduction ratio for the bottleneck (default: 4)
+        min_reduced_dim: Minimum dimension for the reduced layer (default: 16)
+    """
+    MIN_REDUCED_DIM = 16  # Minimum dimension to avoid degenerate bottleneck
+    
+    def __init__(self, feature_dim, reduction=4, min_reduced_dim=None):
+        super().__init__()
+        if min_reduced_dim is None:
+            min_reduced_dim = self.MIN_REDUCED_DIM
+        reduced_dim = max(feature_dim // reduction, min_reduced_dim)
+        self.fc = nn.Sequential(
+            nn.Linear(feature_dim, reduced_dim, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(reduced_dim, feature_dim, bias=False),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, D) flattened feature vectors
+        Returns:
+            (B, D) SE-weighted features
+        """
+        y = self.fc(x)
         return x * y
 
 # ============================================================================
@@ -207,17 +243,36 @@ class LightweightCosineTransformer(nn.Module):
 # ============================================================================
 
 class DynamicVICRegularizer(nn.Module):
-    """Dynamic VIC (Variance-Invariance-Covariance) Regularizer"""
-    def __init__(self, feature_dim=64):
+    """Dynamic VIC (Variance-Invariance-Covariance) Regularizer
+    
+    Args:
+        feature_dim: Dimension of the feature vectors
+        vic_components: Which VIC components to use. Options:
+            - "all": Use both variance and covariance losses (default)
+            - "variance": Use only variance loss
+            - "covariance": Use only covariance loss
+            - "invariance": Use only invariance loss (same as variance)
+            - Comma-separated: e.g., "variance,covariance" for specific combinations
+    """
+    def __init__(self, feature_dim=64, vic_components='all'):
         super().__init__()
         self.feature_dim = feature_dim
         self.register_buffer('eye', torch.eye(feature_dim))
+        
+        # Parse vic_components
+        if vic_components == 'all':
+            self.use_variance = True
+            self.use_covariance = True
+        else:
+            components = [c.strip().lower() for c in vic_components.split(',')]
+            self.use_variance = 'variance' in components or 'invariance' in components
+            self.use_covariance = 'covariance' in components
     
     def forward(self, prototypes, support_features=None, lambda_var=0.1, lambda_cov=0.01):
         N, D = prototypes.shape
         
         # Variance loss: maximize inter-class distance
-        if N > 1:
+        if self.use_variance and N > 1:
             proto_norm = F.normalize(prototypes, p=2, dim=1)
             sim_matrix = torch.mm(proto_norm, proto_norm.t())
             mask = torch.triu(torch.ones_like(sim_matrix), diagonal=1).bool()
@@ -227,10 +282,13 @@ class DynamicVICRegularizer(nn.Module):
             var_loss = torch.tensor(0.0, device=prototypes.device)
         
         # Covariance loss: decorrelate dimensions
-        centered = prototypes - prototypes.mean(dim=0, keepdim=True)
-        cov = (centered.T @ centered) / max(N - 1, 1)
-        off_diag = cov - torch.diag(torch.diag(cov))
-        cov_loss = (off_diag ** 2).sum() / D
+        if self.use_covariance:
+            centered = prototypes - prototypes.mean(dim=0, keepdim=True)
+            cov = (centered.T @ centered) / max(N - 1, 1)
+            off_diag = cov - torch.diag(torch.diag(cov))
+            cov_loss = (off_diag ** 2).sum() / D
+        else:
+            cov_loss = torch.tensor(0.0, device=prototypes.device)
         
         vic_loss = lambda_var * var_loss + lambda_cov * cov_loss
         
@@ -320,7 +378,7 @@ class OptimalFewShotModel(MetaTemplate):
                  feature_dim=64, n_heads=4, dropout=0.1, 
                  num_datasets=5, dataset='miniImagenet',
                  use_focal_loss=False, label_smoothing=0.1,
-                 use_se=True, use_vic=True):
+                 use_se=True, use_vic=True, vic_components='all'):
         # Call nn.Module.__init__ first
         nn.Module.__init__(self)
         
@@ -331,6 +389,7 @@ class OptimalFewShotModel(MetaTemplate):
         self.change_way = True
         self.use_se = use_se
         self.use_vic = use_vic
+        self.vic_components = vic_components
         
         # Create feature extractor from model_func
         # If model_func returns None, use OptimizedConv4 (for backward compatibility)
@@ -353,10 +412,17 @@ class OptimalFewShotModel(MetaTemplate):
         # Add projection layer to map backbone output to feature_dim for transformer
         self.projection = nn.Linear(self.feat_dim, feature_dim, bias=False)
         
+        # Add SE block after projection for any backbone when use_se is enabled
+        # This allows SE-style attention to be applied regardless of backbone type
+        if use_se:
+            self.se_block = SEBlock1D(feature_dim, reduction=4)
+        else:
+            self.se_block = None
+        
         self.transformer = LightweightCosineTransformer(
             d_model=feature_dim, n_heads=n_heads, dropout=dropout
         )
-        self.vic = DynamicVICRegularizer(feature_dim=feature_dim)
+        self.vic = DynamicVICRegularizer(feature_dim=feature_dim, vic_components=vic_components)
         self.lambda_predictor = EpisodeAdaptiveLambda(
             feature_dim=feature_dim, num_datasets=num_datasets
         )
@@ -428,6 +494,11 @@ class OptimalFewShotModel(MetaTemplate):
         # Project to transformer dimension
         support_features = self.projection(support_features)
         query_features = self.projection(query_features)
+        
+        # Apply SE block after projection if enabled
+        if self.se_block is not None:
+            support_features = self.se_block(support_features)
+            query_features = self.se_block(query_features)
         
         # Transformer with gradient checkpointing
         all_features = torch.cat([support_features, query_features], dim=0).unsqueeze(0)
