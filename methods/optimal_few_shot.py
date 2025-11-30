@@ -285,6 +285,7 @@ class DynamicVICRegularizer(nn.Module):
             var_loss = torch.tensor(0.0, device=prototypes.device)
         
         # Invariance loss: minimize intra-class variance (support features close to prototype)
+        # Requires support_features, n_way, and k_shot to compute per-class support sample distances
         if self.use_invariance and support_features is not None and n_way is not None and k_shot is not None:
             # Reshape support features to (n_way, k_shot, D)
             support_per_way = support_features.reshape(n_way, k_shot, -1)
@@ -293,8 +294,9 @@ class DynamicVICRegularizer(nn.Module):
             
             # Compute cosine similarity between each support and its prototype
             # Higher similarity = more invariance, so we minimize (1 - similarity)
+            # Clamp similarities to avoid numerical issues when gradients are near zero
             similarities = (support_norm * proto_norm).sum(dim=-1)  # (n_way, k_shot)
-            inv_loss = (1 - similarities).mean()
+            inv_loss = (1 - similarities.clamp(max=1.0 - 1e-7)).mean()
         else:
             inv_loss = torch.tensor(0.0, device=prototypes.device)
         
@@ -311,7 +313,7 @@ class DynamicVICRegularizer(nn.Module):
         
         return vic_loss, {
             'var_loss': var_loss.item(),
-            'inv_loss': inv_loss.item() if isinstance(inv_loss, torch.Tensor) else inv_loss,
+            'inv_loss': inv_loss.item(),
             'cov_loss': cov_loss.item()
         }
 
