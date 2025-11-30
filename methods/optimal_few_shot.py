@@ -248,10 +248,10 @@ class DynamicVICRegularizer(nn.Module):
     Args:
         feature_dim: Dimension of the feature vectors
         vic_components: Which VIC components to use. Options:
-            - "all": Use both variance and covariance losses (default)
-            - "variance": Use only variance loss
-            - "covariance": Use only covariance loss
-            - "invariance": Use only invariance loss (same as variance)
+            - "all": Use variance, invariance and covariance losses (default)
+            - "variance": Use only variance loss (maximize inter-class distance)
+            - "invariance": Use only invariance loss (minimize intra-class variance)
+            - "covariance": Use only covariance loss (decorrelate dimensions)
             - Comma-separated: e.g., "variance,covariance" for specific combinations
     """
     def __init__(self, feature_dim=64, vic_components='all'):
@@ -262,16 +262,19 @@ class DynamicVICRegularizer(nn.Module):
         # Parse vic_components
         if vic_components == 'all':
             self.use_variance = True
+            self.use_invariance = True
             self.use_covariance = True
         else:
             components = [c.strip().lower() for c in vic_components.split(',')]
-            self.use_variance = 'variance' in components or 'invariance' in components
+            self.use_variance = 'variance' in components
+            self.use_invariance = 'invariance' in components
             self.use_covariance = 'covariance' in components
     
-    def forward(self, prototypes, support_features=None, lambda_var=0.1, lambda_cov=0.01):
+    def forward(self, prototypes, support_features=None, lambda_var=0.1, lambda_inv=0.1, lambda_cov=0.01,
+                n_way=None, k_shot=None):
         N, D = prototypes.shape
         
-        # Variance loss: maximize inter-class distance
+        # Variance loss: maximize inter-class distance (minimize prototype similarity)
         if self.use_variance and N > 1:
             proto_norm = F.normalize(prototypes, p=2, dim=1)
             sim_matrix = torch.mm(proto_norm, proto_norm.t())
@@ -280,6 +283,22 @@ class DynamicVICRegularizer(nn.Module):
             var_loss = similarities.mean()
         else:
             var_loss = torch.tensor(0.0, device=prototypes.device)
+        
+        # Invariance loss: minimize intra-class variance (support features close to prototype)
+        # Requires support_features, n_way, and k_shot to compute per-class support sample distances
+        if self.use_invariance and support_features is not None and n_way is not None and k_shot is not None:
+            # Reshape support features to (n_way, k_shot, D)
+            support_per_way = support_features.reshape(n_way, k_shot, -1)
+            support_norm = F.normalize(support_per_way, p=2, dim=-1)
+            proto_norm = F.normalize(prototypes, p=2, dim=-1).unsqueeze(1)  # (n_way, 1, D)
+            
+            # Compute cosine similarity between each support and its prototype
+            # Higher similarity = more invariance, so we minimize (1 - similarity)
+            # Clamp similarities to avoid numerical issues when gradients are near zero
+            similarities = (support_norm * proto_norm).sum(dim=-1)  # (n_way, k_shot)
+            inv_loss = (1 - similarities.clamp(max=1.0 - 1e-7)).mean()
+        else:
+            inv_loss = torch.tensor(0.0, device=prototypes.device)
         
         # Covariance loss: decorrelate dimensions
         if self.use_covariance:
@@ -290,10 +309,11 @@ class DynamicVICRegularizer(nn.Module):
         else:
             cov_loss = torch.tensor(0.0, device=prototypes.device)
         
-        vic_loss = lambda_var * var_loss + lambda_cov * cov_loss
+        vic_loss = lambda_var * var_loss + lambda_inv * inv_loss + lambda_cov * cov_loss
         
         return vic_loss, {
             'var_loss': var_loss.item(),
+            'inv_loss': inv_loss.item(),
             'cov_loss': cov_loss.item()
         }
 
@@ -313,11 +333,11 @@ class EpisodeAdaptiveLambda(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(32, 16),
             nn.ReLU(inplace=True),
-            nn.Linear(16, 2),
+            nn.Linear(16, 3),  # Output 3 lambdas: variance, invariance, covariance
             nn.Sigmoid()
         )
         
-        self.register_buffer('lambda_ema', torch.tensor([0.1, 0.01]))
+        self.register_buffer('lambda_ema', torch.tensor([0.1, 0.1, 0.01]))
         self.ema_momentum = 0.9
     
     def compute_episode_stats(self, prototypes, support_features, query_features):
@@ -364,9 +384,10 @@ class EpisodeAdaptiveLambda(nn.Module):
         )
         
         lambda_var = self.lambda_ema[0].clamp(0.05, 0.3)
-        lambda_cov = self.lambda_ema[1].clamp(0.005, 0.1)
+        lambda_inv = self.lambda_ema[1].clamp(0.05, 0.3)
+        lambda_cov = self.lambda_ema[2].clamp(0.005, 0.1)
         
-        return lambda_var, lambda_cov
+        return lambda_var, lambda_inv, lambda_cov
 
 # ============================================================================
 # 7. COMPLETE OPTIMAL FEW-SHOT MODEL
@@ -378,7 +399,8 @@ class OptimalFewShotModel(MetaTemplate):
                  feature_dim=64, n_heads=4, dropout=0.1, 
                  num_datasets=5, dataset='miniImagenet',
                  use_focal_loss=False, label_smoothing=0.1,
-                 use_se=True, use_vic=True, vic_components='all'):
+                 use_se=True, use_vic=True, vic_components='all',
+                 use_dynamic_weights=True):
         # Call nn.Module.__init__ first
         nn.Module.__init__(self)
         
@@ -390,6 +412,7 @@ class OptimalFewShotModel(MetaTemplate):
         self.use_se = use_se
         self.use_vic = use_vic
         self.vic_components = vic_components
+        self.use_dynamic_weights = use_dynamic_weights
         
         # Create feature extractor from model_func
         # If model_func returns None, use OptimizedConv4 (for backward compatibility)
@@ -427,6 +450,18 @@ class OptimalFewShotModel(MetaTemplate):
             feature_dim=feature_dim, num_datasets=num_datasets
         )
         self.temperature = nn.Parameter(torch.tensor(10.0))
+        
+        # Dynamic weights for prototype computation
+        # Use a learned attention network instead of fixed-size parameter
+        # This allows the model to work with varying n_way and k_shot
+        if use_dynamic_weights:
+            self.proto_weight_net = nn.Sequential(
+                nn.Linear(feature_dim, feature_dim // 4),
+                nn.ReLU(inplace=True),
+                nn.Linear(feature_dim // 4, 1)
+            )
+        else:
+            self.proto_weight_net = None
         
         # Loss configuration
         self.use_focal_loss = use_focal_loss
@@ -511,7 +546,15 @@ class OptimalFewShotModel(MetaTemplate):
         
         # Compute prototypes
         support_features_per_way = support_features.reshape(self.n_way, self.k_shot, -1)
-        prototypes = support_features_per_way.mean(dim=1)
+        if self.use_dynamic_weights and self.proto_weight_net is not None:
+            # Dynamic weighted prototype computation using learned attention
+            # Compute attention scores for each support sample
+            attention_scores = self.proto_weight_net(support_features_per_way)  # (n_way, k_shot, 1)
+            attention_weights = F.softmax(attention_scores, dim=1)  # Softmax over k_shot dimension
+            prototypes = (support_features_per_way * attention_weights).sum(dim=1)
+        else:
+            # Simple mean prototype (uniform weights)
+            prototypes = support_features_per_way.mean(dim=1)
         prototypes = F.normalize(prototypes, p=2, dim=1)
         
         # Classification logits
@@ -556,13 +599,14 @@ class OptimalFewShotModel(MetaTemplate):
             dataset_id = self.dataset_id_map.get(self.current_dataset, 0)
             
             # Adaptive lambda
-            lambda_var, lambda_cov = self.lambda_predictor(
+            lambda_var, lambda_inv, lambda_cov = self.lambda_predictor(
                 prototypes, support_features, query_features, dataset_id
             )
             
             # VIC loss
             vic_loss, vic_info = self.vic(
-                prototypes, support_features, lambda_var, lambda_cov
+                prototypes, support_features, lambda_var, lambda_inv, lambda_cov,
+                n_way=self.n_way, k_shot=self.k_shot
             )
             total_loss = ce_loss + vic_loss
         else:
