@@ -45,10 +45,19 @@ class SEBlock1D(nn.Module):
     
     This allows SE-style attention to be applied to flattened features
     from any backbone, including ResNet.
+    
+    Args:
+        feature_dim: The dimension of the input feature vectors
+        reduction: Reduction ratio for the bottleneck (default: 4)
+        min_reduced_dim: Minimum dimension for the reduced layer (default: 16)
     """
-    def __init__(self, feature_dim, reduction=4):
+    MIN_REDUCED_DIM = 16  # Minimum dimension to avoid degenerate bottleneck
+    
+    def __init__(self, feature_dim, reduction=4, min_reduced_dim=None):
         super().__init__()
-        reduced_dim = max(feature_dim // reduction, 16)  # Minimum 16 to avoid too small dimensions
+        if min_reduced_dim is None:
+            min_reduced_dim = self.MIN_REDUCED_DIM
+        reduced_dim = max(feature_dim // reduction, min_reduced_dim)
         self.fc = nn.Sequential(
             nn.Linear(feature_dim, reduced_dim, bias=False),
             nn.ReLU(inplace=True),
