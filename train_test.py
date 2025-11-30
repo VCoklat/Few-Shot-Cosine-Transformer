@@ -477,7 +477,7 @@ if __name__ == '__main__':
                 k_shot=params.k_shot,
                 n_query=params.n_query,
                 feature_dim=64,
-                n_heads=4,
+                n_heads=params.num_heads,
                 dropout=dropout,
                 num_datasets=5,
                 dataset=params.dataset,
@@ -485,7 +485,8 @@ if __name__ == '__main__':
                 label_smoothing=0.1,
                 use_se=bool(params.use_se),
                 use_vic=bool(params.use_vic),
-                vic_components=params.vic_components
+                vic_components=params.vic_components,
+                use_dynamic_weights=bool(params.use_dynamic_weights)
             )
 
         else:
