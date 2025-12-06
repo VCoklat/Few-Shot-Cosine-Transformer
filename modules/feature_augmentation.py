@@ -29,10 +29,10 @@ class FeatureLevelAugmentation(nn.Module):
         self.feature_dim = feature_dim
         self.num_augmentations = num_augmentations
         
-        # Learnable perturbation directions (orthogonalized during forward)
-        self.perturbation_directions = nn.Parameter(
-            torch.randn(num_augmentations, feature_dim)
-        )
+        # Learnable perturbation directions (initialized orthogonally for better conditioning)
+        perturbation_matrix = torch.empty(num_augmentations, feature_dim)
+        nn.init.orthogonal_(perturbation_matrix)
+        self.perturbation_directions = nn.Parameter(perturbation_matrix)
         
         # Magnitude predictor (task-adaptive)
         self.magnitude_predictor = nn.Sequential(

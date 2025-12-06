@@ -180,32 +180,24 @@ def train_enhanced_model(params):
     
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     
-    # Optimizer with different learning rates for backbone and other components
-    # Use module path checking for more robust parameter grouping
-    backbone_params = []
-    other_params = []
+    # Use model's parameter grouping method for robust separation
+    param_groups = model.get_parameter_groups(lr_backbone_multiplier=0.1)
     
-    for name, param in model.named_parameters():
-        # Check if parameter belongs to the feature extractor (backbone)
-        if name.startswith('feature.') or 'feature' in name.split('.')[0]:
-            backbone_params.append(param)
-        else:
-            other_params.append(param)
-    
+    # Create optimizer with parameter groups
     if params.optimization == 'Adam':
         optimizer = optim.Adam([
-            {'params': backbone_params, 'lr': params.learning_rate * 0.1},
-            {'params': other_params, 'lr': params.learning_rate}
+            {'params': pg['params'], 'lr': params.learning_rate * pg['lr_multiplier']}
+            for pg in param_groups
         ], weight_decay=params.weight_decay)
     elif params.optimization == 'AdamW':
         optimizer = optim.AdamW([
-            {'params': backbone_params, 'lr': params.learning_rate * 0.1},
-            {'params': other_params, 'lr': params.learning_rate}
+            {'params': pg['params'], 'lr': params.learning_rate * pg['lr_multiplier']}
+            for pg in param_groups
         ], weight_decay=params.weight_decay)
     elif params.optimization == 'SGD':
         optimizer = optim.SGD([
-            {'params': backbone_params, 'lr': params.learning_rate * 0.1},
-            {'params': other_params, 'lr': params.learning_rate}
+            {'params': pg['params'], 'lr': params.learning_rate * pg['lr_multiplier']}
+            for pg in param_groups
         ], momentum=params.momentum, weight_decay=params.weight_decay)
     else:
         raise ValueError(f'Unknown optimization: {params.optimization}')

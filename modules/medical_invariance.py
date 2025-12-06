@@ -164,11 +164,11 @@ class ContrastiveInvarianceLoss(nn.Module):
         # Positive pairs are (i, i+batch_size) for i in [0, batch_size)
         positive_indices = torch.arange(batch_size, dtype=torch.long, device=features1.device)
         
-        # Create mask for positive pairs
+        # Create mask for positive pairs (vectorized)
         mask = torch.zeros((2 * batch_size, 2 * batch_size), dtype=torch.bool, device=features1.device)
-        for i in range(batch_size):
-            mask[i, i + batch_size] = True
-            mask[i + batch_size, i] = True
+        pos_indices = torch.arange(batch_size, device=features1.device)
+        mask[pos_indices, pos_indices + batch_size] = True
+        mask[pos_indices + batch_size, pos_indices] = True
         
         # Mask out self-similarity
         mask_diag = torch.eye(2 * batch_size, dtype=torch.bool, device=features1.device)

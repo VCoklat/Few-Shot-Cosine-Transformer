@@ -130,6 +130,41 @@ class EnhancedOptimalFewShot(OptimalFewShotModel):
                 dropout_rate=dropout
             )
             self.contrastive_loss = ContrastiveInvarianceLoss(temperature=0.07)
+    
+    def get_parameter_groups(self, lr_backbone_multiplier=0.1):
+        """
+        Get parameter groups for differential learning rates.
+        
+        This method provides a robust way to separate backbone parameters
+        from invariance module parameters.
+        
+        Args:
+            lr_backbone_multiplier: Multiplier for backbone learning rate
+        
+        Returns:
+            List of parameter groups compatible with PyTorch optimizers
+        """
+        backbone_params = []
+        invariance_params = []
+        
+        # Explicitly identify backbone parameters
+        if hasattr(self, 'feature'):
+            backbone_params.extend(self.feature.parameters())
+        
+        # Projection layer (part of feature processing)
+        if hasattr(self, 'projection'):
+            backbone_params.extend(self.projection.parameters())
+        
+        # All other parameters are invariance-related
+        backbone_param_ids = {id(p) for p in backbone_params}
+        for param in self.parameters():
+            if id(param) not in backbone_param_ids:
+                invariance_params.append(param)
+        
+        return [
+            {'params': backbone_params, 'lr_multiplier': lr_backbone_multiplier},
+            {'params': invariance_params, 'lr_multiplier': 1.0}
+        ]
         
     def _apply_invariance_modules(self, features, is_training=True):
         """
@@ -191,10 +226,18 @@ class EnhancedOptimalFewShot(OptimalFewShotModel):
         query_features = self._apply_invariance_modules(query_features, is_training)
         
         # Transformer with gradient checkpointing
+        # Use try-except for PyTorch version compatibility
         all_features = torch.cat([support_features, query_features], dim=0).unsqueeze(0)
-        all_features = torch.utils.checkpoint.checkpoint(
-            self.transformer, all_features, use_reentrant=False
-        ).squeeze(0)
+        try:
+            # PyTorch 2.0+ with use_reentrant parameter
+            all_features = torch.utils.checkpoint.checkpoint(
+                self.transformer, all_features, use_reentrant=False
+            ).squeeze(0)
+        except TypeError:
+            # Fallback for older PyTorch versions
+            all_features = torch.utils.checkpoint.checkpoint(
+                self.transformer, all_features
+            ).squeeze(0)
         
         support_features = all_features[:N_support]
         query_features = all_features[N_support:]
