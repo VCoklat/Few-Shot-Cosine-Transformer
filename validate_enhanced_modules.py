@@ -8,6 +8,7 @@ without errors. It does not require a GPU or dataset.
 
 import sys
 import os
+import traceback
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -92,7 +93,6 @@ def test_module_instantiation():
         return True
     except Exception as e:
         print(f"✗ Failed to instantiate modules: {e}")
-        import traceback
         traceback.print_exc()
         return False
 
@@ -160,7 +160,6 @@ def test_forward_pass():
         return True
     except Exception as e:
         print(f"✗ Forward pass failed: {e}")
-        import traceback
         traceback.print_exc()
         return False
 
@@ -198,7 +197,6 @@ def test_factory_function():
         return True
     except Exception as e:
         print(f"✗ Factory function failed: {e}")
-        import traceback
         traceback.print_exc()
         return False
 

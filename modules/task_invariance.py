@@ -74,16 +74,19 @@ class TaskAdaptiveInvariance(nn.Module):
         # Get attention weights for each invariance type
         attention_weights = self.task_encoder(task_context)  # [1, num_invariance_types]
         
-        # Apply each invariance transformation
-        transformed_features = []
-        for i, transform in enumerate(self.invariance_transforms):
-            transformed = transform(features)  # [batch_size, feature_dim]
-            # Weight by attention
-            weighted = transformed * attention_weights[0, i]
-            transformed_features.append(weighted)
+        # Apply all transformations and weight them (vectorized for efficiency)
+        # Stack all transformations for batch processing
+        transformed_features = torch.stack([
+            transform(features) for transform in self.invariance_transforms
+        ], dim=0)  # [num_invariance_types, batch_size, feature_dim]
+        
+        # Weight by attention using einsum for efficient broadcasting
+        # attention_weights: [1, num_invariance_types] -> [num_invariance_types, 1, 1]
+        weights_expanded = attention_weights.squeeze(0).view(-1, 1, 1)
+        weighted_features = transformed_features * weights_expanded
         
         # Aggregate weighted transformations
-        aggregated = torch.stack(transformed_features, dim=0).sum(dim=0)
+        aggregated = weighted_features.sum(dim=0)  # [batch_size, feature_dim]
         
         # Residual connection with learnable scaling
         output = features + self.gamma * aggregated

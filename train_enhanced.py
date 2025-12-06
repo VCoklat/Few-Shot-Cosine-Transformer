@@ -181,11 +181,13 @@ def train_enhanced_model(params):
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     
     # Optimizer with different learning rates for backbone and other components
+    # Use module path checking for more robust parameter grouping
     backbone_params = []
     other_params = []
     
     for name, param in model.named_parameters():
-        if 'feature' in name:  # Backbone parameters
+        # Check if parameter belongs to the feature extractor (backbone)
+        if name.startswith('feature.') or 'feature' in name.split('.')[0]:
             backbone_params.append(param)
         else:
             other_params.append(param)
