@@ -4,7 +4,74 @@ This directory contains scripts for qualitative and quantitative analysis of the
 
 ## Scripts
 
-### 1. Qualitative Analysis (`qualitative_analysis.py`)
+### 1. McNemar's Test Model Comparison (`compare_models_mcnemar.py`)
+
+Statistically compare two model branches or configurations using McNemar's test to determine if there is a significant performance difference.
+
+**Features:**
+- **Statistical Comparison**: Uses McNemar's test for paired model comparison
+- **Detailed Reporting**: Contingency table, p-values, effect descriptions
+- **Confidence Intervals**: 95% CI for both models
+- **JSON Output**: Saves comprehensive results for further analysis
+- **Flexible Configuration**: Compare by method name or checkpoint path
+
+**Usage:**
+```bash
+python compare_models_mcnemar.py \
+    --dataset miniImagenet \
+    --backbone Conv4 \
+    --method_a FSCT_cosine \
+    --method_b FSCT_softmax \
+    --checkpoint_a ./checkpoints/branch_t.tar \
+    --checkpoint_b ./checkpoints/branch_b.tar \
+    --name_a "Branch T (Transformer)" \
+    --name_b "Branch B (Baseline)" \
+    --n_way 5 \
+    --k_shot 1 \
+    --test_iter 600 \
+    --output ./results/branch_comparison.json
+```
+
+**Parameters:**
+- `--dataset`: Dataset name (miniImagenet/CUB/HAM10000/etc.)
+- `--backbone`: Backbone architecture (Conv4/ResNet18/ResNet34)
+- `--method_a`: Method for model A (FSCT_cosine/CTX_softmax/etc.)
+- `--method_b`: Method for model B
+- `--checkpoint_a`: Path to checkpoint file for model A
+- `--checkpoint_b`: Path to checkpoint file for model B
+- `--checkpoint_dir_a`: Alternative: directory with best_model.tar for model A
+- `--checkpoint_dir_b`: Alternative: directory with best_model.tar for model B
+- `--name_a`: Display name for model A (default: method_a)
+- `--name_b`: Display name for model B (default: method_b)
+- `--n_way`: Number of classes per episode (default: 5)
+- `--k_shot`: Number of support samples per class (default: 1)
+- `--n_query`: Number of query samples per class (default: 16)
+- `--test_iter`: Number of test episodes (default: 600)
+- `--output`: Output path for results JSON (default: ./record/mcnemar_comparison.json)
+
+**Outputs:**
+- Console: Detailed comparison report with statistical significance
+- JSON file: Comprehensive results including contingency table, p-values, and model metrics
+- See `MCNEMAR_COMPARISON_GUIDE.md` for detailed interpretation guide
+
+**Example: Comparing Branch B and Branch T:**
+```bash
+python compare_models_mcnemar.py \
+    --dataset miniImagenet \
+    --method_a CTX_softmax \
+    --method_b FSCT_cosine \
+    --checkpoint_a ./models/branch_b.tar \
+    --checkpoint_b ./models/branch_t.tar \
+    --name_a "Branch B (Baseline)" \
+    --name_b "Branch T (Transformer)" \
+    --test_iter 600
+```
+
+For more examples, run: `./examples_mcnemar_comparison.sh` or see `MCNEMAR_COMPARISON_GUIDE.md`
+
+---
+
+### 2. Qualitative Analysis (`qualitative_analysis.py`)
 
 Generates visualizations of feature embeddings and class separation.
 
@@ -69,7 +136,7 @@ python qualitative_analysis.py \
 
 ---
 
-### 2. F1 Score Evaluation (`evaluate_f1_scores.py`)
+### 3. F1 Score Evaluation (`evaluate_f1_scores.py`)
 
 Computes detailed classification metrics including F1 scores for all classes.
 
