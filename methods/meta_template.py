@@ -13,6 +13,48 @@ global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import warnings
 warnings.filterwarnings("ignore")
+
+
+def call_model_func(model_func, dataset='miniImagenet'):
+    """
+    Helper function to call model_func with proper arguments.
+    
+    Handles two patterns:
+    1. Closure pattern (old code): model_func is a lambda/closure with no params
+    2. Function pattern (new code): model_func is a backbone function requiring dataset
+    
+    Args:
+        model_func: Function or closure that returns a model
+        dataset: Dataset name to pass to model_func if needed
+        
+    Returns:
+        Instantiated model
+    """
+    try:
+        sig = inspect.signature(model_func)
+        params = sig.parameters
+        # If model_func has 'dataset' parameter, call with dataset
+        if 'dataset' in params:
+            return model_func(dataset=dataset)
+        elif len(params) > 0:
+            # Has other parameters but not dataset, try positional
+            return model_func(dataset)
+        else:
+            # It's a closure with no parameters
+            return model_func()
+    except (ValueError, TypeError):
+        # Fallback: try calling without args first (closure pattern)
+        try:
+            return model_func()
+        except TypeError:
+            # If that fails, try with dataset (function pattern)
+            try:
+                return model_func(dataset=dataset)
+            except TypeError:
+                # Last resort: positional argument
+                return model_func(dataset)
+
+
 class MetaTemplate(nn.Module):
     def __init__(self, model_func, n_way, k_shot, n_query, change_way = True, dataset='miniImagenet'):
         super(MetaTemplate, self).__init__()
@@ -21,21 +63,7 @@ class MetaTemplate(nn.Module):
         self.n_query    = n_query
         
         # Handle both closure (no args) and function (requires dataset) patterns
-        try:
-            sig = inspect.signature(model_func)
-            # If model_func has parameters (like 'dataset'), call with dataset
-            if len(sig.parameters) > 0:
-                self.feature = model_func(dataset)
-            else:
-                # It's a closure with no parameters
-                self.feature = model_func()
-        except (ValueError, TypeError):
-            # Fallback: try calling without args first (closure pattern)
-            try:
-                self.feature = model_func()
-            except TypeError:
-                # If that fails, try with dataset (function pattern)
-                self.feature = model_func(dataset)
+        self.feature = call_model_func(model_func, dataset)
         
         self.feat_dim   = self.feature.final_feat_dim
         self.change_way = change_way  #some methods allow different_way classification during training and test
