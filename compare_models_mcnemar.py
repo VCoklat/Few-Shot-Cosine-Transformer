@@ -242,10 +242,10 @@ def main():
     print("\nCreating data loader...")
     test_datamgr = SetDataManager(
         image_size, 
-        n_episode=args.test_iter,
         n_way=args.n_way,
-        n_support=args.k_shot,
-        n_query=args.n_query
+        k_shot=args.k_shot,
+        n_query=args.n_query,
+        n_episode=args.test_iter
     )
     test_loader = test_datamgr.get_data_loader(testfile, aug=False)
     

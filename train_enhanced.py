@@ -135,25 +135,40 @@ def train_enhanced_model(params):
     # Data loaders
     print(f"Loading {params.dataset} dataset...")
     
+    # Determine data files
+    if params.dataset == 'cross':
+        base_file = configs.data_dir['miniImagenet'] + 'all.json'
+        val_file = configs.data_dir['CUB'] + 'val.json'
+    elif params.dataset == 'cross_char':
+        base_file = configs.data_dir['Omniglot'] + 'noLatin.json'
+        val_file = configs.data_dir['emnist'] + 'val.json'
+    else:
+        base_file = configs.data_dir[params.dataset] + 'base.json'
+        val_file = configs.data_dir[params.dataset] + 'val.json'
+    
+    # Determine image size
+    if params.dataset == "CIFAR":
+        image_size = 112 if 'ResNet' in params.backbone else 64
+    else:
+        image_size = 224 if 'ResNet' in params.backbone else 84
+    
     base_datamgr = SetDataManager(
-        params.dataset,
-        image_size=84,  # Default image size
+        image_size,
         n_way=params.n_way,
-        n_support=params.k_shot,
+        k_shot=params.k_shot,
         n_query=params.n_query,
         n_episode=params.n_episode
     )
-    base_loader = base_datamgr.get_data_loader(aug=params.train_aug)
+    base_loader = base_datamgr.get_data_loader(base_file, aug=params.train_aug)
     
     val_datamgr = SetDataManager(
-        params.dataset,
-        image_size=84,
+        image_size,
         n_way=params.n_way,
-        n_support=params.k_shot,
+        k_shot=params.k_shot,
         n_query=params.n_query,
         n_episode=params.test_iter
     )
-    val_loader = val_datamgr.get_data_loader(aug=False)
+    val_loader = val_datamgr.get_data_loader(val_file, aug=False)
     
     # Model
     print(f"Creating enhanced model for {params.dataset}...")
