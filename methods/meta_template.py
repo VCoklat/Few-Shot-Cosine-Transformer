@@ -28,7 +28,7 @@ def call_model_func(model_func, dataset='miniImagenet', feti=0, flatten=True):
         model_func: Function or closure that returns a model
         dataset: Dataset name to pass to model_func if needed
         feti: FETI parameter for ResNet models
-        flatten: Whether to flatten output
+        flatten: Whether to flatten output (method-specific: True for transformers, False for CTX)
         
     Returns:
         Instantiated model
@@ -46,7 +46,7 @@ def call_model_func(model_func, dataset='miniImagenet', feti=0, flatten=True):
             return model_func()
         elif len(params) >= 2:
             # Check if first parameter is 'FETI' (ResNet pattern)
-            if params[0] == 'FETI' or params[0].lower() == 'feti':
+            if params[0].upper() == 'FETI':
                 # ResNet pattern: (FETI, dataset, flatten=True)
                 if 'flatten' in params:
                     return model_func(feti, dataset, flatten=flatten)
@@ -62,17 +62,14 @@ def call_model_func(model_func, dataset='miniImagenet', feti=0, flatten=True):
             # Single parameter, likely 'dataset'
             if 'dataset' in params:
                 return model_func(dataset=dataset)
-            else:
-                # Try positional
-                return model_func(dataset)
         
-        # If we couldn't match any pattern, try basic calling
-        return model_func(dataset)
+        # If we couldn't match any pattern above, raise informative error
+        raise TypeError(f"Cannot determine how to call model_func with parameters: {params}")
         
     except (ValueError, TypeError) as e:
         # Fallback: try different calling patterns
         try:
-            # Try closure pattern first
+            # Try closure pattern first (most common in old code)
             return model_func()
         except TypeError:
             try:
@@ -80,16 +77,13 @@ def call_model_func(model_func, dataset='miniImagenet', feti=0, flatten=True):
                 return model_func(dataset=dataset)
             except TypeError:
                 try:
-                    # Try Conv4 pattern positional
-                    return model_func(dataset)
+                    # Try ResNet pattern
+                    return model_func(feti, dataset)
                 except TypeError:
-                    try:
-                        # Try ResNet pattern
-                        return model_func(feti, dataset)
-                    except TypeError:
-                        # Re-raise original error with context
-                        raise TypeError(f"Cannot call model_func with any known signature. "
-                                      f"Original error: {e}") from e
+                    # Re-raise original error with context
+                    raise TypeError(f"Cannot call model_func with any known signature. "
+                                  f"Parameters detected: {sig.parameters if 'sig' in locals() else 'unknown'}. "
+                                  f"Original error: {e}") from e
 
 
 class MetaTemplate(nn.Module):
