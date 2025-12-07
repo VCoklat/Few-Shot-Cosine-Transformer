@@ -26,8 +26,6 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-import tqdm
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
