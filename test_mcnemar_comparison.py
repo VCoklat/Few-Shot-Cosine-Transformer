@@ -2,6 +2,9 @@
 Unit tests for compare_models_mcnemar.py
 
 This test suite verifies the core functionality of the McNemar comparison script.
+Note: This test requires the full PyTorch environment to be installed.
+For a lighter-weight test that doesn't require PyTorch, see test_mcnemar_simple.py
+which reimplements the core McNemar's test logic for verification purposes.
 """
 
 import os

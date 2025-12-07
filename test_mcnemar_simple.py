@@ -3,6 +3,12 @@ Simplified unit tests for McNemar's test functionality
 
 This test suite verifies the core McNemar's test implementation
 without requiring the full PyTorch environment.
+
+Note: This file reimplements compute_contingency_table and mcnemar_test
+functions locally to avoid PyTorch dependencies. This is intentional duplication
+for testing purposes - the actual implementation should use ablation_study.py
+functions. The duplication allows testing the mathematical correctness without
+requiring the full machine learning stack.
 """
 
 import sys
@@ -11,7 +17,12 @@ from scipy import stats
 
 
 def compute_contingency_table(predictions_a, predictions_b, true_labels):
-    """Compute the contingency table for McNemar's test."""
+    """
+    Compute the contingency table for McNemar's test.
+    
+    Note: This is a simplified reimplementation for testing purposes.
+    Production code should use ablation_study.compute_contingency_table.
+    """
     if len(predictions_a) != len(predictions_b) or len(predictions_a) != len(true_labels):
         raise ValueError("All arrays must have the same length")
     
@@ -27,7 +38,12 @@ def compute_contingency_table(predictions_a, predictions_b, true_labels):
 
 
 def mcnemar_test(predictions_a, predictions_b, true_labels, correction=True):
-    """Perform McNemar's test to compare two classification algorithms."""
+    """
+    Perform McNemar's test to compare two classification algorithms.
+    
+    Note: This is a simplified reimplementation for testing purposes.
+    Production code should use ablation_study.mcnemar_test.
+    """
     predictions_a = np.asarray(predictions_a)
     predictions_b = np.asarray(predictions_b)
     true_labels = np.asarray(true_labels)

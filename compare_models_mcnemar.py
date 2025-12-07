@@ -368,8 +368,9 @@ def main():
     }
     
     # Create output directory if it doesn't exist
+    # os.path.dirname() returns empty string when path has no directory component
     output_dir = os.path.dirname(args.output)
-    if output_dir:  # Only create directory if path contains a directory
+    if output_dir:  # Only create directory if output path contains a directory component
         os.makedirs(output_dir, exist_ok=True)
     
     # Save to file
