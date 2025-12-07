@@ -292,7 +292,7 @@ class OptimalFewShotModel(MetaTemplate):
         # Create feature extractor from model_func
         # Handle both closure (no args) and function (requires dataset) patterns
         if model_func is not None:
-            self.feature = call_model_func(model_func, dataset)
+            self.feature = call_model_func(model_func, dataset=dataset, feti=0, flatten=True)
         else:
             self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset)
         

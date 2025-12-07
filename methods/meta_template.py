@@ -15,55 +15,92 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def call_model_func(model_func, dataset='miniImagenet'):
+def call_model_func(model_func, dataset='miniImagenet', feti=0, flatten=True):
     """
     Helper function to call model_func with proper arguments.
     
-    Handles two patterns:
+    Handles multiple patterns:
     1. Closure pattern (old code): model_func is a lambda/closure with no params
-    2. Function pattern (new code): model_func is a backbone function requiring dataset
+    2. Conv4/Conv6 pattern: model_func(dataset, flatten=True)
+    3. ResNet pattern: model_func(FETI, dataset, flatten=True)
     
     Args:
         model_func: Function or closure that returns a model
         dataset: Dataset name to pass to model_func if needed
+        feti: FETI parameter for ResNet models
+        flatten: Whether to flatten output
         
     Returns:
         Instantiated model
+        
+    Raises:
+        TypeError: If model_func cannot be called with any known signature
     """
     try:
         sig = inspect.signature(model_func)
-        params = sig.parameters
-        # If model_func has 'dataset' parameter, call with dataset
-        if 'dataset' in params:
-            return model_func(dataset=dataset)
-        elif len(params) > 0:
-            # Has other parameters but not dataset, try positional
-            return model_func(dataset)
-        else:
-            # It's a closure with no parameters
+        params = list(sig.parameters.keys())
+        
+        # Check parameter count and names to determine calling pattern
+        if len(params) == 0:
+            # Closure with no parameters
             return model_func()
-    except (ValueError, TypeError):
-        # Fallback: try calling without args first (closure pattern)
+        elif len(params) >= 2:
+            # Check if first parameter is 'FETI' (ResNet pattern)
+            if params[0] == 'FETI' or params[0].lower() == 'feti':
+                # ResNet pattern: (FETI, dataset, flatten=True)
+                if 'flatten' in params:
+                    return model_func(feti, dataset, flatten=flatten)
+                else:
+                    return model_func(feti, dataset)
+            elif 'dataset' in params:
+                # Conv4/Conv6 pattern: (dataset, flatten=True)
+                if 'flatten' in params:
+                    return model_func(dataset=dataset, flatten=flatten)
+                else:
+                    return model_func(dataset=dataset)
+        elif len(params) == 1:
+            # Single parameter, likely 'dataset'
+            if 'dataset' in params:
+                return model_func(dataset=dataset)
+            else:
+                # Try positional
+                return model_func(dataset)
+        
+        # If we couldn't match any pattern, try basic calling
+        return model_func(dataset)
+        
+    except (ValueError, TypeError) as e:
+        # Fallback: try different calling patterns
         try:
+            # Try closure pattern first
             return model_func()
         except TypeError:
-            # If that fails, try with dataset (function pattern)
             try:
+                # Try Conv4 pattern with keyword
                 return model_func(dataset=dataset)
             except TypeError:
-                # Last resort: positional argument
-                return model_func(dataset)
+                try:
+                    # Try Conv4 pattern positional
+                    return model_func(dataset)
+                except TypeError:
+                    try:
+                        # Try ResNet pattern
+                        return model_func(feti, dataset)
+                    except TypeError:
+                        # Re-raise original error with context
+                        raise TypeError(f"Cannot call model_func with any known signature. "
+                                      f"Original error: {e}") from e
 
 
 class MetaTemplate(nn.Module):
-    def __init__(self, model_func, n_way, k_shot, n_query, change_way = True, dataset='miniImagenet'):
+    def __init__(self, model_func, n_way, k_shot, n_query, change_way = True, dataset='miniImagenet', feti=0, flatten=True):
         super(MetaTemplate, self).__init__()
         self.n_way      = n_way
         self.k_shot     = k_shot
         self.n_query    = n_query
         
         # Handle both closure (no args) and function (requires dataset) patterns
-        self.feature = call_model_func(model_func, dataset)
+        self.feature = call_model_func(model_func, dataset=dataset, feti=feti, flatten=flatten)
         
         self.feat_dim   = self.feature.final_feat_dim
         self.change_way = change_way  #some methods allow different_way classification during training and test

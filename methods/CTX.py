@@ -23,8 +23,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class CTX(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, heatmap=0, variant="softmax",
-                input_dim = 64, dim_attn=128, dataset='miniImagenet'):
-        super(CTX, self).__init__(model_func,  n_way, k_shot, n_query, dataset=dataset)
+                input_dim = 64, dim_attn=128, dataset='miniImagenet', feti=0, flatten=False):
+        super(CTX, self).__init__(model_func,  n_way, k_shot, n_query, dataset=dataset, feti=feti, flatten=flatten)
 
         self.loss_fn = nn.CrossEntropyLoss()
         self.n_way = n_way
