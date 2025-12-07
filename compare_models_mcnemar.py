@@ -368,7 +368,9 @@ def main():
     }
     
     # Create output directory if it doesn't exist
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    output_dir = os.path.dirname(args.output)
+    if output_dir:  # Only create directory if path contains a directory
+        os.makedirs(output_dir, exist_ok=True)
     
     # Save to file
     with open(args.output, 'w') as f:
