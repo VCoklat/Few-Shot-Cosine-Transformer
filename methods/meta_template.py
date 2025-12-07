@@ -8,17 +8,94 @@ import tqdm
 from abc import abstractmethod
 import pdb
 import wandb
+import inspect
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import warnings
 warnings.filterwarnings("ignore")
+
+
+def call_model_func(model_func, dataset='miniImagenet', feti=0, flatten=True):
+    """
+    Helper function to call model_func with proper arguments.
+    
+    Handles multiple patterns:
+    1. Closure pattern (old code): model_func is a lambda/closure with no params
+    2. Conv4/Conv6 pattern: model_func(dataset, flatten=True)
+    3. ResNet pattern: model_func(FETI, dataset, flatten=True)
+    
+    Args:
+        model_func: Function or closure that returns a model
+        dataset: Dataset name to pass to model_func if needed
+        feti: FETI parameter for ResNet models
+        flatten: Whether to flatten output (method-specific: True for transformers, False for CTX)
+        
+    Returns:
+        Instantiated model
+        
+    Raises:
+        TypeError: If model_func cannot be called with any known signature
+    """
+    try:
+        sig = inspect.signature(model_func)
+        params = list(sig.parameters.keys())
+        
+        # Check parameter count and names to determine calling pattern
+        if len(params) == 0:
+            # Closure with no parameters
+            return model_func()
+        elif len(params) >= 2:
+            # Check if first parameter is 'FETI' (ResNet pattern)
+            if params[0].upper() == 'FETI':
+                # ResNet pattern: (FETI, dataset, flatten=True)
+                if 'flatten' in params:
+                    return model_func(feti, dataset, flatten=flatten)
+                else:
+                    return model_func(feti, dataset)
+            elif 'dataset' in params:
+                # Conv4/Conv6 pattern: (dataset, flatten=True)
+                if 'flatten' in params:
+                    return model_func(dataset=dataset, flatten=flatten)
+                else:
+                    return model_func(dataset=dataset)
+        elif len(params) == 1:
+            # Single parameter, likely 'dataset'
+            if 'dataset' in params:
+                return model_func(dataset=dataset)
+        
+        # If we couldn't match any pattern above, raise informative error
+        raise TypeError(f"Cannot determine how to call model_func with parameters: {params}")
+        
+    except (ValueError, TypeError) as e:
+        # Fallback: try different calling patterns
+        try:
+            # Try closure pattern first (most common in old code)
+            return model_func()
+        except TypeError:
+            try:
+                # Try Conv4 pattern with keyword
+                return model_func(dataset=dataset)
+            except TypeError:
+                try:
+                    # Try ResNet pattern
+                    return model_func(feti, dataset)
+                except TypeError:
+                    # Re-raise original error with context
+                    raise TypeError(f"Cannot call model_func with any known signature. "
+                                  f"Parameters detected: {sig.parameters if 'sig' in locals() else 'unknown'}. "
+                                  f"Original error: {e}") from e
+
+
 class MetaTemplate(nn.Module):
-    def __init__(self, model_func, n_way, k_shot, n_query, change_way = True):
+    def __init__(self, model_func, n_way, k_shot, n_query, change_way = True, dataset='miniImagenet', feti=0, flatten=True):
         super(MetaTemplate, self).__init__()
         self.n_way      = n_way
         self.k_shot     = k_shot
         self.n_query    = n_query
-        self.feature    = model_func()
+        
+        # Handle both closure (no args) and function (requires dataset) patterns
+        self.feature = call_model_func(model_func, dataset=dataset, feti=feti, flatten=flatten)
+        
         self.feat_dim   = self.feature.final_feat_dim
         self.change_way = change_way  #some methods allow different_way classification during training and test
 
