@@ -257,6 +257,8 @@ def main():
                        help='Use prototype refinement')
     parser.add_argument('--domain', default='general',
                        help='Domain: general/medical/fine_grained')
+    parser.add_argument('--split', default='novel',
+                       help='Data split: base/val/novel')
     
     args = parser.parse_args()
     
@@ -275,17 +277,36 @@ def main():
     
     # Load data
     print("\nLoading test data...")
-    image_size = 84  # Default
+    
+    # Determine test file
+    split = args.split
+    if args.dataset == 'cross':
+        if split == 'base':
+            testfile = configs.data_dir['miniImagenet'] + 'all.json'
+        else:
+            testfile = configs.data_dir['CUB'] + split + '.json'
+    elif args.dataset == 'cross_char':
+        if split == 'base':
+            testfile = configs.data_dir['Omniglot'] + 'noLatin.json'
+        else:
+            testfile = configs.data_dir['emnist'] + split + '.json'
+    else:
+        testfile = configs.data_dir[args.dataset] + split + '.json'
+    
+    # Determine image size
+    if args.dataset == "CIFAR":
+        image_size = 112 if 'ResNet' in args.backbone else 64
+    else:
+        image_size = 224 if 'ResNet' in args.backbone else 84
     
     datamgr = SetDataManager(
-        args.dataset,
-        image_size=image_size,
+        image_size,
         n_way=args.n_way,
-        n_support=args.k_shot,
+        k_shot=args.k_shot,
         n_query=args.n_query,
         n_episode=args.n_episodes
     )
-    data_loader = datamgr.get_data_loader(aug=False)
+    data_loader = datamgr.get_data_loader(testfile, aug=False)
     
     # Create model
     print("\nCreating model...")
