@@ -8,17 +8,35 @@ import tqdm
 from abc import abstractmethod
 import pdb
 import wandb
+import inspect
 global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import warnings
 warnings.filterwarnings("ignore")
 class MetaTemplate(nn.Module):
-    def __init__(self, model_func, n_way, k_shot, n_query, change_way = True):
+    def __init__(self, model_func, n_way, k_shot, n_query, change_way = True, dataset='miniImagenet'):
         super(MetaTemplate, self).__init__()
         self.n_way      = n_way
         self.k_shot     = k_shot
         self.n_query    = n_query
-        self.feature    = model_func()
+        
+        # Handle both closure (no args) and function (requires dataset) patterns
+        try:
+            sig = inspect.signature(model_func)
+            # If model_func has parameters (like 'dataset'), call with dataset
+            if len(sig.parameters) > 0:
+                self.feature = model_func(dataset)
+            else:
+                # It's a closure with no parameters
+                self.feature = model_func()
+        except (ValueError, TypeError):
+            # Fallback: try calling without args first (closure pattern)
+            try:
+                self.feature = model_func()
+            except TypeError:
+                # If that fails, try with dataset (function pattern)
+                self.feature = model_func(dataset)
+        
         self.feat_dim   = self.feature.final_feat_dim
         self.change_way = change_way  #some methods allow different_way classification during training and test
 

@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+import inspect
 from methods.meta_template import MetaTemplate
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -290,9 +291,23 @@ class OptimalFewShotModel(MetaTemplate):
         self.change_way = True
         
         # Create feature extractor from model_func
-        # If model_func returns None, use OptimizedConv4 (for backward compatibility)
-        if model_func is not None and model_func() is not None:
-            self.feature = model_func()
+        # Handle both closure (no args) and function (requires dataset) patterns
+        if model_func is not None:
+            try:
+                sig = inspect.signature(model_func)
+                # If model_func has parameters (like 'dataset'), call with dataset
+                if len(sig.parameters) > 0:
+                    self.feature = model_func(dataset)
+                else:
+                    # It's a closure with no parameters
+                    self.feature = model_func()
+            except (ValueError, TypeError):
+                # Fallback: try calling without args first (closure pattern)
+                try:
+                    self.feature = model_func()
+                except TypeError:
+                    # If that fails, try with dataset (function pattern)
+                    self.feature = model_func(dataset)
         else:
             self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset)
         
