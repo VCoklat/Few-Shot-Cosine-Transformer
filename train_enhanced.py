@@ -22,7 +22,7 @@ import backbone
 import configs
 from data.datamgr import SetDataManager
 from io_utils import model_dict, parse_args
-from models.optimal_fewshot_enhanced import EnhancedOptimalFewShot, get_model_for_dataset
+from models.optimal_fewshot_enhanced import EnhancedOptimalFewShot
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -164,16 +164,64 @@ def train_enhanced_model(params):
         print(f"Warning: Unknown backbone {params.backbone}, using Conv4")
         model_func = backbone.Conv4
     
-    # Use factory function to get optimally configured model
-    model = get_model_for_dataset(
-        dataset=params.dataset,
+    # Dataset-specific configurations
+    dataset_configs = {
+        'Omniglot': {
+            'use_task_invariance': True,
+            'use_multi_scale': False,
+            'use_feature_augmentation': True,
+            'use_prototype_refinement': False,
+            'domain': 'general',
+            'dropout': 0.05
+        },
+        'miniImagenet': {
+            'use_task_invariance': True,
+            'use_multi_scale': True,
+            'use_feature_augmentation': True,
+            'use_prototype_refinement': True,
+            'domain': 'general',
+            'dropout': 0.1
+        },
+        'HAM10000': {
+            'use_task_invariance': True,
+            'use_multi_scale': True,
+            'use_feature_augmentation': True,
+            'use_prototype_refinement': True,
+            'domain': 'medical',
+            'dropout': 0.2
+        },
+        'CUB': {
+            'use_task_invariance': True,
+            'use_multi_scale': True,
+            'use_feature_augmentation': True,
+            'use_prototype_refinement': True,
+            'domain': 'fine_grained',
+            'dropout': 0.15
+        }
+    }
+    
+    # Get configuration for dataset or use default
+    config = dataset_configs.get(params.dataset, dataset_configs['miniImagenet'])
+    
+    # Override dropout if specified
+    if params.dropout != 0.1:
+        config['dropout'] = params.dropout
+    
+    # Create enhanced model with explicit configuration
+    model = EnhancedOptimalFewShot(
         model_func=model_func,
         n_way=params.n_way,
         k_shot=params.k_shot,
         n_query=params.n_query,
         feature_dim=params.feature_dim,
         n_heads=params.n_heads,
-        dropout=params.dropout
+        dropout=config['dropout'],
+        dataset=params.dataset,
+        use_task_invariance=config['use_task_invariance'],
+        use_multi_scale=config['use_multi_scale'],
+        use_feature_augmentation=config['use_feature_augmentation'],
+        use_prototype_refinement=config['use_prototype_refinement'],
+        domain=config['domain']
     )
     
     model = model.to(device)
