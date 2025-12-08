@@ -67,9 +67,9 @@ def compute_confidence_interval(accuracies: np.ndarray, confidence: float = 0.95
     
     # Using normal approximation for large n
     z_score = 1.96 if confidence == 0.95 else 2.576  # 95% or 99%
-    margin = z_score * std / np.sqrt(n)
+    margin = float(z_score * std / np.sqrt(n))
     
-    return mean, mean - margin, mean + margin
+    return mean, float(mean - margin), float(mean + margin)
 
 
 def detect_feature_collapse(features: np.ndarray, threshold: float = 1e-4) -> Dict:
