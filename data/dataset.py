@@ -91,7 +91,6 @@ class SetDataset:
         # Store data_file path for path correction and batch_size
         self._data_file = data_file
         self.batch_size = batch_size
-        self.transform = transform
         
         for x, y in zip(self.meta['image_names'], self.meta['image_labels']):
             # Correct the path if it doesn't exist
@@ -119,8 +118,8 @@ class SetDataset:
             # Number of additional samples needed
             n_additional = self.batch_size - images.shape[0]
             
-            # Sample with replacement from the available samples
-            additional_indices = np.random.choice(images.shape[0], n_additional, replace=True)
+            # Sample with replacement from the available samples using torch for thread safety
+            additional_indices = torch.randint(0, images.shape[0], (n_additional,))
             additional_images = images[additional_indices]
             additional_labels = labels[additional_indices]
             
