@@ -89,7 +89,8 @@ def load_ham10000_data(csv_path, img_dir):
     
     return df
 
-def split_dataset(df, base_ratio=0.64, val_ratio=0.16, novel_ratio=0.20):
+def split_dataset(df, base_ratio=0.64, val_ratio=0.16, novel_ratio=0.20, 
+                  min_base_classes=2, min_val_classes=3, min_novel_classes=2):
     """
     Split dataset into base, val, and novel sets based on classes.
     
@@ -98,17 +99,60 @@ def split_dataset(df, base_ratio=0.64, val_ratio=0.16, novel_ratio=0.20):
         base_ratio: Proportion of classes for base set (training)
         val_ratio: Proportion of classes for validation set
         novel_ratio: Proportion of classes for novel set (testing)
+        min_base_classes: Minimum number of classes required in base split
+        min_val_classes: Minimum number of classes required in val split (for n-way evaluation)
+        min_novel_classes: Minimum number of classes required in novel split (for n-way testing)
     
     Returns:
         Dictionary with 'base', 'val', and 'novel' splits
     """
-    # Get unique classes and shuffle them
+    # Get unique classes and shuffle them  
     unique_classes = df['label'].unique()
     random.shuffle(unique_classes)
     
     n_classes = len(unique_classes)
+    
+    # Check if we have enough classes total
+    min_total = min_base_classes + min_val_classes + min_novel_classes
+    if n_classes < min_total:
+        raise ValueError(
+            f"Dataset has only {n_classes} classes, but minimum required is {min_total} "
+            f"({min_base_classes} base + {min_val_classes} val + {min_novel_classes} novel). "
+            f"Cannot split dataset."
+        )
+    
+    # Calculate initial split sizes
     n_base = int(n_classes * base_ratio)
     n_val = int(n_classes * val_ratio)
+    n_novel = n_classes - n_base - n_val
+    
+    # Ensure validation split has enough classes (prioritize this for n-way learning)
+    if n_val < min_val_classes:
+        print(f"⚠️  Warning: val split would have {n_val} classes, adjusting to {min_val_classes}")
+        n_val = min_val_classes
+    
+    # Ensure novel split has enough classes
+    if n_novel < min_novel_classes:
+        print(f"⚠️  Warning: novel split would have {n_novel} classes, adjusting to {min_novel_classes}")
+        n_novel = min_novel_classes
+    
+    # Recalculate base to use remaining classes
+    n_base = n_classes - n_val - n_novel
+    
+    # Check if base has enough classes
+    if n_base < min_base_classes:
+        print(f"⚠️  Warning: base split would have {n_base} classes, less than recommended {min_base_classes}")
+        print(f"    Adjusting splits to prioritize base classes...")
+        # Re-distribute: give minimum to val and novel, rest to base
+        n_val = min_val_classes
+        n_novel = min_novel_classes
+        n_base = n_classes - n_val - n_novel
+        
+        if n_base < 1:
+            raise ValueError(
+                f"Cannot create valid split with {n_classes} classes. "
+                f"Need at least 1 base class after allocating {min_val_classes} val and {min_novel_classes} novel classes."
+            )
     
     # Split classes
     base_classes = unique_classes[:n_base]
@@ -117,9 +161,9 @@ def split_dataset(df, base_ratio=0.64, val_ratio=0.16, novel_ratio=0.20):
     
     print(f"\n📊 Dataset split:")
     print(f"   Total classes: {n_classes}")
-    print(f"   Base classes: {len(base_classes)} ({base_ratio*100:.0f}%)")
-    print(f"   Val classes: {len(val_classes)} ({val_ratio*100:.0f}%)")
-    print(f"   Novel classes: {len(novel_classes)} ({novel_ratio*100:.0f}%)")
+    print(f"   Base classes: {len(base_classes)} - {list(base_classes)}")
+    print(f"   Val classes: {len(val_classes)} - {list(val_classes)}")
+    print(f"   Novel classes: {len(novel_classes)} - {list(novel_classes)}")
     
     # Create splits
     splits = {
