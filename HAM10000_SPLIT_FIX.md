@@ -63,10 +63,12 @@ Ran `write_HAM10000_filelist.py` to regenerate the splits:
 - val.json: 1 class ❌
 - novel.json: 2 classes
 
-**After Fix:**
-- base.json: 2 classes (akiec, bkl) - 1,426 images
-- val.json: 3 classes (bcc, nv, vasc) - 7,361 images ✅
-- novel.json: 2 classes (df, mel) - 1,228 images
+**After Fix (Updated 2025-12-08):**
+- base.json: 3 classes (mel, bkl, df) - 2,327 images ✅
+- val.json: 2 classes (bcc, nv) - 7,219 images
+- novel.json: 2 classes (vasc, akiec) - 469 images
+
+**Note:** The split was updated again to prioritize base classes for 3-way training classification.
 
 ### 3. Added Test Coverage
 
@@ -88,25 +90,27 @@ python3 test_ham10000_splits.py
 #
 # 1. Testing base.json (training split):
 #   Base split:
-#     - Classes: 2 ['akiec', 'bkl']
-#     - Images: 1426
-#     ✓ PASS: Has 2 classes (minimum: 2)
+#     - Classes: 3 ['mel', 'bkl', 'df']
+#     - Images: 2327
+#     ✓ PASS: Has 3 classes (minimum: 3)
 #
 # 2. Testing val.json (validation split):
 #   Validation split:
-#     - Classes: 3 ['bcc', 'nv', 'vasc']
-#     - Images: 7361
-#     ✓ PASS: Has 3 classes (minimum: 3)
+#     - Classes: 2 ['bcc', 'nv']
+#     - Images: 7219
+#     ✓ PASS: Has 2 classes (minimum: 2)
 #
 # 3. Testing novel.json (testing split):
 #   Novel split:
-#     - Classes: 2 ['df', 'mel']
-#     - Images: 1228
+#     - Classes: 2 ['vasc', 'akiec']
+#     - Images: 469
 #     ✓ PASS: Has 2 classes (minimum: 2)
 #
 # ======================================================================
 # ✅ All tests PASSED! Dataset splits are properly configured.
-#    - Validation split supports 3-way classification
+#    - Base split supports 3-way classification for training
+#    - Validation split supports 2-way classification
+#    - Novel split supports 2-way classification
 # ======================================================================
 ```
 
