@@ -1,0 +1,106 @@
+#!/bin/bash
+# Example usage scripts for the unified experiment runner
+
+echo "====================================="
+echo "Unified Experiment Runner Examples"
+echo "====================================="
+echo ""
+
+# Example 1: Full experiment on miniImagenet with Conv4, 5-way 1-shot
+echo "Example 1: Full experiment (miniImagenet, Conv4, 5-way 1-shot)"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset miniImagenet \\"
+echo "  --backbone Conv4 \\"
+echo "  --n_way 5 \\"
+echo "  --k_shot 1 \\"
+echo "  --run_mode all \\"
+echo "  --output_dir ./results/example1"
+echo ""
+
+# Example 2: Ablation study only on CUB with ResNet18, 5-way 5-shot
+echo "Example 2: Ablation study only (CUB, ResNet18, 5-way 5-shot)"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset CUB \\"
+echo "  --backbone ResNet18 \\"
+echo "  --n_way 5 \\"
+echo "  --k_shot 5 \\"
+echo "  --run_mode ablation \\"
+echo "  --output_dir ./results/example2"
+echo ""
+
+# Example 3: Training and testing only with custom hyperparameters
+echo "Example 3: Training and testing only (CIFAR, Conv4, custom hyperparameters)"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset CIFAR \\"
+echo "  --backbone Conv4 \\"
+echo "  --n_way 5 \\"
+echo "  --k_shot 1 \\"
+echo "  --num_epochs 100 \\"
+echo "  --learning_rate 0.001 \\"
+echo "  --weight_decay 0.0001 \\"
+echo "  --optimization AdamW \\"
+echo "  --run_mode train_test \\"
+echo "  --output_dir ./results/example3"
+echo ""
+
+# Example 4: Feature collapse analysis
+echo "Example 4: Feature collapse analysis (miniImagenet, Conv4)"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset miniImagenet \\"
+echo "  --backbone Conv4 \\"
+echo "  --run_mode feature_analysis \\"
+echo "  --output_dir ./results/example4"
+echo ""
+
+# Example 5: Qualitative analysis with pre-trained checkpoints
+echo "Example 5: Qualitative analysis with pre-trained checkpoints"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset miniImagenet \\"
+echo "  --backbone Conv4 \\"
+echo "  --baseline_checkpoint ./checkpoints/baseline_best.tar \\"
+echo "  --proposed_checkpoint ./checkpoints/proposed_best.tar \\"
+echo "  --run_mode qualitative \\"
+echo "  --output_dir ./results/example5"
+echo ""
+
+# Example 6: Specific ablation experiments
+echo "Example 6: Specific ablation experiments (E1, E2, E6 only)"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset miniImagenet \\"
+echo "  --backbone Conv4 \\"
+echo "  --run_mode ablation \\"
+echo "  --ablation_experiments E1,E2,E6 \\"
+echo "  --output_dir ./results/example6"
+echo ""
+
+# Example 7: McNemar's statistical testing
+echo "Example 7: McNemar's statistical testing"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset miniImagenet \\"
+echo "  --backbone Conv4 \\"
+echo "  --run_mode mcnemar \\"
+echo "  --output_dir ./results/example7"
+echo ""
+
+# Example 8: Quick test with reduced iterations
+echo "Example 8: Quick test with reduced iterations"
+echo "Command:"
+echo "python run_experiments.py \\"
+echo "  --dataset miniImagenet \\"
+echo "  --backbone Conv4 \\"
+echo "  --test_iter 100 \\"
+echo "  --num_epochs 10 \\"
+echo "  --run_mode all \\"
+echo "  --output_dir ./results/example8"
+echo ""
+
+echo "====================================="
+echo "To run any example, copy the command above"
+echo "====================================="
