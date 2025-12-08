@@ -161,7 +161,8 @@ def safe_plot_save(output_path: str, dpi: int = 150, show: bool = False):
         plt.close()
 
 
-def run_mcnemar_comparison(preds_a, preds_b, labels, name_a, name_b):
+def run_mcnemar_comparison(preds_a: np.ndarray, preds_b: np.ndarray, labels: np.ndarray, 
+                          name_a: str, name_b: str) -> Optional[Dict]:
     """
     Run and display McNemar's test comparison between two models.
     
@@ -180,6 +181,12 @@ def run_mcnemar_comparison(preds_a, preds_b, labels, name_a, name_b):
         return None
     
     try:
+        # Validate inputs
+        if len(preds_a) != len(preds_b) or len(preds_a) != len(labels):
+            logger.error(f"Prediction and label arrays must have the same length: "
+                        f"preds_a={len(preds_a)}, preds_b={len(preds_b)}, labels={len(labels)}")
+            return None
+        
         result = mcnemar_test(preds_a, preds_b, labels)
         
         logger.info(f"\n{'='*60}")
@@ -677,22 +684,27 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
         
         baseline_preds = np.array(baseline_test_results['predictions'])
         proposed_preds = np.array(proposed_test_results['predictions'])
-        true_labels = np.array(baseline_test_results['true_labels'])
+        baseline_labels = np.array(baseline_test_results['true_labels'])
+        proposed_labels = np.array(proposed_test_results['true_labels'])
         
-        mcnemar_result = run_mcnemar_comparison(
-            baseline_preds,
-            proposed_preds,
-            true_labels,
-            'Baseline',
-            'Proposed'
-        )
-        
-        if mcnemar_result:
-            # Save McNemar result
-            with open(os.path.join(output_paths['quantitative'], 'mcnemar_test.json'), 'w') as f:
-                json.dump(mcnemar_result, f, indent=2)
+        # Validate that both models were tested on the same data
+        if not np.array_equal(baseline_labels, proposed_labels):
+            logger.error("Cannot run McNemar's test: baseline and proposed models have different true labels")
+        else:
+            mcnemar_result = run_mcnemar_comparison(
+                baseline_preds,
+                proposed_preds,
+                baseline_labels,
+                'Baseline',
+                'Proposed'
+            )
             
-            results['mcnemar_test'] = mcnemar_result
+            if mcnemar_result:
+                # Save McNemar result
+                with open(os.path.join(output_paths['quantitative'], 'mcnemar_test.json'), 'w') as f:
+                    json.dump(mcnemar_result, f, indent=2)
+                
+                results['mcnemar_test'] = mcnemar_result
     
     return results
 

@@ -109,8 +109,8 @@ def test_command_line_args():
     print(f"  mcnemar_each_test: {config.mcnemar_each_test}")
     
     # Verify the flags are set correctly
-    assert config.show_plots == True, "show_plots should be True"
-    assert config.mcnemar_each_test == True, "mcnemar_each_test should be True"
+    assert config.show_plots is True, "show_plots should be True"
+    assert config.mcnemar_each_test is True, "mcnemar_each_test should be True"
     
     print("\n✓ Command-line arguments parsed successfully")
     print("✓ New flags (--show_plots and --mcnemar_each_test) are working correctly")
@@ -143,8 +143,8 @@ def test_default_values():
     print(f"  mcnemar_each_test: {args.mcnemar_each_test}")
     
     # Verify defaults
-    assert args.show_plots == False, "show_plots should default to False"
-    assert args.mcnemar_each_test == False, "mcnemar_each_test should default to False"
+    assert args.show_plots is False, "show_plots should default to False"
+    assert args.mcnemar_each_test is False, "mcnemar_each_test should default to False"
     
     print("\n✓ Default values are correct (both False)")
 

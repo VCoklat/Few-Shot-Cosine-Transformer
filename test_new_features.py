@@ -20,17 +20,17 @@ def test_show_plots_config():
     
     # Test default value (False)
     config_default = ExperimentConfig()
-    assert config_default.show_plots == False, \
+    assert config_default.show_plots is False, \
         f"Expected show_plots default to be False, got {config_default.show_plots}"
     
     # Test explicit True
     config_true = ExperimentConfig(show_plots=True)
-    assert config_true.show_plots == True, \
+    assert config_true.show_plots is True, \
         f"Expected show_plots to be True, got {config_true.show_plots}"
     
     # Test explicit False
     config_false = ExperimentConfig(show_plots=False)
-    assert config_false.show_plots == False, \
+    assert config_false.show_plots is False, \
         f"Expected show_plots to be False, got {config_false.show_plots}"
     
     print("  ✓ show_plots configuration tests passed")
@@ -42,17 +42,17 @@ def test_mcnemar_each_test_config():
     
     # Test default value (False)
     config_default = ExperimentConfig()
-    assert config_default.mcnemar_each_test == False, \
+    assert config_default.mcnemar_each_test is False, \
         f"Expected mcnemar_each_test default to be False, got {config_default.mcnemar_each_test}"
     
     # Test explicit True
     config_true = ExperimentConfig(mcnemar_each_test=True)
-    assert config_true.mcnemar_each_test == True, \
+    assert config_true.mcnemar_each_test is True, \
         f"Expected mcnemar_each_test to be True, got {config_true.mcnemar_each_test}"
     
     # Test explicit False
     config_false = ExperimentConfig(mcnemar_each_test=False)
-    assert config_false.mcnemar_each_test == False, \
+    assert config_false.mcnemar_each_test is False, \
         f"Expected mcnemar_each_test to be False, got {config_false.mcnemar_each_test}"
     
     print("  ✓ mcnemar_each_test configuration tests passed")
@@ -69,8 +69,8 @@ def test_combined_config():
         dataset='miniImagenet',
         backbone='Conv4'
     )
-    assert config_both_true.show_plots == True
-    assert config_both_true.mcnemar_each_test == True
+    assert config_both_true.show_plots is True
+    assert config_both_true.mcnemar_each_test is True
     assert config_both_true.dataset == 'miniImagenet'
     assert config_both_true.backbone == 'Conv4'
     
@@ -79,16 +79,16 @@ def test_combined_config():
         show_plots=False,
         mcnemar_each_test=False
     )
-    assert config_both_false.show_plots == False
-    assert config_both_false.mcnemar_each_test == False
+    assert config_both_false.show_plots is False
+    assert config_both_false.mcnemar_each_test is False
     
     # Test mixed
     config_mixed = ExperimentConfig(
         show_plots=True,
         mcnemar_each_test=False
     )
-    assert config_mixed.show_plots == True
-    assert config_mixed.mcnemar_each_test == False
+    assert config_mixed.show_plots is True
+    assert config_mixed.mcnemar_each_test is False
     
     print("  ✓ Combined configuration tests passed")
 
@@ -175,8 +175,8 @@ def test_config_with_all_parameters():
     assert config.run_mode == RunMode.ALL
     assert config.output_dir == './test_results'
     assert config.seed == 1234
-    assert config.show_plots == True
-    assert config.mcnemar_each_test == True
+    assert config.show_plots is True
+    assert config.mcnemar_each_test is True
     
     print("  ✓ ExperimentConfig with all parameters tests passed")
 
