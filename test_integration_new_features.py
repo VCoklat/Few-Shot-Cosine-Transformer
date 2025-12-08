@@ -12,7 +12,7 @@ import sys
 import os
 import argparse
 
-# Add parent directory to path
+# Add current directory to path (for importing configs module)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from configs.experiment_config import ExperimentConfig, RunMode

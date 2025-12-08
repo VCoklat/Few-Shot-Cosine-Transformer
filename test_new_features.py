@@ -130,7 +130,7 @@ def test_safe_plot_save_signature():
         # Check default values
         assert sig.parameters['dpi'].default == 150, \
             f"Expected dpi default to be 150, got {sig.parameters['dpi'].default}"
-        assert sig.parameters['show'].default == False, \
+        assert sig.parameters['show'].default is False, \
             f"Expected show default to be False, got {sig.parameters['show'].default}"
         
         print("  ✓ safe_plot_save function signature is correct")
