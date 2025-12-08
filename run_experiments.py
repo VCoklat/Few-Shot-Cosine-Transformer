@@ -578,7 +578,7 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
     if config.baseline_checkpoint and os.path.exists(config.baseline_checkpoint):
         logger.info("\nLoading baseline model from checkpoint...")
         baseline_model = create_model('baseline', config)
-        checkpoint = torch.load(config.baseline_checkpoint)
+        checkpoint = torch.load(config.baseline_checkpoint, weights_only=False)
         baseline_model.load_state_dict(checkpoint['state'])
         baseline_train_results = {'loaded_from_checkpoint': config.baseline_checkpoint}
     else:
@@ -593,7 +593,7 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
         )
         # Load best model
         checkpoint_path = os.path.join(output_paths['quantitative'], 'best_model.tar')
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
         baseline_model.load_state_dict(checkpoint['state'])
     
     logger.info("\n>>> Testing BASELINE model")
@@ -614,7 +614,7 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
     if config.proposed_checkpoint and os.path.exists(config.proposed_checkpoint):
         logger.info("\nLoading proposed model from checkpoint...")
         proposed_model = create_model('proposed', config)
-        checkpoint = torch.load(config.proposed_checkpoint)
+        checkpoint = torch.load(config.proposed_checkpoint, weights_only=False)
         proposed_model.load_state_dict(checkpoint['state'])
         proposed_train_results = {'loaded_from_checkpoint': config.proposed_checkpoint}
     else:
@@ -629,7 +629,7 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
         )
         # Load best model
         checkpoint_path = os.path.join(output_paths['quantitative'], 'best_model.tar')
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
         proposed_model.load_state_dict(checkpoint['state'])
     
     logger.info("\n>>> Testing PROPOSED model")
@@ -727,7 +727,7 @@ def run_qualitative_analysis(config: ExperimentConfig, output_paths: Dict[str, s
         # Load checkpoints if available
         baseline_checkpoint = os.path.join(output_paths['quantitative'], 'best_model.tar')
         if os.path.exists(baseline_checkpoint):
-            checkpoint = torch.load(baseline_checkpoint)
+            checkpoint = torch.load(baseline_checkpoint, weights_only=False)
             baseline_model.load_state_dict(checkpoint['state'])
         
         baseline_results = test_model(baseline_model, test_loader, config, extract_features=True)
@@ -1211,7 +1211,7 @@ def main():
                        help='Select which experiments to run')
     
     # Output settings
-    parser.add_argument('--output_dir', type=str, default='./results',
+    parser.add_argument('--output_dir', type=str, default='/kaggle/working/Few-Shot-Cosine-Transformer/record',
                        help='Directory for saving results and visualizations')
     parser.add_argument('--seed', type=int, default=4040,
                        help='Random seed for reproducibility')
@@ -1227,12 +1227,12 @@ def main():
                        help='Comma-separated list of ablation experiments to run (e.g., E1,E2,E3)')
     
     # Visualization settings
-    parser.add_argument('--show_plots', action='store_true', default=False,
-                       help='Display plots interactively during execution (default: False)')
+    parser.add_argument('--show_plots', action='store_true', default=True,
+                       help='Display plots interactively during execution (default: True)')
     
     # McNemar testing settings
-    parser.add_argument('--mcnemar_each_test', action='store_true', default=False,
-                       help='Run McNemar statistical significance test after each testing phase (default: False)')
+    parser.add_argument('--mcnemar_each_test', action='store_true', default=True,
+                       help='Run McNemar statistical significance test after each testing phase (default: True)')
     
     args = parser.parse_args()
     

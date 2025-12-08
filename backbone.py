@@ -18,7 +18,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 pretrained_path = "./checkpoint_models/Pretrained_ResNet_FETI.pt.tar"
 
 def pretrain_load(pretrained_path):
-    pretrained_dict = torch.load(pretrained_path)
+    pretrained_dict = torch.load(pretrained_path, weights_only=False)
     pretrained_dict['state_dict'] = {key.replace(
         "module.resnet.", ""): value for key, value in pretrained_dict['state_dict'].items()}
     return pretrained_dict
