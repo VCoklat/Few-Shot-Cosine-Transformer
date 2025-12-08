@@ -293,6 +293,8 @@ class OptimalFewShotModel(MetaTemplate):
         
         # VIC configuration parameters
         self.use_vic = use_vic
+        # Note: vic_lambda_inv is stored for API compatibility but not currently used
+        # as the DynamicVICRegularizer only implements variance and covariance losses
         self.vic_lambda_inv = vic_lambda_inv
         self.vic_lambda_cov = vic_lambda_cov
         self.vic_lambda_var = vic_lambda_var
