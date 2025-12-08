@@ -23,7 +23,14 @@ class FewShotTransformer(MetaTemplate):
         self.k_shot = k_shot
         self.variant = variant
         self.depth = depth
-        dim = self.feat_dim
+        
+        # Handle both flattened (scalar) and non-flattened (list) feature dimensions
+        if isinstance(self.feat_dim, list):
+            # feat_dim is [channels, height, width] when flatten=False
+            dim = self.feat_dim[0] * self.feat_dim[1] * self.feat_dim[2]
+        else:
+            # feat_dim is a scalar when flatten=True
+            dim = self.feat_dim
 
         self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
         

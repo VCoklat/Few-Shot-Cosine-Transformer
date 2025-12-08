@@ -315,7 +315,7 @@ def create_model(model_type: str, config: ExperimentConfig, vic_components: Opti
             mlp_dim=512,
             dataset=config.dataset,
             feti=0,
-            flatten=True
+            flatten=False
         )
         logger.info(f"  Model: FewShotTransformer (baseline)")
     
