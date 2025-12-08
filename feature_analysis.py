@@ -18,10 +18,36 @@ from scipy.stats import pearsonr
 from scipy.spatial.distance import cdist, euclidean
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
+def convert_to_serializable(obj: Any) -> Any:
+    """
+    Convert numpy types to native Python types for JSON serialization.
+    
+    Args:
+        obj: Object to convert (can be numpy array, scalar, dict, list, etc.)
+    
+    Returns:
+        Object with all numpy types converted to native Python types
+    """
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_to_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_to_serializable(item) for item in obj]
+    else:
+        return obj
 
 
 def compute_confidence_interval(accuracies: np.ndarray, confidence: float = 0.95) -> Tuple[float, float, float]:
@@ -35,8 +61,8 @@ def compute_confidence_interval(accuracies: np.ndarray, confidence: float = 0.95
     Returns:
         Tuple of (mean, lower_bound, upper_bound)
     """
-    mean = np.mean(accuracies)
-    std = np.std(accuracies)
+    mean = float(np.mean(accuracies))
+    std = float(np.std(accuracies))
     n = len(accuracies)
     
     # Using normal approximation for large n
@@ -61,7 +87,7 @@ def detect_feature_collapse(features: np.ndarray, threshold: float = 1e-4) -> Di
     collapsed_dims = np.sum(std_per_dim < threshold)
     total_dims = features.shape[1]
     
-    return {
+    result = {
         'collapsed_dimensions': int(collapsed_dims),
         'total_dimensions': int(total_dims),
         'collapse_ratio': float(collapsed_dims / total_dims),
@@ -70,6 +96,7 @@ def detect_feature_collapse(features: np.ndarray, threshold: float = 1e-4) -> Di
         'max_std': float(np.max(std_per_dim)),
         'mean_std': float(np.mean(std_per_dim))
     }
+    return convert_to_serializable(result)
 
 
 def compute_feature_utilization(features: np.ndarray) -> Dict:
@@ -96,13 +123,14 @@ def compute_feature_utilization(features: np.ndarray) -> Dict:
     # Utilization score per dimension
     utilization = np.where(ranges > 1e-8, effective_range / (ranges + 1e-8), 0)
     
-    return {
+    result = {
         'mean_utilization': float(np.mean(utilization)),
         'std_utilization': float(np.std(utilization)),
         'min_utilization': float(np.min(utilization)),
         'max_utilization': float(np.max(utilization)),
         'low_utilization_dims': int(np.sum(utilization < 0.3))
     }
+    return convert_to_serializable(result)
 
 
 def compute_diversity_score(features: np.ndarray, labels: np.ndarray) -> Dict:
@@ -135,11 +163,12 @@ def compute_diversity_score(features: np.ndarray, labels: np.ndarray) -> Dict:
             cv = np.std(distances) / np.mean(distances)
             diversity_scores.append(cv)
     
-    return {
+    result = {
         'mean_diversity': float(np.mean(diversity_scores)) if diversity_scores else 0.0,
         'std_diversity': float(np.std(diversity_scores)) if diversity_scores else 0.0,
         'per_class_diversity': diversity_scores
     }
+    return convert_to_serializable(result)
 
 
 def analyze_feature_redundancy(features: np.ndarray, 
@@ -184,7 +213,7 @@ def analyze_feature_redundancy(features: np.ndarray,
     except:
         effective_dims = n_features
     
-    return {
+    result = {
         'total_features': int(n_features),
         'high_correlation_pairs': len(high_corr_pairs),
         'moderate_correlation_pairs': len(moderate_corr_pairs),
@@ -192,6 +221,7 @@ def analyze_feature_redundancy(features: np.ndarray,
         'dimensionality_reduction_ratio': float(effective_dims / n_features),
         'mean_abs_correlation': float(np.mean(np.abs(corr_matrix[np.triu_indices_from(corr_matrix, k=1)])))
     }
+    return convert_to_serializable(result)
 
 
 def compute_intraclass_consistency(features: np.ndarray, labels: np.ndarray) -> Dict:
@@ -243,7 +273,7 @@ def compute_intraclass_consistency(features: np.ndarray, labels: np.ndarray) -> 
     for euc, cos in zip(euclidean_consistency_scores, cosine_consistencies):
         combined_scores.append((euc + cos) / 2)
     
-    return {
+    result = {
         'mean_euclidean_consistency': float(np.mean(euclidean_consistency_scores)) if euclidean_consistency_scores else 0.0,
         'mean_cosine_consistency': float(np.mean(cosine_consistencies)) if cosine_consistencies else 0.0,
         'mean_combined_consistency': float(np.mean(combined_scores)) if combined_scores else 0.0,
@@ -251,6 +281,7 @@ def compute_intraclass_consistency(features: np.ndarray, labels: np.ndarray) -> 
         'per_class_cosine': cosine_consistencies,
         'per_class_combined': combined_scores
     }
+    return convert_to_serializable(result)
 
 
 def identify_confusing_pairs(features: np.ndarray, labels: np.ndarray, 
@@ -294,13 +325,14 @@ def identify_confusing_pairs(features: np.ndarray, labels: np.ndarray,
     # Sort by distance (smaller = more confusing)
     pairs.sort(key=lambda x: x['distance'])
     
-    return {
+    result = {
         'most_confusing_pairs': pairs[:top_k],
         'mean_intercentroid_distance': float(np.mean([p['distance'] for p in pairs])),
         'std_intercentroid_distance': float(np.std([p['distance'] for p in pairs])),
         'min_intercentroid_distance': float(pairs[0]['distance']) if pairs else 0.0,
         'max_intercentroid_distance': float(pairs[-1]['distance']) if pairs else 0.0
     }
+    return convert_to_serializable(result)
 
 
 def compute_imbalance_ratio(labels: np.ndarray) -> Dict:
@@ -320,7 +352,7 @@ def compute_imbalance_ratio(labels: np.ndarray) -> Dict:
     
     imbalance_ratio = min_count / max_count if max_count > 0 else 1.0
     
-    return {
+    result = {
         'imbalance_ratio': float(imbalance_ratio),
         'min_class_samples': int(min_count),
         'max_class_samples': int(max_count),
@@ -328,6 +360,7 @@ def compute_imbalance_ratio(labels: np.ndarray) -> Dict:
         'std_class_samples': float(np.std(counts)),
         'per_class_counts': {int(label): int(count) for label, count in zip(unique_labels, counts)}
     }
+    return convert_to_serializable(result)
 
 
 def comprehensive_feature_analysis(features: np.ndarray, labels: np.ndarray) -> Dict:
@@ -351,4 +384,4 @@ def comprehensive_feature_analysis(features: np.ndarray, labels: np.ndarray) -> 
         'imbalance_ratio': compute_imbalance_ratio(labels)
     }
     
-    return results
+    return convert_to_serializable(results)
