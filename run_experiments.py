@@ -993,8 +993,8 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     p_value_matrix = np.ones((n_models, n_models))
     
     for comparison in mcnemar_results['pairwise_comparisons']:
-        idx_a = model_names.index(comparison['model_a'])
-        idx_b = model_names.index(comparison['model_b'])
+        idx_a = model_names.index(comparison['algorithm_a'])
+        idx_b = model_names.index(comparison['algorithm_b'])
         p_value_matrix[idx_a, idx_b] = comparison['p_value']
         p_value_matrix[idx_b, idx_a] = comparison['p_value']
     
@@ -1026,8 +1026,8 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
         if model_a in model_names and model_b in model_names:
             # Find the comparison result
             comparison = next((c for c in mcnemar_results['pairwise_comparisons'] 
-                             if (c['model_a'] == model_a and c['model_b'] == model_b) or
-                                (c['model_a'] == model_b and c['model_b'] == model_a)), None)
+                             if (c['algorithm_a'] == model_a and c['algorithm_b'] == model_b) or
+                                (c['algorithm_a'] == model_b and c['algorithm_b'] == model_a)), None)
             
             if comparison:
                 n00, n01, n10, n11 = comparison['contingency_table']
@@ -1058,7 +1058,7 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     if significant_comparisons:
         logger.info("\nSignificant comparisons:")
         for comp in significant_comparisons[:10]:  # Show first 10
-            logger.info(f"  {comp['model_a']} vs {comp['model_b']}: "
+            logger.info(f"  {comp['algorithm_a']} vs {comp['algorithm_b']}: "
                        f"p={comp['p_value']:.4f} - {comp['effect_description']}")
     
     logger.info("\nMcNemar's testing completed")
