@@ -21,10 +21,10 @@ Two distinct issues were identified:
 #### Issue 1: Insufficient Samples Per Class
 Some datasets have classes with fewer samples than required by the few-shot configuration (`k_shot + n_query`).
 
-**Affected Datasets:**
-- **Omniglot**: Each class has exactly 20 samples, but default configuration requests 21 (5 shot + 16 query)
-- **DatasetIndo**: Some classes have only 33 samples
-- **Yoga**: Some classes have only 30 samples
+**Affected Datasets (verified from dataset files):**
+- **Omniglot**: Each class has exactly 20 samples in base.json, but default configuration requests 21 (5 shot + 16 query)
+- **DatasetIndo**: Some classes have as few as 33 samples
+- **Yoga**: Some classes have as few as 30 samples
 
 **Symptom:** When a class has fewer samples than `batch_size`, the DataLoader returns only the available samples, causing shape mismatches downstream.
 
@@ -51,8 +51,15 @@ def __getitem__(self, i):
     
     # If we got fewer samples than batch_size, sample with replacement
     if images.shape[0] < self.batch_size:
+        # Ensure we have at least one sample
+        if images.shape[0] == 0:
+            raise RuntimeError(f"Class {i} has no samples available.")
+        
         n_additional = self.batch_size - images.shape[0]
-        additional_indices = torch.randint(0, images.shape[0], (n_additional,))
+        # Generate indices on the same device as images for efficiency
+        additional_indices = torch.randint(
+            0, images.shape[0], (n_additional,), device=images.device
+        )
         additional_images = images[additional_indices]
         additional_labels = labels[additional_indices]
         images = torch.cat([images, additional_images], dim=0)
@@ -64,7 +71,8 @@ def __getitem__(self, i):
 **Benefits:**
 - Ensures consistent tensor shapes across all episodes
 - Allows training on datasets with limited samples per class
-- Uses `torch.randint` for thread-safe random sampling
+- Uses `torch.randint` for thread-safe random sampling with proper device handling
+- Handles edge case of empty batches with clear error message
 
 ### Solution 2: Dataset Validation
 
