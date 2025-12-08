@@ -80,6 +80,16 @@ class SetDataManager(DataManager):
         transform = self.trans_loader.get_composed_transform(aug)
         dataset = SetDataset(data_file, self.batch_size,
                              transform)
+        
+        # Validate that we have enough classes for n_way
+        n_classes = len(dataset)
+        if n_classes < self.n_way:
+            raise ValueError(
+                f"Dataset {data_file} has only {n_classes} classes, "
+                f"but n_way={self.n_way} was requested. "
+                f"Please reduce n_way to at most {n_classes}."
+            )
+        
         sampler = EpisodicBatchSampler(
             len(dataset), self.n_way, self.n_episode)
         data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True, worker_init_fn=seed_worker, generator=g)     
