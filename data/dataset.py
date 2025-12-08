@@ -88,8 +88,10 @@ class SetDataset:
         for cl in self.cl_list:
             self.sub_meta[cl] = []
 
-        # Store data_file path for path correction
+        # Store data_file path for path correction and batch_size
         self._data_file = data_file
+        self.batch_size = batch_size
+        self.transform = transform
         
         for x, y in zip(self.meta['image_names'], self.meta['image_labels']):
             # Correct the path if it doesn't exist
@@ -109,7 +111,24 @@ class SetDataset:
         # pdb.set_trace()
 
     def __getitem__(self,i):
-        return next(iter(self.sub_dataloader[i]))
+        # Get a batch from the sub_dataloader
+        images, labels = next(iter(self.sub_dataloader[i]))
+        
+        # If we got fewer samples than batch_size, sample with replacement to reach batch_size
+        if images.shape[0] < self.batch_size:
+            # Number of additional samples needed
+            n_additional = self.batch_size - images.shape[0]
+            
+            # Sample with replacement from the available samples
+            additional_indices = np.random.choice(images.shape[0], n_additional, replace=True)
+            additional_images = images[additional_indices]
+            additional_labels = labels[additional_indices]
+            
+            # Concatenate to get exactly batch_size samples
+            images = torch.cat([images, additional_images], dim=0)
+            labels = torch.cat([labels, additional_labels], dim=0)
+        
+        return images, labels
 
     def __len__(self):
         return len(self.cl_list)
