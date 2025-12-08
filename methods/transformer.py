@@ -24,13 +24,29 @@ class FewShotTransformer(MetaTemplate):
         self.variant = variant
         self.depth = depth
         
-        # Handle both flattened (scalar) and non-flattened (list) feature dimensions
-        if isinstance(self.feat_dim, list):
-            # feat_dim is [channels, height, width] when flatten=False
-            dim = self.feat_dim[0] * self.feat_dim[1] * self.feat_dim[2]
-        else:
-            # feat_dim is a scalar when flatten=True
-            dim = self.feat_dim
+        # Determine the actual feature dimension by doing a test forward pass
+        # This handles cases where backbone's final_feat_dim doesn't match actual output
+        with torch.no_grad():
+            # Get input size based on dataset
+            if dataset in ['Omniglot', 'cross_char']:
+                test_input_size = 28
+            elif dataset == 'CIFAR':
+                test_input_size = 32
+            else:
+                test_input_size = 84
+            
+            # Create a small test input
+            test_input = torch.randn(1, 3, test_input_size, test_input_size).to(device)
+            test_output = self.feature.forward(test_input)
+            
+            # Compute actual feature dimension
+            if test_output.dim() == 2:
+                # Already flattened: [batch, dim]
+                dim = test_output.size(1)
+            else:
+                # Spatial features: [batch, channels, height, width]
+                # Flatten spatial dimensions
+                dim = test_output.size(1) * test_output.size(2) * test_output.size(3)
 
         self.ATTN = Attention(dim, heads = heads, dim_head = dim_head, variant = variant)
         
