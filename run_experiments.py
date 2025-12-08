@@ -141,21 +141,68 @@ def filter_results_for_json(results: Dict, exclude_keys: Optional[List[str]] = N
     return {k: v for k, v in results.items() if k not in exclude_keys}
 
 
-def safe_plot_save(output_path: str, dpi: int = 150):
+def safe_plot_save(output_path: str, dpi: int = 150, show: bool = False):
     """
     Safely save and close a matplotlib plot with proper exception handling.
     
     Args:
         output_path: Path to save the plot
         dpi: DPI for the saved image
+        show: Whether to display the plot interactively before closing
     """
     try:
         plt.savefig(output_path, dpi=dpi)
         logger.info(f"  Saved: {output_path}")
+        if show:
+            plt.show()
     except Exception as e:
         logger.error(f"  Failed to save plot to {output_path}: {e}")
     finally:
         plt.close()
+
+
+def run_mcnemar_comparison(preds_a, preds_b, labels, name_a, name_b):
+    """
+    Run and display McNemar's test comparison between two models.
+    
+    Args:
+        preds_a: Predictions from model A
+        preds_b: Predictions from model B
+        labels: True labels
+        name_a: Name of model A
+        name_b: Name of model B
+    
+    Returns:
+        McNemar test result dictionary or None if test not available
+    """
+    if not ABLATION_STUDY_AVAILABLE:
+        logger.warning("McNemar's test not available - ablation_study module not imported")
+        return None
+    
+    try:
+        result = mcnemar_test(preds_a, preds_b, labels)
+        
+        logger.info(f"\n{'='*60}")
+        logger.info(f"McNEMAR'S TEST: {name_a} vs {name_b}")
+        logger.info(f"{'='*60}")
+        logger.info(f"  p-value: {result['p_value']:.6f}")
+        logger.info(f"  Significant at 0.05: {result['significant_at_0.05']}")
+        logger.info(f"  Effect: {result['effect_description']}")
+        logger.info(f"  Discordant pairs: {result['discordant_pairs']}")
+        
+        # Display contingency table summary
+        n00, n01, n10, n11 = result['contingency_table']
+        logger.info(f"  Contingency table:")
+        logger.info(f"    Both correct: {n11}")
+        logger.info(f"    Both wrong: {n00}")
+        logger.info(f"    {name_a} correct, {name_b} wrong: {n10}")
+        logger.info(f"    {name_a} wrong, {name_b} correct: {n01}")
+        logger.info(f"{'='*60}\n")
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error running McNemar's test: {e}")
+        return None
 
 
 def get_data_loaders(config: ExperimentConfig):
@@ -624,6 +671,29 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
     logger.info(f"Proposed Params: {comparison['proposed_params']:.2f}M")
     logger.info(f"Overhead: {comparison['param_overhead']:.2f}M ({comparison['param_overhead']/comparison['baseline_params']*100:.2f}%)")
     
+    # ========== McNemar's Test (if enabled) ==========
+    if config.mcnemar_each_test:
+        logger.info("\n>>> Running McNemar's significance test")
+        
+        baseline_preds = np.array(baseline_test_results['predictions'])
+        proposed_preds = np.array(proposed_test_results['predictions'])
+        true_labels = np.array(baseline_test_results['true_labels'])
+        
+        mcnemar_result = run_mcnemar_comparison(
+            baseline_preds,
+            proposed_preds,
+            true_labels,
+            'Baseline',
+            'Proposed'
+        )
+        
+        if mcnemar_result:
+            # Save McNemar result
+            with open(os.path.join(output_paths['quantitative'], 'mcnemar_test.json'), 'w') as f:
+                json.dump(mcnemar_result, f, indent=2)
+            
+            results['mcnemar_test'] = mcnemar_result
+    
     return results
 
 
@@ -675,7 +745,7 @@ def run_qualitative_analysis(config: ExperimentConfig, output_paths: Dict[str, s
         plt.tight_layout()
         
         output_path = os.path.join(output_paths['qualitative'], f'confusion_matrix_{model_name}.png')
-        safe_plot_save(output_path)
+        safe_plot_save(output_path, show=config.show_plots)
     
     # Generate t-SNE visualization if features are available
     logger.info("\n>>> Generating t-SNE visualization")
@@ -712,7 +782,7 @@ def run_qualitative_analysis(config: ExperimentConfig, output_paths: Dict[str, s
                 plt.tight_layout()
                 
                 output_path = os.path.join(output_paths['qualitative'], f'tsne_{model_name}.png')
-                safe_plot_save(output_path)
+                safe_plot_save(output_path, show=config.show_plots)
             else:
                 logger.warning(f"  No features available for {model_name}")
     
@@ -769,6 +839,28 @@ def run_ablation_study(config: ExperimentConfig, output_paths: Dict[str, str]):
             true_labels = np.array(test_results['true_labels'])
         
         logger.info(f"  Accuracy: {test_results['accuracy']:.4f} ± {test_results['std']:.4f}")
+        
+        # ========== McNemar's Test against baseline (if enabled) ==========
+        if config.mcnemar_each_test and exp_key != 'E6':
+            # Compare against E6 (baseline) if it has been tested
+            if 'E6_Baseline' in ablation_results and true_labels is not None:
+                logger.info(f"\n>>> Running McNemar's test: {exp_config.name} vs E6_Baseline")
+                
+                baseline_preds = np.array(ablation_results['E6_Baseline']['results']['predictions'])
+                current_preds = np.array(test_results['predictions'])
+                
+                mcnemar_result = run_mcnemar_comparison(
+                    baseline_preds,
+                    current_preds,
+                    true_labels,
+                    'E6_Baseline',
+                    exp_config.name
+                )
+                
+                if mcnemar_result:
+                    ablation_results[exp_config.name]['mcnemar_vs_baseline'] = mcnemar_result
+            elif exp_key != 'E6':
+                logger.info(f"  Note: E6_Baseline not yet tested, will compare in final McNemar phase")
     
     # Save ablation results
     ablation_summary = {}
@@ -803,7 +895,7 @@ def run_ablation_study(config: ExperimentConfig, output_paths: Dict[str, str]):
     plt.tight_layout()
     
     output_path = os.path.join(output_paths['ablation'], 'ablation_comparison.png')
-    safe_plot_save(output_path)
+    safe_plot_save(output_path, show=config.show_plots)
     
     # Analyze component importance
     logger.info("\n>>> Analyzing component importance")
@@ -836,7 +928,7 @@ def run_ablation_study(config: ExperimentConfig, output_paths: Dict[str, str]):
     plt.tight_layout()
     
     output_path = os.path.join(output_paths['ablation'], 'component_importance.png')
-    safe_plot_save(output_path)
+    safe_plot_save(output_path, show=config.show_plots)
     
     for comp, imp in component_importance.items():
         logger.info(f"  {comp}: {imp:+.4f}")
@@ -904,7 +996,7 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     plt.tight_layout()
     
     output_path = os.path.join(output_paths['mcnemar'], 'pairwise_comparison_matrix.png')
-    safe_plot_save(output_path)
+    safe_plot_save(output_path, show=config.show_plots)
     
     # Generate contingency tables visualization
     logger.info("\n>>> Generating contingency tables")
@@ -938,7 +1030,7 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     
     plt.tight_layout()
     output_path = os.path.join(output_paths['mcnemar'], 'contingency_tables.png')
-    safe_plot_save(output_path)
+    safe_plot_save(output_path, show=config.show_plots)
     
     # Print summary
     logger.info("\n" + "="*80)
@@ -1036,7 +1128,7 @@ def run_feature_analysis(config: ExperimentConfig, output_paths: Dict[str, str])
         
         plt.tight_layout()
         output_path = os.path.join(output_paths['feature_analysis'], f'variance_distribution_{model_name}.png')
-        safe_plot_save(output_path)
+        safe_plot_save(output_path, show=config.show_plots)
         
         # Visualize correlation matrix (sample if too large)
         if features.shape[1] <= 100:
@@ -1049,7 +1141,7 @@ def run_feature_analysis(config: ExperimentConfig, output_paths: Dict[str, str])
             plt.tight_layout()
             
             output_path = os.path.join(output_paths['feature_analysis'], f'correlation_matrix_{model_name}.png')
-            safe_plot_save(output_path)
+            safe_plot_save(output_path, show=config.show_plots)
         else:
             logger.info(f"  Skipping correlation matrix (too many dimensions: {features.shape[1]})")
     
@@ -1122,6 +1214,14 @@ def main():
     parser.add_argument('--ablation_experiments', type=str, default=None,
                        help='Comma-separated list of ablation experiments to run (e.g., E1,E2,E3)')
     
+    # Visualization settings
+    parser.add_argument('--show_plots', action='store_true', default=False,
+                       help='Display plots interactively during execution (default: False)')
+    
+    # McNemar testing settings
+    parser.add_argument('--mcnemar_each_test', action='store_true', default=False,
+                       help='Run McNemar statistical significance test after each testing phase (default: False)')
+    
     args = parser.parse_args()
     
     # Create experiment configuration
@@ -1140,7 +1240,9 @@ def main():
         output_dir=args.output_dir,
         seed=args.seed,
         baseline_checkpoint=args.baseline_checkpoint,
-        proposed_checkpoint=args.proposed_checkpoint
+        proposed_checkpoint=args.proposed_checkpoint,
+        show_plots=args.show_plots,
+        mcnemar_each_test=args.mcnemar_each_test
     )
     
     # Parse ablation experiments if specified
