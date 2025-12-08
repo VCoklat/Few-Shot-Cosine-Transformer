@@ -146,7 +146,22 @@ class ConvNet(nn.Module):
             trunk.append(Flatten())
 
         self.trunk = nn.Sequential(*trunk)
-        dim = 4 if dataset =='CIFAR' else 5
+        
+        # Calculate spatial dimensions based on dataset and pooling
+        # Input sizes: Omniglot/cross_char=28, CIFAR=32, others=84
+        # After each maxpool, spatial dims are halved
+        if dataset in ['Omniglot', 'cross_char']:
+            input_size = 28
+        elif dataset == 'CIFAR':
+            input_size = 32
+        else:
+            input_size = 84
+        
+        # Count number of pooling layers (only first 4 layers have pooling)
+        num_pools = min(depth, 4)
+        # Calculate output spatial dimension: input_size / (2^num_pools)
+        dim = input_size // (2 ** num_pools)
+        
         self.final_feat_dim = 64 * dim * dim if flatten else [64, dim, dim]
 
     def forward(self, x):
