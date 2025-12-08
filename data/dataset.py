@@ -115,11 +115,21 @@ class SetDataset:
         
         # If we got fewer samples than batch_size, sample with replacement to reach batch_size
         if images.shape[0] < self.batch_size:
+            # Ensure we have at least one sample
+            if images.shape[0] == 0:
+                raise RuntimeError(
+                    f"Class {i} has no samples available. "
+                    f"Cannot create a batch for few-shot learning."
+                )
+            
             # Number of additional samples needed
             n_additional = self.batch_size - images.shape[0]
             
             # Sample with replacement from the available samples using torch for thread safety
-            additional_indices = torch.randint(0, images.shape[0], (n_additional,))
+            # Use the same device as the images tensor
+            additional_indices = torch.randint(
+                0, images.shape[0], (n_additional,), device=images.device
+            )
             additional_images = images[additional_indices]
             additional_labels = labels[additional_indices]
             
