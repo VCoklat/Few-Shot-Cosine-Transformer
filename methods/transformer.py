@@ -38,8 +38,8 @@ class FewShotTransformer(MetaTemplate):
                 test_input_size = 84
                 test_channels = 3
             
-            # Create a small test input
-            test_input = torch.randn(1, test_channels, test_input_size, test_input_size).to(device)
+            # Create a small test input directly on device
+            test_input = torch.randn(1, test_channels, test_input_size, test_input_size, device=device)
             test_output = self.feature.forward(test_input)
             
             # Compute actual feature dimension

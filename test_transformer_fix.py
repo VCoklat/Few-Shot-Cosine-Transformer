@@ -1,8 +1,9 @@
 """
 Test for FewShotTransformer LayerNorm dimension fix
 
-This test verifies that FewShotTransformer works correctly with flatten=False
-and properly handles the list-based feat_dim from non-flattened backbones.
+This test verifies that FewShotTransformer works correctly by using a test
+forward pass to dynamically determine the actual feature dimension, rather than
+relying on the backbone's reported final_feat_dim which may be incorrect.
 """
 
 import sys
