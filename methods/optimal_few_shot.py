@@ -279,7 +279,9 @@ class OptimalFewShotModel(MetaTemplate):
     def __init__(self, model_func, n_way, k_shot, n_query, 
                  feature_dim=64, n_heads=4, dropout=0.1, 
                  num_datasets=5, dataset='miniImagenet',
-                 use_focal_loss=False, label_smoothing=0.1):
+                 use_focal_loss=False, label_smoothing=0.1,
+                 use_vic=True, vic_lambda_inv=1.0, vic_lambda_cov=1.0, 
+                 vic_lambda_var=1.0, use_dynamic_lambda=True):
         # Call nn.Module.__init__ first
         nn.Module.__init__(self)
         
@@ -288,6 +290,15 @@ class OptimalFewShotModel(MetaTemplate):
         self.k_shot = k_shot
         self.n_query = n_query
         self.change_way = True
+        
+        # VIC configuration parameters
+        self.use_vic = use_vic
+        # Note: vic_lambda_inv is stored for API compatibility but not currently used
+        # as the DynamicVICRegularizer only implements variance and covariance losses
+        self.vic_lambda_inv = vic_lambda_inv
+        self.vic_lambda_cov = vic_lambda_cov
+        self.vic_lambda_var = vic_lambda_var
+        self.use_dynamic_lambda = use_dynamic_lambda
         
         # Create feature extractor from model_func
         # Handle both closure (no args) and function (requires dataset) patterns
@@ -430,26 +441,36 @@ class OptimalFewShotModel(MetaTemplate):
         
         logits, prototypes, support_features, query_features = self._set_forward_full(x)
         
-        # Get dataset ID
-        dataset_id = self.dataset_id_map.get(self.current_dataset, 0)
-        
-        # Adaptive lambda
-        lambda_var, lambda_cov = self.lambda_predictor(
-            prototypes, support_features, query_features, dataset_id
-        )
-        
-        # VIC loss
-        vic_loss, vic_info = self.vic(
-            prototypes, support_features, lambda_var, lambda_cov
-        )
-        
         # Classification loss
         if self.use_focal_loss:
             ce_loss = self.focal_loss(logits, target)
         else:
             ce_loss = self.loss_fn(logits, target)
         
-        total_loss = ce_loss + vic_loss
+        # VIC loss (only if enabled)
+        if self.use_vic:
+            # Get dataset ID
+            dataset_id = self.dataset_id_map.get(self.current_dataset, 0)
+            
+            # Determine lambda values
+            if self.use_dynamic_lambda:
+                # Use adaptive lambda predictor
+                lambda_var, lambda_cov = self.lambda_predictor(
+                    prototypes, support_features, query_features, dataset_id
+                )
+            else:
+                # Use fixed lambda values
+                lambda_var = self.vic_lambda_var
+                lambda_cov = self.vic_lambda_cov
+            
+            # VIC loss computation
+            vic_loss, vic_info = self.vic(
+                prototypes, support_features, lambda_var, lambda_cov
+            )
+            
+            total_loss = ce_loss + vic_loss
+        else:
+            total_loss = ce_loss
         
         # Calculate accuracy
         predict = torch.argmax(logits, dim=1)
@@ -489,3 +510,10 @@ DATASET_CONFIGS = {
         'target_5shot': 0.65, 'dataset_id': 4
     }
 }
+
+# ============================================================================
+# 9. ALIAS FOR BACKWARD COMPATIBILITY
+# ============================================================================
+
+# Alias for backward compatibility with existing code
+OptimalFewShot = OptimalFewShotModel
