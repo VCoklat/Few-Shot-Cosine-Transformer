@@ -307,16 +307,36 @@ class OptimalFewShotModel(MetaTemplate):
         else:
             self.feature = OptimizedConv4(hid_dim=64, dropout=dropout, dataset=dataset)
         
-        # Get feature dimension from backbone
-        if hasattr(self.feature, 'final_feat_dim'):
-            if isinstance(self.feature.final_feat_dim, list):
-                # For non-flattened features [C, H, W], flatten to get dimension
-                self.feat_dim = np.prod(self.feature.final_feat_dim)
+        # Get feature dimension from backbone by running a dummy forward pass
+        # This is more reliable than using final_feat_dim attribute which may not match
+        # the actual output dimension due to flatten parameter inconsistencies
+        was_training = self.feature.training  # Save original training state
+        self.feature.eval()  # Set to eval mode for dummy pass
+        with torch.no_grad():
+            # Determine input size based on dataset
+            if dataset in ['Omniglot', 'cross_char']:
+                input_size = 28
+                in_channels = 1
+            elif dataset == 'CIFAR':
+                input_size = 32
+                in_channels = 3
             else:
-                self.feat_dim = self.feature.final_feat_dim
-        else:
-            # Fallback for backbones without final_feat_dim attribute
-            self.feat_dim = 1600
+                input_size = 84
+                in_channels = 3
+            
+            # Create dummy input on the same device as the backbone
+            dummy_input = torch.randn(1, in_channels, input_size, input_size).to(device)
+            dummy_output = self.feature(dummy_input)  # Use __call__ for consistency
+            
+            # Flatten if needed
+            if len(dummy_output.shape) > 2:
+                dummy_output = dummy_output.view(dummy_output.size(0), -1)
+            
+            self.feat_dim = dummy_output.shape[1]
+        
+        # Restore original training state
+        if was_training:
+            self.feature.train()
         
         # Add projection layer to map backbone output to feature_dim for transformer
         self.projection = nn.Linear(self.feat_dim, feature_dim, bias=False)
