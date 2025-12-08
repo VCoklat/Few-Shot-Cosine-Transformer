@@ -31,8 +31,14 @@ class VICComponents:
     variance: bool = True
     dynamic_weight: bool = True
     
+    def is_baseline(self) -> bool:
+        """Check if this represents the baseline configuration (no components)"""
+        return not any([self.invariance, self.covariance, self.variance, self.dynamic_weight])
+    
     def __str__(self):
         """String representation for logging"""
+        if self.is_baseline():
+            return "Baseline"
         components = []
         if self.invariance:
             components.append("I")
@@ -42,7 +48,7 @@ class VICComponents:
             components.append("V")
         if self.dynamic_weight:
             components.append("D")
-        return "".join(components) if components else "Baseline"
+        return "".join(components)
     
     def to_dict(self):
         """Convert to dictionary"""

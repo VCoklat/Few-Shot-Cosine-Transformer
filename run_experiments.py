@@ -49,22 +49,7 @@ from io_utils import model_dict
 from methods.transformer import FewShotTransformer
 from methods.optimal_few_shot import OptimalFewShot
 
-# Import utility modules
-import eval_utils
-from feature_analysis import (
-    compute_confidence_interval,
-    detect_feature_collapse,
-    compute_feature_utilization,
-    comprehensive_feature_analysis
-)
-from ablation_study import (
-    mcnemar_test,
-    mcnemar_test_multiple,
-    compute_contingency_table,
-    format_contingency_table
-)
-
-# Set up logging
+# Set up logging first (before other imports that may use logger)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -73,6 +58,46 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Import utility modules with error handling
+try:
+    import eval_utils
+    EVAL_UTILS_AVAILABLE = True
+except ImportError:
+    EVAL_UTILS_AVAILABLE = False
+    logger.warning("eval_utils not available. Some features may be limited.")
+
+try:
+    from feature_analysis import (
+        compute_confidence_interval,
+        detect_feature_collapse,
+        compute_feature_utilization,
+        comprehensive_feature_analysis
+    )
+    FEATURE_ANALYSIS_AVAILABLE = True
+except ImportError:
+    FEATURE_ANALYSIS_AVAILABLE = False
+    # Define fallback for compute_confidence_interval
+    def compute_confidence_interval(accuracies, confidence=0.95):
+        mean = np.mean(accuracies)
+        std = np.std(accuracies)
+        n = len(accuracies)
+        z_score = 1.96 if confidence == 0.95 else 2.576
+        margin = z_score * std / np.sqrt(n)
+        return mean, mean - margin, mean + margin
+    logger.warning("feature_analysis not available. Using fallback implementation.")
+
+try:
+    from ablation_study import (
+        mcnemar_test,
+        mcnemar_test_multiple,
+        compute_contingency_table,
+        format_contingency_table
+    )
+    ABLATION_STUDY_AVAILABLE = True
+except ImportError:
+    ABLATION_STUDY_AVAILABLE = False
+    logger.warning("ablation_study not available. McNemar's test will not be available.")
 
 # Global device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -97,6 +122,40 @@ def setup_output_directories(config: ExperimentConfig):
         os.makedirs(path, exist_ok=True)
         logger.info(f"Created directory: {path}")
     return paths
+
+
+def filter_results_for_json(results: Dict, exclude_keys: Optional[List[str]] = None) -> Dict:
+    """
+    Filter results dictionary for JSON serialization by excluding large arrays.
+    
+    Args:
+        results: Results dictionary to filter
+        exclude_keys: List of keys to exclude (default: features, predictions, true_labels)
+    
+    Returns:
+        Filtered copy of results dictionary
+    """
+    if exclude_keys is None:
+        exclude_keys = ['features', 'predictions', 'true_labels']
+    
+    return {k: v for k, v in results.items() if k not in exclude_keys}
+
+
+def safe_plot_save(output_path: str, dpi: int = 150):
+    """
+    Safely save and close a matplotlib plot with proper exception handling.
+    
+    Args:
+        output_path: Path to save the plot
+        dpi: DPI for the saved image
+    """
+    try:
+        plt.savefig(output_path, dpi=dpi)
+        logger.info(f"  Saved: {output_path}")
+    except Exception as e:
+        logger.error(f"  Failed to save plot to {output_path}: {e}")
+    finally:
+        plt.close()
 
 
 def get_data_loaders(config: ExperimentConfig):
@@ -188,12 +247,7 @@ def create_model(model_type: str, config: ExperimentConfig, vic_components: Opti
     
     model_func = model_dict[config.backbone]
     
-    if model_type == 'baseline' or (vic_components and not any([
-        vic_components.invariance,
-        vic_components.covariance,
-        vic_components.variance,
-        vic_components.dynamic_weight
-    ])):
+    if model_type == 'baseline' or (vic_components and vic_components.is_baseline()):
         # Create baseline FewShotTransformer
         model = FewShotTransformer(
             model_func,
@@ -498,8 +552,7 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
     
     # Save baseline results
     with open(os.path.join(output_paths['quantitative'], 'baseline_results.json'), 'w') as f:
-        # Remove large arrays before saving
-        save_results = {k: v for k, v in baseline_test_results.items() if k not in ['features', 'predictions', 'true_labels']}
+        save_results = filter_results_for_json(baseline_test_results)
         save_results['training'] = baseline_train_results
         json.dump(save_results, f, indent=2)
     
@@ -535,7 +588,7 @@ def run_train_test(config: ExperimentConfig, output_paths: Dict[str, str]):
     
     # Save proposed results
     with open(os.path.join(output_paths['quantitative'], 'proposed_results.json'), 'w') as f:
-        save_results = {k: v for k, v in proposed_test_results.items() if k not in ['features', 'predictions', 'true_labels']}
+        save_results = filter_results_for_json(proposed_test_results)
         save_results['training'] = proposed_train_results
         json.dump(save_results, f, indent=2)
     
@@ -622,10 +675,7 @@ def run_qualitative_analysis(config: ExperimentConfig, output_paths: Dict[str, s
         plt.tight_layout()
         
         output_path = os.path.join(output_paths['qualitative'], f'confusion_matrix_{model_name}.png')
-        plt.savefig(output_path, dpi=150)
-        plt.close()
-        
-        logger.info(f"  Saved: {output_path}")
+        safe_plot_save(output_path)
     
     # Generate t-SNE visualization if features are available
     logger.info("\n>>> Generating t-SNE visualization")
@@ -662,10 +712,7 @@ def run_qualitative_analysis(config: ExperimentConfig, output_paths: Dict[str, s
                 plt.tight_layout()
                 
                 output_path = os.path.join(output_paths['qualitative'], f'tsne_{model_name}.png')
-                plt.savefig(output_path, dpi=150)
-                plt.close()
-                
-                logger.info(f"  Saved: {output_path}")
+                safe_plot_save(output_path)
             else:
                 logger.warning(f"  No features available for {model_name}")
     
@@ -756,10 +803,7 @@ def run_ablation_study(config: ExperimentConfig, output_paths: Dict[str, str]):
     plt.tight_layout()
     
     output_path = os.path.join(output_paths['ablation'], 'ablation_comparison.png')
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-    
-    logger.info(f"  Saved: {output_path}")
+    safe_plot_save(output_path)
     
     # Analyze component importance
     logger.info("\n>>> Analyzing component importance")
@@ -792,10 +836,7 @@ def run_ablation_study(config: ExperimentConfig, output_paths: Dict[str, str]):
     plt.tight_layout()
     
     output_path = os.path.join(output_paths['ablation'], 'component_importance.png')
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-    
-    logger.info(f"  Saved: {output_path}")
+    safe_plot_save(output_path)
     
     for comp, imp in component_importance.items():
         logger.info(f"  {comp}: {imp:+.4f}")
@@ -817,6 +858,11 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     logger.info("\n" + "="*80)
     logger.info("PHASE: McNEMAR'S SIGNIFICANCE TESTING")
     logger.info("="*80)
+    
+    # Check if McNemar's test is available
+    if not ABLATION_STUDY_AVAILABLE:
+        logger.error("McNemar's test module not available. Skipping significance testing.")
+        return
     
     # If we don't have ablation data, we need to run ablation study first
     if ablation_data is None:
@@ -858,10 +904,7 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     plt.tight_layout()
     
     output_path = os.path.join(output_paths['mcnemar'], 'pairwise_comparison_matrix.png')
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-    
-    logger.info(f"  Saved: {output_path}")
+    safe_plot_save(output_path)
     
     # Generate contingency tables visualization
     logger.info("\n>>> Generating contingency tables")
@@ -895,10 +938,7 @@ def run_mcnemar_test(config: ExperimentConfig, output_paths: Dict[str, str],
     
     plt.tight_layout()
     output_path = os.path.join(output_paths['mcnemar'], 'contingency_tables.png')
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-    
-    logger.info(f"  Saved: {output_path}")
+    safe_plot_save(output_path)
     
     # Print summary
     logger.info("\n" + "="*80)
@@ -925,6 +965,11 @@ def run_feature_analysis(config: ExperimentConfig, output_paths: Dict[str, str])
     logger.info("\n" + "="*80)
     logger.info("PHASE: FEATURE COLLAPSE ANALYSIS")
     logger.info("="*80)
+    
+    # Check if feature analysis is available
+    if not FEATURE_ANALYSIS_AVAILABLE:
+        logger.error("Feature analysis module not available. Skipping feature analysis.")
+        return
     
     # Get data loaders
     _, _, test_loader = get_data_loaders(config)
@@ -991,10 +1036,7 @@ def run_feature_analysis(config: ExperimentConfig, output_paths: Dict[str, str])
         
         plt.tight_layout()
         output_path = os.path.join(output_paths['feature_analysis'], f'variance_distribution_{model_name}.png')
-        plt.savefig(output_path, dpi=150)
-        plt.close()
-        
-        logger.info(f"  Saved: {output_path}")
+        safe_plot_save(output_path)
         
         # Visualize correlation matrix (sample if too large)
         if features.shape[1] <= 100:
@@ -1007,21 +1049,21 @@ def run_feature_analysis(config: ExperimentConfig, output_paths: Dict[str, str])
             plt.tight_layout()
             
             output_path = os.path.join(output_paths['feature_analysis'], f'correlation_matrix_{model_name}.png')
-            plt.savefig(output_path, dpi=150)
-            plt.close()
-            
-            logger.info(f"  Saved: {output_path}")
+            safe_plot_save(output_path)
         else:
             logger.info(f"  Skipping correlation matrix (too many dimensions: {features.shape[1]})")
     
-    # Save feature analysis metrics
+    # Save feature analysis metrics (create a copy for JSON serialization)
+    import copy
+    save_results = copy.deepcopy(feature_analysis_results)
+    
     # Remove std_per_dimension for JSON serialization (too large)
-    for model_name in feature_analysis_results:
-        if 'std_per_dimension' in feature_analysis_results[model_name]['collapse']:
-            del feature_analysis_results[model_name]['collapse']['std_per_dimension']
+    for model_name in save_results:
+        if 'std_per_dimension' in save_results[model_name]['collapse']:
+            del save_results[model_name]['collapse']['std_per_dimension']
     
     with open(os.path.join(output_paths['feature_analysis'], 'feature_collapse_metrics.json'), 'w') as f:
-        json.dump(feature_analysis_results, f, indent=2)
+        json.dump(save_results, f, indent=2)
     
     logger.info("\nFeature analysis completed")
 
