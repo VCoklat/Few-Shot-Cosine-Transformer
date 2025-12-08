@@ -230,8 +230,10 @@ def main():
         print(f"\n🏷️  Found {len(all_classes)} classes: {all_classes}")
         
         # Split dataset into base, val, novel
+        # HAM10000 has 7 classes total. Use 3 base + 2 val + 2 novel = 7
+        # This supports 3-way classification on base and 2-way on val/novel
         print("\n✂️  Splitting dataset...")
-        splits = split_dataset(df)
+        splits = split_dataset(df, min_base_classes=3, min_val_classes=2, min_novel_classes=2)
         
         # Create JSON files
         print("\n💾 Creating JSON files...")
