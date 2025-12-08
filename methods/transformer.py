@@ -27,16 +27,19 @@ class FewShotTransformer(MetaTemplate):
         # Determine the actual feature dimension by doing a test forward pass
         # This handles cases where backbone's final_feat_dim doesn't match actual output
         with torch.no_grad():
-            # Get input size based on dataset
+            # Get input size and channels based on dataset
             if dataset in ['Omniglot', 'cross_char']:
                 test_input_size = 28
+                test_channels = 1
             elif dataset == 'CIFAR':
                 test_input_size = 32
+                test_channels = 3
             else:
                 test_input_size = 84
+                test_channels = 3
             
             # Create a small test input
-            test_input = torch.randn(1, 3, test_input_size, test_input_size).to(device)
+            test_input = torch.randn(1, test_channels, test_input_size, test_input_size).to(device)
             test_output = self.feature.forward(test_input)
             
             # Compute actual feature dimension
