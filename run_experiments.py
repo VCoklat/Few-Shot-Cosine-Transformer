@@ -233,14 +233,14 @@ def get_data_loaders(config: ExperimentConfig):
     # Create data managers
     train_few_shot_params = dict(
         n_way=config.n_way,
-        n_support=config.k_shot,
+        k_shot=config.k_shot,
         n_query=config.n_query,
         n_episode=200
     )
     
     test_few_shot_params = dict(
         n_way=config.n_way,
-        n_support=config.k_shot,
+        k_shot=config.k_shot,
         n_query=config.n_query,
         n_episode=config.test_iter
     )
