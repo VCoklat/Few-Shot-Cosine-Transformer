@@ -3,7 +3,6 @@ Configuration module for unified experiment runner.
 """
 
 import os
-import sys
 
 from .experiment_config import (
     ExperimentConfig,
@@ -12,11 +11,11 @@ from .experiment_config import (
     RunMode
 )
 
-# Import data_dir and save_dir from the top-level configs.py module
-# This ensures backward compatibility with code that imports configs and expects data_dir
-_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _parent_dir not in sys.path:
-    sys.path.insert(0, _parent_dir)
+# Define data_dir and save_dir to ensure backward compatibility
+# with code that imports configs and expects data_dir
+# Note: This duplicates definitions from configs.py, but is necessary because
+# Python imports the configs package (this __init__.py) when "import configs" is used,
+# not the configs.py module.
 
 # Get base directory from environment variable or use default
 _base_dir = os.environ.get('FEW_SHOT_BASE_DIR', '/kaggle/working/Few-Shot-Cosine-Transformer')
