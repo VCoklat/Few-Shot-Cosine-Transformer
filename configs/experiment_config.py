@@ -210,6 +210,12 @@ class ExperimentConfig:
     verbose: bool = True
     save_visualizations: bool = True
     
+    # Visualization settings
+    show_plots: bool = False
+    
+    # McNemar testing settings
+    mcnemar_each_test: bool = False
+    
     def get_experiment_name(self):
         """Generate experiment name for directory structure"""
         return f"{self.dataset}_{self.backbone}_{self.n_way}w{self.k_shot}s"
