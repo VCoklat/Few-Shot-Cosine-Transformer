@@ -189,7 +189,7 @@ class ExperimentConfig:
     run_mode: RunMode = RunMode.ALL
     
     # Output settings
-    output_dir: str = './results'
+    output_dir: str = '/kaggle/working/Few-Shot-Cosine-Transformer/record'
     seed: int = 4040
     
     # Ablation study settings
@@ -211,10 +211,10 @@ class ExperimentConfig:
     save_visualizations: bool = True
     
     # Visualization settings
-    show_plots: bool = False
+    show_plots: bool = True
     
     # McNemar testing settings
-    mcnemar_each_test: bool = False
+    mcnemar_each_test: bool = True
     
     def get_experiment_name(self):
         """Generate experiment name for directory structure"""

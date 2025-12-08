@@ -116,13 +116,13 @@ def load_model(method, backbone, dataset, n_way, k_shot, n_query, checkpoint_pat
     # Load checkpoint
     if checkpoint_path and os.path.isfile(checkpoint_path):
         print(f"Loading checkpoint from: {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     elif checkpoint_dir and os.path.isdir(checkpoint_dir):
         modelfile = get_best_file(checkpoint_dir)
         if modelfile is None:
             raise ValueError(f"No checkpoint found in {checkpoint_dir}")
         print(f"Loading best checkpoint from: {modelfile}")
-        checkpoint = torch.load(modelfile, map_location=device)
+        checkpoint = torch.load(modelfile, map_location=device, weights_only=False)
     else:
         raise ValueError("Must provide either checkpoint_path or checkpoint_dir")
     

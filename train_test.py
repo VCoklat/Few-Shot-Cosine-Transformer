@@ -568,7 +568,7 @@ if __name__ == '__main__':
         model = model.to(device)
 
         if modelfile is not None:
-            tmp = torch.load(modelfile)
+            tmp = torch.load(modelfile, weights_only=False)
             model.load_state_dict(tmp['state'])
 
         # Update model's n_way if test dataset has fewer classes

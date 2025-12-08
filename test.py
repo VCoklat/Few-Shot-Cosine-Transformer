@@ -259,7 +259,7 @@ if __name__ == '__main__':
     else:
         modelfile = get_best_file(params.checkpoint_dir)
     if modelfile is not None:
-        tmp = torch.load(modelfile)
+        tmp = torch.load(modelfile, weights_only=False)
         model.load_state_dict(tmp['state'])
 
     # Update model's n_way if test dataset has fewer classes
