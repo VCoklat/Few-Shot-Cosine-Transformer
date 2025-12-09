@@ -238,7 +238,15 @@ class ResNetModel(nn.Module):
     def __init__(self, dataset, variant = 34, flatten = False):
         super(ResNetModel, self).__init__()
         trunk = []
-        dim = 4 if dataset == 'CIFAR' else 7
+        # Calculate spatial dimensions based on dataset input size
+        # ResNet without avgpool has total stride of 32
+        # Input sizes: Omniglot/cross_char=28, CIFAR=32, others=84
+        if dataset in ['Omniglot', 'cross_char']:
+            dim = 1  # 28x28 -> 1x1
+        elif dataset == 'CIFAR':
+            dim = 1  # 32x32 -> 1x1
+        else:
+            dim = 3  # 84x84 -> 3x3
         self.final_feat_dim = 512 * dim * dim if flatten else [512, dim, dim]
         self.flatten = flatten
         if variant ==18:
