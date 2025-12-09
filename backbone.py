@@ -240,6 +240,7 @@ class ResNetModel():
         trunk = []
         dim = 4 if dataset == 'CIFAR' else 7
         self.final_feat_dim = 512 * dim * dim if flatten else [512, dim, dim]
+        self.flatten = flatten
         if variant ==18:
             resnet = models.resnet18(pretrained = True).to(device)  #pretrained on full ImageNet
         elif variant == 34:
@@ -248,12 +249,15 @@ class ResNetModel():
 
     def forward(self,x):
         out = self.model(x)
+        if self.flatten:
+            out = out.view(out.size(0), -1)
         return out
 class ResNet(nn.Module):
     def __init__(self, block, layers, flatten = False):
         super(ResNet, self).__init__()
         dim = 7
         self.final_feat_dim = 512 * dim * dim if flatten else [512, dim, dim]
+        self.flatten = flatten
         self.initial_pool = False
         inplanes = self.inplanes = 64
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=5, stride=2, padding=1,
@@ -307,6 +311,8 @@ class ResNet(nn.Module):
         x = self.layer4(x)
 
         x = self.avgpool(x)
+        if self.flatten:
+            x = x.view(x.size(0), -1)
 
         return x
 
