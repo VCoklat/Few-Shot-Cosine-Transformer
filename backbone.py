@@ -234,7 +234,7 @@ class ConvNetSNopool(nn.Module): #Relation net use a 4 layer conv with pooling i
         out = self.trunk(out)
         return out
 
-class ResNetModel():
+class ResNetModel(nn.Module):
     def __init__(self, dataset, variant = 34, flatten = False):
         super(ResNetModel, self).__init__()
         trunk = []
