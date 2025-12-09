@@ -80,13 +80,17 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.sm = nn.Softmax(dim = -1)
         self.variant = variant
-        self.input_linear = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, inner_dim, bias = False))
+        self.norm = nn.LayerNorm(dim)
+        self.input_linear = nn.Linear(dim, inner_dim, bias = False)
         
         self.output_linear = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
         
     def forward(self, q, k, v):
+        # Apply layer normalization before projections
+        q = self.norm(q)
+        k = self.norm(k)
+        v = self.norm(v)
+        
         f_q, f_k, f_v = map(lambda t: rearrange(
             self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
         
