@@ -31,9 +31,9 @@ Separated the `LayerNorm` from the projection layer and applied it explicitly be
 # In __init__:
 - self.input_linear = nn.Sequential(
 -     nn.LayerNorm(dim),
--     nn.Linear(dim, inner_dim, bias = False))
+-     nn.Linear(dim, inner_dim, bias=False))
 + self.norm = nn.LayerNorm(dim)
-+ self.input_linear = nn.Linear(dim, inner_dim, bias = False)
++ self.input_linear = nn.Linear(dim, inner_dim, bias=False)
 
 # In forward:
 def forward(self, q, k, v):

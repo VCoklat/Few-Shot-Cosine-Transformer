@@ -92,7 +92,7 @@ class Attention(nn.Module):
         v = self.norm(v)
         
         f_q, f_k, f_v = map(lambda t: rearrange(
-            self.input_linear(t), 'q n (h d) ->  h q n d', h = self.heads), (q, k ,v))    
+            self.input_linear(t), 'q n (h d) ->  h q n d', h=self.heads), (q, k, v))    
         
         if self.variant == "cosine":
             dots = cosine_distance(f_q, f_k.transpose(-1, -2))                                         # (h, q, n, 1)
