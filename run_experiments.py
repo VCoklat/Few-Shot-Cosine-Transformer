@@ -502,7 +502,10 @@ def test_model(model, test_loader, config: ExperimentConfig, extract_features: b
                 if extract_features:
                     if hasattr(model, 'parse_feature'):
                         z_support, z_query = model.parse_feature(x, is_feature=False)
-                        features = z_query.reshape(-1, z_query.size(-1)).cpu().numpy()
+                        # z_query shape: (n_way, n_query, ...) where ... can be (feat_dim,) or (C, H, W)
+                        # Reshape to (n_way * n_query, flattened_features)
+                        n_samples = z_query.size(0) * z_query.size(1)
+                        features = z_query.reshape(n_samples, -1).cpu().numpy()
                         all_features.append(features)
                 
                 pbar.set_postfix({'acc': f"{np.mean(episode_accs):.4f}"})
