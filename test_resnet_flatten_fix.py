@@ -81,6 +81,7 @@ def test_resnet_flatten():
     print("Test 3: ResNet (custom) with flatten=True")
     print("-" * 60)
     
+    # ResNet34 architecture: [3, 4, 6, 3] represents the number of blocks in each layer
     model = backbone.ResNet(backbone.BasicBlock, [3, 4, 6, 3], flatten=True)
     print(f"  Model type: ResNet (custom, ResNet34 architecture)")
     print(f"  Flatten: True")

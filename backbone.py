@@ -232,7 +232,8 @@ class ResNetModel(nn.Module):
         elif variant == 34:
             resnet = models.resnet34(pretrained = True).to(device)
         self.model = nn.Sequential(*[*resnet.children()][:-2])
-        # Add adaptive pooling to ensure consistent output size regardless of input dimensions
+        # Add adaptive pooling to ensure output spatial dimensions match expected dim
+        # (4x4 for CIFAR, 7x7 for other datasets), regardless of actual input size
         self.avgpool = nn.AdaptiveAvgPool2d(dim)
 
     def forward(self,x):
