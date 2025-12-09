@@ -219,7 +219,7 @@ class ConvNetSNopool(nn.Module): #Relation net use a 4 layer conv with pooling i
         out = self.trunk(out)
         return out
 
-class ResNetModel():
+class ResNetModel(nn.Module):
     def __init__(self, dataset, variant = 34, flatten = False):
         super(ResNetModel, self).__init__()
         trunk = []
@@ -232,7 +232,7 @@ class ResNetModel():
         elif variant == 34:
             resnet = models.resnet34(pretrained = True).to(device)
         self.model = nn.Sequential(*[*resnet.children()][:-2])
-        # Add adaptive pooling to ensure consistent output size
+        # Add adaptive pooling to ensure consistent output size regardless of input dimensions
         self.avgpool = nn.AdaptiveAvgPool2d(dim)
 
     def forward(self,x):
