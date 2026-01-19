@@ -1,0 +1,646 @@
+%% bare_conf.tex
+%% V1.4b
+%% 2015/08/26
+%% by Michael Shell
+%% See:
+%% http://www.michaelshell.org/
+%% for current contact information.
+%%
+%% This is a skeleton file demonstrating the use of IEEEtran.cls
+%% (requires IEEEtran.cls version 1.8b or later) with an IEEE
+%% conference paper.
+%%
+%% Support sites:
+%% http://www.michaelshell.org/tex/ieeetran/
+%% http://www.ctan.org/pkg/ieeetran
+%% and
+%% http://www.ieee.org/
+
+%%*************************************************************************
+%% Legal Notice:
+%% This code is offered as-is without any warranty either expressed or
+%% implied; without even the implied warranty of MERCHANTABILITY or
+%% FITNESS FOR A PARTICULAR PURPOSE! 
+%% User assumes all risk.
+%% In no event shall the IEEE or any contributor to this code be liable for
+%% any damages or losses, including, but not limited to, incidental,
+%% consequential, or any other damages, resulting from the use or misuse
+%% of any information contained here.
+%%
+%% All comments are the opinions of their respective authors and are not
+%% necessarily endorsed by the IEEE.
+%%
+%% This work is distributed under the LaTeX Project Public License (LPPL)
+%% ( http://www.latex-project.org/ ) version 1.3, and may be freely used,
+%% distributed and modified. A copy of the LPPL, version 1.3, is included
+%% in the base LaTeX documentation of all distributions of LaTeX released
+%% 2003/12/01 or later.
+%% Retain all contribution notices and credits.
+%% ** Modified files should be clearly indicated as such, including  **
+%% ** renaming them and changing author support contact information. **
+%%*************************************************************************
+
+% *** Authors should verify (and, if needed, correct) their LaTeX system  ***
+% *** with the testflow diagnostic prior to trusting their LaTeX platform ***
+% *** with production work. The IEEE's font choices and paper sizes can   ***
+% *** trigger bugs that do not appear when using other class files.       ***                          ***
+% The testflow support page is at:
+% http://www.michaelshell.org/tex/testflow/
+
+\documentclass[conference, compsoc, twoside]{IEEEtran}
+% Some Computer Society conferences also require the compsoc mode option,
+% but others use the standard conference format.
+%
+% If IEEEtran.cls has not been installed into the LaTeX system files,
+% manually specify the path to it like:
+% \documentclass[conference]{../sty/IEEEtran}
+
+% Some very useful LaTeX packages include:
+% (uncomment the ones you want to load)
+
+
+% *** MISC UTILITY PACKAGES ***
+%
+%\usepackage{ifpdf}
+% Heiko Oberdiek's ifpdf.sty is very useful if you need conditional
+% compilation based on whether the output is pdf or dvi.
+% usage:
+% \ifpdf
+%   % pdf code
+% \else
+%   % dvi code
+% \fi
+% The latest version of ifpdf.sty can be obtained from:
+% http://www.ctan.org/pkg/ifpdf
+% Also, note that IEEEtran.cls V1.7 and later provides a builtin
+% \ifCLASSINFOpdf conditional that works the same way.
+% When switching from latex to pdflatex and vice-versa, the compiler may
+% have to be run twice to clear warning/error messages.
+
+% *** CITATION PACKAGES ***
+%
+%\usepackage{cite}
+%\usepackage[noadjust]{cite}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[labelsep=period,labelfont=bf,justification=justified,font=small]{caption}
+\usepackage{balance}
+\usepackage{graphicx}
+%\bibliographystyle{ieeetr}
+%\usepackage[sorting=none]{biblatex}
+%\bibliography{journals,phd-references}
+% cite.sty was written by Donald Arseneau
+% V1.6 and later of IEEEtran pre-defines the format of the cite.sty package
+% \cite{} output to follow that of the IEEE. Loading the cite package will
+% result in citation numbers being automatically sorted and properly
+% "compressed/ranged". e.g., [1], [9], [2], [7], [5], [6] without using
+% cite.sty will become [1], [2], [5]--[7], [9] using cite.sty. cite.sty's
+% \cite will automatically add leading space, if needed. Use cite.sty's
+% noadjust option (cite.sty V3.8 and later) if you want to turn this off
+% such as if a citation ever needs to be enclosed in parenthesis.
+% cite.sty is already installed on most LaTeX systems. Be sure and use
+% version 5.0 (2009-03-20) and later if using hyperref.sty.
+% The latest version can be obtained at:
+% http://www.ctan.org/pkg/cite
+% The documentation is contained in the cite.sty file itself.
+
+% *** GRAPHICS RELATED PACKAGES ***
+%
+\ifCLASSINFOpdf
+  % \usepackage[pdftex]{graphicx}
+  % declare the path(s) where your graphic files are
+  %\graphicspath{{pdf/}{jpeg/}}
+  % and their extensions so you won't have to specify these with
+  % every instance of \includegraphics
+  % \DeclareGraphicsExtensions{.pdf,.jpeg,.png}
+  %\DeclareGraphicsExtensions{.pdf,.jpeg,.png}
+\else
+  % or other class option (dvipsone, dvipdf, if not using dvips). graphicx
+  % will default to the driver specified in the system graphics.cfg if no
+  % driver is specified.
+  % \usepackage[dvips]{graphicx}
+  % declare the path(s) where your graphic files are
+  % \graphicspath{{../eps/}}
+  % and their extensions so you won't have to specify these with
+  % every instance of \includegraphics
+  % \DeclareGraphicsExtensions{.eps}
+  %\usepackage{subfigure}
+\fi
+% graphicx was written by David Carlisle and Sebastian Rahtz. It is
+% required if you want graphics, photos, etc. graphicx.sty is already
+% installed on most LaTeX systems. The latest version and documentation
+% can be obtained at: 
+% http://www.ctan.org/pkg/graphicx
+% Another good source of documentation is "Using Imported Graphics in
+% LaTeX2e" by Keith Reckdahl which can be found at:
+% http://www.ctan.org/pkg/epslatex
+%
+% latex, and pdflatex in dvi mode, support graphics in encapsulated
+% postscript (.eps) format. pdflatex in pdf mode supports graphics
+% in .pdf, .jpeg, .png and .mps (metapost) formats. Users should ensure
+% that all non-photo figures use a vector format (.eps, .pdf, .mps) and
+% not a bitmapped formats (.jpeg, .png). The IEEE frowns on bitmapped formats
+% which can result in "jaggedy"/blurry rendering of lines and letters as
+% well as large increases in file sizes.
+%
+% You can find documentation about the pdfTeX application at:
+% http://www.tug.org/applications/pdftex
+
+
+
+% *** MATH PACKAGES ***
+%
+\usepackage{amsmath}
+\DeclareMathOperator*{\argmin}{arg\,min} % thin space, limits underneath in displays
+\DeclareMathOperator*{\argmax}{arg\,max} % thin space, limits underneath in displays
+\newcommand{\ineq}{%
+	\mathrel{\mkern1mu\underline{\mkern-1mu\in\mkern-1mu}\mkern1mu}}
+%\DeclareMathOperator*{\argmin}{argmin} % no space, limits underneath in displays
+%\DeclareMathOperator{\argmin}{arg\,min} % thin space, limits on side in displays
+%\DeclareMathOperator{\argmin}{argmin} % no space, limits on side in displays
+% A popular package from the American Mathematical Society that provides
+% many useful and powerful commands for dealing with mathematics.
+%
+% Note that the amsmath package sets \interdisplaylinepenalty to 10000
+% thus preventing page breaks from occurring within multiline equations. Use:
+%\interdisplaylinepenalty=2500
+% after loading amsmath to restore such page breaks as IEEEtran.cls normally
+% does. amsmath.sty is already installed on most LaTeX systems. The latest
+% version and documentation can be obtained at:
+% http://www.ctan.org/pkg/amsmath
+
+% *** SPECIALIZED LIST PACKAGES ***
+%
+% \usepackage{algorithmic}
+% algorithmic.sty was written by Peter Williams and Rogerio Brito.
+% This package provides an algorithmic environment fo describing algorithms.
+% You can use the algorithmic environment in-text or within a figure
+% environment to provide for a floating algorithm. Do NOT use the algorithm
+% floating environment provided by algorithm.sty (by the same authors) or
+% algorithm2e.sty (by Christophe Fiorio) as the IEEE does not use dedicated
+% algorithm float types and packages that provide these will not provide
+% correct IEEE style captions. The latest version and documentation of
+% algorithmic.sty can be obtained at:
+% http://www.ctan.org/pkg/algorithms
+% Also of interest may be the (relatively newer and more customizable)
+% algorithmicx.sty package by Szasz Janos:
+% http://www.ctan.org/pkg/algorithmicx
+
+% *** ALIGNMENT PACKAGES ***
+%
+\usepackage{array}
+% Frank Mittelbach's and David Carlisle's array.sty patches and improves
+% the standard LaTeX2e array and tabular environments to provide better
+% appearance and additional user controls. As the default LaTeX2e table
+% generation code is lacking to the point of almost being broken with
+% respect to the quality of the end results, all users are strongly
+% advised to use an enhanced (at the very least that provided by array.sty)
+% set of table tools. array.sty is already installed on most systems. The
+% latest version and documentation can be obtained at:
+% http://www.ctan.org/pkg/array
+
+% IEEEtran contains the IEEEeqnarray family of commands that can be used to
+% generate multiline equations as well as matrices, tables, etc., of high
+% quality.
+
+% *** SUBFIGURE PACKAGES ***
+%\ifCLASSOPTIONcompsoc
+%  \usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
+%\else
+%  \usepackage[caption=false,font=footnotesize]{subfig}
+%\fi
+% subfig.sty, written by Steven Douglas Cochran, is the modern replacement
+% for subfigure.sty, the latter of which is no longer maintained and is
+% incompatible with some LaTeX packages including fixltx2e. However,
+% subfig.sty requires and automatically loads Axel Sommerfeldt's caption.sty
+% which will override IEEEtran.cls' handling of captions and this will result
+% in non-IEEE style figure/table captions. To prevent this problem, be sure
+% and invoke subfig.sty's "caption=false" package option (available since
+% subfig.sty version 1.3, 2005/06/28) as this is will preserve IEEEtran.cls
+% handling of captions.
+% Note that the Computer Society format requires a larger sans serif font
+% than the serif footnote size font used in traditional IEEE formatting
+% and thus the need to invoke different subfig.sty package options depending
+% on whether compsoc mode has been enabled.
+%
+% The latest version and documentation of subfig.sty can be obtained at:
+% http://www.ctan.org/pkg/subfig
+
+% *** FLOAT PACKAGES ***
+%
+%\usepackage{fixltx2e}
+% fixltx2e, the successor to the earlier fix2col.sty, was written by
+% Frank Mittelbach and David Carlisle. This package corrects a few problems
+% in the LaTeX2e kernel, the most notable of which is that in current
+% LaTeX2e releases, the ordering of single and double column floats is not
+% guaranteed to be preserved. Thus, an unpatched LaTeX2e can allow a
+% single column figure to be placed prior to an earlier double column
+% figure.
+% Be aware that LaTeX2e kernels dated 2015 and later have fixltx2e.sty's
+% corrections already built into the system in which case a warning will
+% be issued if an attempt is made to load fixltx2e.sty as it is no longer
+% needed.
+% The latest version and documentation can be found at:
+% http://www.ctan.org/pkg/fixltx2e
+
+%\usepackage{stfloats}
+% stfloats.sty was written by Sigitas Tolusis. This package gives LaTeX2e
+% the ability to do double column floats at the bottom of the page as well
+% as the top. (e.g., "\begin{figure*}[!b]" is not normally possible in
+% LaTeX2e). It also provides a command:
+%\fnbelowfloat
+% to enable the placement of footnotes below bottom floats (the standard
+% LaTeX2e kernel puts them above bottom floats). This is an invasive package
+% which rewrites many portions of the LaTeX2e float routines. It may not work
+% with other packages that modify the LaTeX2e float routines. The latest
+% version and documentation can be obtained at:
+% http://www.ctan.org/pkg/stfloats
+% Do not use the stfloats baselinefloat ability as the IEEE does not allow
+% \baselineskip to stretch. Authors submitting work to the IEEE should note
+% that the IEEE rarely uses double column equations and that authors should try
+% to avoid such use. Do not be tempted to use the cuted.sty or midfloat.sty
+% packages (also by Sigitas Tolusis) as the IEEE does not format its papers in
+% such ways.
+% Do not attempt to use stfloats with fixltx2e as they are incompatible.
+% Instead, use Morten Hogholm'a dblfloatfix which combines the features
+% of both fixltx2e and stfloats:
+%
+% \usepackage{dblfloatfix}
+% The latest version can be found at:
+% http://www.ctan.org/pkg/dblfloatfix
+
+\usepackage[english]{babel}
+\usepackage{blindtext}
+
+% *** PDF, URL AND HYPERLINK PACKAGES ***
+%
+\usepackage{url}
+% url.sty was written by Donald Arseneau. It provides better support for
+% handling and breaking URLs. url.sty is already installed on most LaTeX
+% systems. The latest version and documentation can be obtained at:
+% http://www.ctan.org/pkg/url
+% Basically, \url{my_url_here}.
+
+% *** Do not adjust lengths that control margins, column widths, etc. ***
+% *** Do not use packages that alter fonts (such as pslatex).         ***
+% There should be no need to do such things with IEEEtran.cls V1.6 and later.
+% (Unless specifically asked to do so by the journal or conference you plan
+% to submit to, of course. )
+
+
+% *** CODE LISTING packages using Consola Font ***
+\usepackage{listings}
+\usepackage{inconsolata}
+\lstset{
+  basicstyle=\ttfamily,
+}
+\captionsetup[lstlisting]{font={small}, labelfont={bf}}
+
+% *** FOOTNOTE package ***
+\usepackage[bottom]{footmisc}
+\setlength{\footnotemargin}{0.3em}
+
+
+% correct bad hyphenation here
+\hyphenation{op-tical networks semi-conduc-tor}
+\hyphenation{PASCAL}
+
+%***MARGIN***
+% Do not set this margin
+\usepackage[top=3cm,bottom=3cm,left=3cm,right=3cm]{geometry}
+
+% *** HEADER & PAGE NUMBERING ***
+% Do not set this header and page numbering.
+\usepackage{fancyhdr}
+\setlength{\headheight}{22pt}
+\pagestyle{fancy}
+\fancyhf{}
+\setcounter{page}{1}
+\fancypagestyle{firststyle}
+{
+   \fancyhf{}
+   \chead{Jurnal Ilmu Komputer dan Informasi (Journal of Computer Science and Information) \\ 15/1 (2022), xx-xx. DOI: \url{http://dx.doi.org/10.21609/jiki.v15i1.xxx}}
+   \fancyfoot[C]{\thepage}
+}
+
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[LE]{\thepage \textbf{\space \textit{Jurnal Ilmu Komputer dan Informasi (Journal of Computer Science and Information),}} \textit{volume 15,} \\ \textit{ \textrm{ } issue 1, February 2022}}
+\fancyhead[LO]{\textit{Author et.al. (left it blank for first submission), One Line Article Title}}
+\fancyhead[RO]{\thepage}
+
+%***Hyperref and URL line breaks***
+\usepackage{hyperref}
+\renewcommand{\UrlBreaks}{\do\-}
+
+% Add horizontal line above footnotes suppressed by IEEE template
+\makeatletter
+\def\footnoterule{\kern-3\p@
+  \hrule \@width 2in \kern 2.6\p@} % the \hrule is .4pt high
+\makeatother
+% Additional setup for figure captions
+\def\figurename{Fig.}%
+% \captionsetup[figure]{labelfont={bf},font=small}
+\def\tablename{Table}%
+% \captionsetup[table]{justification=justified,font=small, labelfont={bf}}
+
+
+\begin{document}
+
+
+%
+% paper title
+% Titles are generally capitalized except for words such as a, an, and, as,
+% at, but, by, for, in, nor, of, on, or, the, to and up, which are usually
+% not capitalized unless they are the first or last word of the title.
+% Linebreaks \\ can be used within to get better formatting as desired.
+% Do not put math or special symbols in the title.
+\title{Article Title}
+% author names and affiliations
+% use a multiple column layout for up to three different
+% affiliations
+\author{\IEEEauthorblockN{First Author\textsuperscript{1}, Second Author\textsuperscript{2}, Third Author\textsuperscript{1} (\textit{left it blank for first submission})\\\\}
+	\IEEEauthorblockA{
+		\normalfont \textsuperscript{1} Department, Faculty, University, Address, City, Zip Code, Country\\
+		\textsuperscript{2} Research Group, Institution, Address, City, Zip Code, Country\\
+		(\textit{left it blank for first submission})\\\\
+		\textit{Email:{author@address.com} (\textit{left it blank for first submission})} 
+	} \\
+}
+
+% conference papers do not typically use \thanks and this command
+% is locked out in conference mode. If really needed, such as for
+% the acknowledgment of grants, issue a \IEEEoverridecommandlockouts
+% after \documentclass
+
+% for over three affiliations, or if they all won't fit within the width
+% of the page, use this alternative format:
+% 
+%\author{\IEEEauthorblockN{Michael Shell\IEEEauthorrefmark{1},
+%Homer Simpson\IEEEauthorrefmark{2},
+%James Kirk\IEEEauthorrefmark{3}, 
+%Montgomery Scott\IEEEauthorrefmark{3} and
+%Eldon Tyrell\IEEEauthorrefmark{4}}
+%\IEEEauthorblockA{\IEEEauthorrefmark{1}School of Electrical and Computer Engineering\\
+%Georgia Institute of Technology,
+%Atlanta, Georgia 30332--0250\\ Email: see http://www.michaelshell.org/contact.html}
+%\IEEEauthorblockA{\IEEEauthorrefmark{2}Twentieth Century Fox, Springfield, USA\\
+%Email: homer@thesimpsons.com}
+%\IEEEauthorblockA{\IEEEauthorrefmark{3}Starfleet Academy, San Francisco, California 96678-2391\\
+%Telephone: (800) 555--1212, Fax: (888) 555--1212}
+%\IEEEauthorblockA{\IEEEauthorrefmark{4}Tyrell Inc., 123 Replicant Street, Los Angeles, California 90210--4321}}
+
+% use for special paper notices
+%\IEEEspecialpapernotice{(Invited Paper)}
+% make the title area
+%\maketitle
+\twocolumn[
+{\csname @twocolumnfalse\endcsname \maketitle}
+{\csname @twocolumnfalse\endcsname 
+	%\input{abstract}
+	\renewcommand{\abstractname}{Abstract}
+	\begin{abstract}
+		\noindent
+		\normalfont 
+		Abstract should be written in English. The abstract is written with Times New Roman font size 10, and single spacing. The abstract should summarize the content of the paper, including the aim of the research, research method, and the results, and the conclusions of the paper. It should not contain any references or displayed equations. The abstract should be no more than 200 words. 
+		\\\\
+		\noindent
+		\textbf{Keywords}: \textit{up to 5 keywords in English} \\\\
+	\end{abstract}
+	
+	\renewcommand{\abstractname}{Abstrak}
+% 	\begin{abstract}
+% 		\noindent
+% 		\normalfont 
+% 		Abstrak dalam Bahasa Indonesia. Ditulis dengan font Times New Roman size 10 dan single spacing. Abstrak harus merangkum isi makalah, termasuk tujuan penelitian, metode penelitian, dan hasil, dan kesimpulan dari makalah. Abstrak tidak mengandung referensi dan/atau persamaan.Tidak boleh lebih dari 200 kata.
+% 		\\\\
+% 		\noindent
+% 		\textbf{Kata Kunci}: \textit{terdiri dari 5 kata kunci} \\\\
+% 	\end{abstract}
+	
+	%\begin{IEEEkeywords}
+	%%IEEEtran, journal, \LaTeX, paper, template.
+	%\end{IEEEkeywords}
+}
+%\vspace{1cm}
+]
+
+% For peer review papers, you can put extra information on the cover
+% page as needed:
+% \ifCLASSOPTIONpeerreview
+% \begin{center} \bfseries EDICS Category: 3-BBND \end{center}
+% \fi
+%
+% For peerreview papers, this IEEEtran command inserts a page break and
+% creates the second title. It will be ignored for other modes.
+\IEEEpeerreviewmaketitle
+\thispagestyle{firststyle}
+\section{Introduction}
+These instructions give you guidelines for preparing papers for Jurnal Ilmu Komputer dan Informasi. Use this document as a template if you are using Microsoft Word or \LaTeX. Please use this document as a “template” to prepare your manuscript.
+
+The manuscript is written with Times New Roman font size 10, single-spaced, left and right alligned, one one-sided pages and on A4 paper (210 mm x 297 mm) with the upper margin of 3 cm, lower margin 3 cm, left and right 3 and 3 cm based on odd and even pages. The manuscript including the graphic contents and tables should be between 6 to 15 pages. The manuscript is written in English. The Standard English grammar must be observed. The title of the article should be brief and informative and it should not exceed 20 words. The keywords are written after the abstract.
+
+The first letter of headings is capitalized and headings are numbered in Arabic numerals. The organization of the manuscript includes Introduction, Methodology, Results and Analysis, Conclusion and References. Acknowledgement (if any) is written after Conclusion and before References and not numbered. The use of subheadings is discouraged. 
+
+The use of abbreviation is permitted, but the abbreviation must be written in full and complete when it is mentioned for the first time and it should be written between parentheses. Terms/foreign words or regional words should be written in italics. Notations should be brief and clear and written according to the standardized writing style. Symbols/signs should be clear and distinguishable, such as the use of number 1 and letter l (also number 0 and leter O). In this manuscript doesn’t allow to use bullet and numbering. At the end of this paper both of the colomns should be in balance. You also have to activate widow or orphan control in order to ensure that there are no single line of sentence at the end of column section.     
+
+\section{Tables}
+Tables are written with Times New Roman font size 8. The title of the table is written with font size 8 above the table without blank space. The table is numbered in Arabic numerals. There is one single space line between the table and the paragraph. The table is is placed immediately after it is referred to in the text. The frame of the table uses 1 font-size line. If the title in each table column is long and complex, the columns are numbered and the notes are given below the table.
+
+\begin{table}[ht]
+\centering
+	\begin{center}
+		\caption{Caption of Table in each table if is column is long and complex, the columns are numbered and the notes are given below the table.  \medskip}
+		\label{tab:scenario}
+		\small
+		\begin{tabular}{ c  c  c }
+			\hline
+			Scenario & Location & Stopped Vehicle\\
+			\hline
+			BW-CR & Mampang & - \\
+			NW-CR & Mampang & - \\
+			NW-WR & Lenteng Agung & v\\		
+			\hline
+			\multicolumn{3}{ p{7cm} }{
+			No vertical lines in table. Statements that serve as captions for the entire table do not need footnote letters.}
+		\end{tabular}
+	\end{center}
+\end{table}
+
+\section{Graphics Content}
+Graphic contents are placed symmetrically on the page and there is one blank single space line between the graphic content and the paragraphs. A graphic content is placed immediately after it is referred to in the body of the text and is numbered in Arabic numerals. Caption for the graphic content is written below it and there is one blank single space line between it and the graphic content. The caption is written in font size 8, and placed as in the example. Between the graphic content with the body of the text there are one blank single space lines. If the graphic content will be referred in the paragraph in brackets, for example Figure 1.
+
+All tables and figures will be processed as images. However, we cannot extract the tables and figures embedded in your document. (The figures and tables you insert in your document are only to help you gauge the size of your paper, for the convenience of the referees, and to make it easy for you to distribute preprints.) Therefore, submit, on separate sheets of paper, enlarged versions of the tables and figures that appear in your document. These are the images that we will scan and publish with your paper.
+
+\begin{figure}[h]
+	\begin{center}
+		\includegraphics[scale=0.5]{pics/VGG-CNN-S.png}
+		\caption{Magnetization as a function of applied field. Note that “Fig.” is abbreviated. There is a period after the figure number, followed by two spaces. It is good practice to explain the significance of the figure in the caption.}
+		\label{fig:CNN}
+	\end{center}
+\end{figure}
+
+\section{Mathematical Equation}
+The reaction or mathematical equation should be positioned symmetrically on the column, marked by sequential numbers written on the right corner within brackets. If the writing of the equation takes more than one line, numbers should be written on the last line. Letters used as mathematical symbols in the text should be written in italics such as $x$. Equations in the text should be referred to as abbreviations, for example equation (1). Make sure the equation is made with equation function (in Microsoft Word) or using LaTex equation form (definitely we do not accept equation put as a picture).
+
+\begin{equation}
+J(A,B) = \frac{\sum_{i=1}^{m} (A_{i}=1 \cap B_{i}=1)}{\sum_{i=1}^{m} (A_{i}=1 \cup B_{i}=1)}
+\label{eq:jaccard}
+\end{equation}
+% where $A={1,2,\dots,i}$ and $B={1,2,\dots,i}$ is a set of binary string representation. This evaluation comparison between prediction and ground truth is called Intersection Over Union (IOU) of a class in PASCAL VOC dataset \cite{Everingham10}.
+%\subsubsection{Jaccard Index} 
+
+\section{Programming Code}
+Programming code must be made in the text box and referenced as a figure. Programming code contents are placed symmetrically on the page and there is one blank single space line between the paragraphs. Code program in the text box written by using Consolas 10 pt  in single space. A programming code content is placed immediately after it is referred to in the body of the text. Caption for the code program content is written below it and there is one blank single space line between it and the code program. The caption is written in font size 8, and placed as in the example. Between the code program with the body of the text there are one blank single space lines.\footnote{\url{http://example.org}}
+
+% [caption={Dummy algorithm as an example for typesetting programming codes.},label=listing1, captionpos=b]
+\begin{figure}[h]
+    \centering
+\begin{lstlisting}[frame=single]
+Statement 1
+Statement 2
+...
+for i = 1 to k:
+  command 1
+\end{lstlisting}
+\caption{Dummy algorithm as an example for typesetting programming codes. You may add options to the \texttt{listings} package to provide styling to your code.}
+    \label{fig:code}
+\end{figure}
+
+\section{Citation}
+Citation in the text should be written using Arabic numbers and put in order in accordance to what they refer to in the text. Numbers should be written in square brackets such as ``... Lafferty et al. \cite{Lafferty:2001:CRF:645530.655813} ...'' Citation should be written one space away from the words after commas or periods and before colons (:), semicolons (;), and question marks (?). If they are located at the end of a sentence, citations should be put before periods such as ``... from the most recent work by Kr\"{a}henb\"{u}hl and Koltun \cite{NIPS2011_4296}.'' If there are several citations, they should be written in a sorted and compressed form such as ``... by several research works \cite{Lafferty:2001:CRF:645530.655813,10.1109/TPAMI.2011.231,article.ChenPKMY14,article.farabet} .'' All citations should then be written in the right order in the list of references at the end of the text, with the writing procedure as illustrated in the example.
+
+\section{Footnotes}
+Footnotes can be used to to provide additional comments or information. Each footnote should appear as a superscripted number in the text right after the word to which the footnote is relevant, without any separating whitespace, for example, ``... this software library\footnote{Created in 1990, see \url{http://example.com}, this website provides various services to the scientific community.} is developed by ...'' If the location of the footnote is after a word followed by a punctuation (a period, a comma, etc.), then put the footnote \textbf{after} the punctuation, for example, ``... visit the website of this service.\footnote{\url{http://example.org}} You can find ...''. This rule is applicable to all punctuations except the dash, i.e., --- character. 
+
+\section{Submission}
+Please submit the manuscript to the Open Journal System at \url{http://jiki.cs.ui.ac.id}. The communication between the authors and the editors will be done through Open Journal System and email. Should you experience problems in the submission, please contact us at \url{jiki@cs.ui.ac.id}.
+
+\section{References}
+References should be written following the order they appear in the text, using Arabic numbers in square brackets, as seen in the examples. References should consist of initial and writers’ names, names of journals or title of books, volumes, editors (if any), publishers and their cities, years of publication, and pages. All writer’s names have to be mentioned. Use the abbreviation “Anon” if writers are anonymous. Names of journals should be written using the commonly-used abbreviations.
+
+\section*{Acknowledgement}
+Put your acknowledgement to people, funding, etc. just before the list of references, \textbf{but} only for the camera ready version.
+% An example of a floating figure using the graphicx package.
+% Note that \label must occur AFTER (or within) \caption.
+% For figures, \caption should occur after the \includegraphics.
+% Note that IEEEtran v1.7 and later has special internal code that
+% is designed to preserve the operation of \label within \caption
+% even when the captionsoff option is in effect. However, because
+% of issues like this, it may be the safest practice to put all your
+% \label just after \caption rather than within \caption{}.
+%
+% Reminder: the "draftcls" or "draftclsnofoot", not "draft", class
+% option should be used if it is desired that the figures are to be
+% displayed while in draft mode.
+%
+%\begin{figure}[!t]
+%\centering
+%\includegraphics[width=2.5in]{myfigure}
+% where an .eps filename suffix will be assumed under latex, 
+% and a .pdf suffix will be assumed for pdflatex; or what has been declared
+% via \DeclareGraphicsExtensions.
+%\caption{Simulation results for the network.}
+%\label{fig_sim}
+%\end{figure}
+
+% Note that the IEEE typically puts floats only at the top, even when this
+% results in a large percentage of a column being occupied by floats.
+\balance
+
+% An example of a double column floating figure using two subfigures.
+% (The subfig.sty package must be loaded for this to work.)
+% The subfigure \label commands are set within each subfloat command,
+% and the \label for the overall figure must come after \caption.
+% \hfil is used as a separator to get equal spacing.
+% Watch out that the combined width of all the subfigures on a 
+% line do not exceed the text width or a line break will occur.
+%
+%\begin{figure*}[!t]
+%\centering
+%\subfloat[Case I]{\includegraphics[width=2.5in]{box}%
+%\label{fig_first_case}}
+%\hfil
+%\subfloat[Case II]{\includegraphics[width=2.5in]{box}%
+%\label{fig_second_case}}
+%\caption{Simulation results for the network.}
+%\label{fig_sim}
+%\end{figure*}
+%
+% Note that often IEEE papers with subfigures do not employ subfigure
+% captions (using the optional argument to \subfloat[]), but instead will
+% reference/describe all of them (a), (b), etc., within the main caption.
+% Be aware that for subfig.sty to generate the (a), (b), etc., subfigure
+% labels, the optional argument to \subfloat must be present. If a
+% subcaption is not desired, just leave its contents blank,
+% e.g., \subfloat[].
+
+
+% An example of a floating table. Note that, for IEEE style tables, the
+% \caption command should come BEFORE the table and, given that table
+% captions serve much like titles, are usually capitalized except for words
+% such as a, an, and, as, at, but, by, for, in, nor, of, on, or, the, to
+% and up, which are usually not capitalized unless they are the first or
+% last word of the caption. Table text will default to \footnotesize as
+% the IEEE normally uses this smaller font for tables.
+% The \label must come after \caption as always.
+%
+%\begin{table}[!t]
+%% increase table row spacing, adjust to taste
+%\renewcommand{\arraystretch}{1.3}
+% if using array.sty, it might be a good idea to tweak the value of
+% \extrarowheight as needed to properly center the text within the cells
+%\caption{An Example of a Table}
+%\label{table_example}
+%\centering
+%% Some packages, such as MDW tools, offer better commands for making tables
+%% than the plain LaTeX2e tabular which is used here.
+%\begin{tabular}{|c||c|}
+%\hline
+%One & Two\\
+%\hline
+%Three & Four\\
+%\hline
+%\end{tabular}
+%\end{table}
+
+
+% Note that the IEEE does not put floats in the very first column
+% - or typically anywhere on the first page for that matter. Also,
+% in-text middle ("here") positioning is typically not used, but it
+% is allowed and encouraged for Computer Society conferences (but
+% not Computer Society journals). Most IEEE journals/conferences use
+% top floats exclusively. 
+% Note that, LaTeX2e, unlike IEEE journals/conferences, places
+% footnotes above bottom floats. This can be corrected via the
+% \fnbelowfloat command of the stfloats package.
+
+% trigger a \newpage just before the given reference
+% number - used to balance the columns on the last page
+% adjust value as needed - may need to be readjusted if
+% the document is modified later
+%\IEEEtriggeratref{8}
+% The "triggered" command can be changed if desired:
+%\IEEEtriggercmd{\enlargethispage{-5in}}
+
+% references section
+
+% can use a bibliography generated by BibTeX as a .bbl file
+% BibTeX documentation can be easily obtained at:
+% http://mirror.ctan.org/biblio/bibtex/contrib/doc/
+% The IEEEtran BibTeX style support page is at:
+% http://www.michaelshell.org/tex/ieeetran/bibtex/
+%\bibliographystyle{IEEEtran}
+% argument is your BibTeX string definitions and bibliography database(s)
+%\bibliography{IEEEabrv,../bib/paper}
+%
+% <OR> manually copy in the resultant .bbl file
+% set second argument of \begin to the number of references
+% (used to reserve space for the reference number labels box)
+
+\bibliographystyle{IEEEtran}
+% argument is your BibTeX string definitions and bibliography database(s)
+%\nocite{}
+\bibliography{IEEEabrv,IEEEexample}
+% that's all folks
+\end{document}
+
+
