@@ -1,0 +1,36 @@
+# Dataset Specification: CUB-200-2011 (Caltech-UCSD Birds)
+
+## 1. Overview
+**CUB-200-2011** is a fine-grained image classification dataset containing 11,788 images of 200 bird species. Unlike general object datasets (like miniImageNet), CUB focuses on **Fine-Grained Visual Categorization (FGVC)**. The differences between classes (e.g., "Florida Jay" vs. "Blue Jay") are often subtle and localized to specific body parts like the beak, wing pattern, or crown color.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Source** | Caltech / UCSD |
+| **Total Classes** | 200 Bird Species |
+| **Total Images** | 11,788 (~60 per class) |
+| **Image Resolution** | $84 \times 84$ pixels (Resized for FSL) |
+| **Color Channels** | 3 (RGB) |
+
+### 2.1. Class Splits
+We follow the standard Few-Shot split for CUB:
+-   **Training**: 100 Classes.
+-   **Validation**: 50 Classes.
+-   **Testing**: 50 Classes.
+
+## 3. Role in Thesis
+CUB tests the **Contextual Refinement** and **Attention** capabilities of the model.
+-   **Challenge**: The background (trees, sky, water) is often shared across classes. A naive model might classify based on the background (e.g., "Water Bird") rather than the species.
+-   **Hypothesis**: The **Lightweight Cosine Transformer** should help the model attend to the discriminative features (the bird itself) by refining the prototype based on the query context, effectively ignoring the background noise.
+-   **Dynamic VIC**: Since the classes are semantically close, we expect the **Episode-Adaptive Lambda Predictor** to predict a *lower* $\lambda_{var}$ (Variance Loss weight) compared to miniImageNet, allowing prototypes to remain closer in the embedding space without being forced apart artificially.
+
+## 4. Preprocessing
+1.  **Bounding Boxes**: While the original dataset provides bounding boxes, we **do not** use them, to maintain a realistic "in-the-wild" few-shot scenario.
+2.  **Resizing**: $84 \times 84$ pixels.
+3.  **Normalization**: Standard ImageNet statistics.
+
+## 5. Expected Performance
+Fine-grained tasks are generally harder for generic models but benefit significantly from covariance regularization (decorrelating features to find subtle differences).
+-   **Baseline (ProtoNet)**: ~51% (1-shot), ~70% (5-shot)
+-   **Target (Ours)**: >65% (1-shot), >80% (5-shot)

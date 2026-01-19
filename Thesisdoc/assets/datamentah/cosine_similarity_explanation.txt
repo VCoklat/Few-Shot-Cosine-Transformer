@@ -1,0 +1,141 @@
+# Chapter: Cosine Similarity as the Core Metric
+
+## 1. Introduction
+
+### 1.1. The Metric Choice in Deep Learning
+In any metric-based learning framework (like Few-Shot Learning), the choice of the distance function $d(\mathbf{x}, \mathbf{y})$ is fundamental. It defines the geometry of the embedding space and dictates how the model clusters similar items.
+
+### 1.2. Why Cosine Similarity?
+This thesis adopts **Cosine Similarity** as the foundational metric for all operations (Attention, Classification, Regularization). Unlike Euclidean distance, which measures the straight-line distance between points, Cosine Similarity measures the **cosine of the angle** between two non-zero vectors. This property makes it **Scale-Invariant**, a critical feature for robust feature representation.
+
+---
+
+## 2. Mathematical Definition and Properties
+
+### 2.1. Formula
+Given two vectors $\mathbf{A}, \mathbf{B} \in \mathbb{R}^n$:
+
+$$ \text{Cosine Similarity}(\mathbf{A}, \mathbf{B}) = \frac{\mathbf{A} \cdot \mathbf{B}}{\|\mathbf{A}\|_2 \|\mathbf{B}\|_2} = \frac{\sum_{i=1}^n A_i B_i}{\sqrt{\sum_{i=1}^n A_i^2} \sqrt{\sum_{i=1}^n B_i^2}} $$
+
+### 2.2. Proof of Scale Invariance
+A metric is scale-invariant if scaling a vector by a positive constant $c > 0$ does not change the metric value.
+
+Let $\mathbf{A}' = c \mathbf{A}$.
+
+$$ \text{Sim}(\mathbf{A}', \mathbf{B}) = \frac{(c\mathbf{A}) \cdot \mathbf{B}}{\|c\mathbf{A}\| \|\mathbf{B}\|} = \frac{c(\mathbf{A} \cdot \mathbf{B})}{|c|\|\mathbf{A}\| \|\mathbf{B}\|} $$
+
+Since $c > 0$, $|c| = c$:
+
+$$ = \frac{c(\mathbf{A} \cdot \mathbf{B})}{c\|\mathbf{A}\| \|\mathbf{B}\|} = \frac{\mathbf{A} \cdot \mathbf{B}}{\|\mathbf{A}\| \|\mathbf{B}\|} = \text{Sim}(\mathbf{A}, \mathbf{B}) $$
+
+**Conclusion**: The magnitude (length) of the feature vector has **zero impact** on the similarity score.
+
+---
+
+## 3. Geometric Interpretation & Visuals
+
+### 3.1. The Decoupling of Magnitude and Direction
+
+In Deep Learning features:
+-   **Magnitude ($\|\mathbf{x}\|$):** Often correlates with low-level signal intensity (e.g., image brightness, contrast, background saturation).
+-   **Direction ($\frac{\mathbf{x}}{\|\mathbf{x}\|}$):** Encodes the semantic content (e.g., ratios of features: "has ears" vs "has wheels").
+
+By using Cosine Similarity, we effectively project all data onto a **Unit Hypersphere**, discarding the noisy magnitude information.
+
+### 3.2. Visual Example
+
+```mermaid
+graph TD
+    Origin((0,0))
+    
+    VecA[Vector A (Length 1)]
+    VecB[Vector B (Length 3)]
+    VecC[Vector C (Length 2)]
+    
+    Origin -- "Same Direction" --> VecA
+    Origin -- "Same Direction" --> VecB
+    Origin -- "Different Direction" --> VecC
+    
+    style VecA stroke:blue,stroke-width:2px
+    style VecB stroke:blue,stroke-width:4px
+    style VecC stroke:red,stroke-width:2px
+```
+
+-   **Vector A** and **Vector B** point in the exact same direction.
+    -   Euclidean Distance: Large (Because B is much longer).
+    -   Cosine Similarity: **1.0 (Perfect Match)**.
+-   **Vector A** and **Vector C** point in different directions.
+    -   Cosine Similarity: < 1.0.
+
+In a classification task, if Vector A is a "dark image of a dog" and Vector B is a "bright image of a dog", we want them to be considered identical. Cosine Similarity achieves this; Euclidean distance does not.
+
+---
+
+## 4. Comparison with Euclidean Distance
+
+### 4.1. The Relationship on the Hypersphere
+If we normalize all vectors to unit length ($\|\mathbf{x}\| = \|\mathbf{y}\| = 1$), there is a direct monotonic relationship between Euclidean Distance ($d_E$) and Cosine Similarity ($S_C$):
+
+$$ d_E^2(\mathbf{x}, \mathbf{y}) = \|\mathbf{x} - \mathbf{y}\|^2 = (\mathbf{x} - \mathbf{y}) \cdot (\mathbf{x} - \mathbf{y}) $$
+$$ = \|\mathbf{x}\|^2 + \|\mathbf{y}\|^2 - 2(\mathbf{x} \cdot \mathbf{y}) $$
+$$ = 1 + 1 - 2 S_C(\mathbf{x}, \mathbf{y}) $$
+$$ d_E^2 = 2(1 - S_C) $$
+
+**Implication**: On the hypersphere, maximizing Cosine Similarity is mathematically equivalent to minimizing Euclidean Distance.
+
+### 4.2. Why Cosine is Better for Optimization
+While they are related, the **optimization landscape** differs:
+1.  **Boundedness**: Cosine Similarity is strictly bounded in $[-1, 1]$. This prevents gradients from exploding and makes hyperparameter tuning (like Learning Rate) more stable. Euclidean distance is unbounded $[0, \infty)$.
+2.  **Curse of Dimensionality**: In high-dimensional spaces (e.g., 1600-dim), the Euclidean distance between any two random points tends to converge to a constant value (Concentration of Measure). Angular distances tend to remain more discriminative.
+
+---
+
+## 5. Implementation in the Thesis Model
+
+### 5.1. L2 Normalization Layer
+Throughout the codebase (`optimal_few_shot.py`), you will see this operation repeated before any metric calculation:
+
+```python
+x = F.normalize(x, p=2, dim=-1)
+```
+
+This operation:
+$$ \mathbf{x}_{norm} = \frac{\mathbf{x}}{\sqrt{\sum x_i^2} + \epsilon} $$
+
+### 5.2. Where is it used?
+1.  **Backbone Output**: The raw Conv4 features are normalized immediately.
+2.  **Attention Mechanism**: The Query and Key vectors in the Transformer are normalized to compute the attention map.
+3.  **Prototype Computation**: The mean prototype is re-normalized.
+4.  **Final Classification**: The logits are computed as the dot product of normalized query and normalized prototype.
+
+---
+
+## 6. Detailed Example: Robustness to Lighting
+
+**Scenario**: Classifying "Apples".
+-   Feature 1: "Redness"
+-   Feature 2: "Roundness"
+
+**Image 1 (Standard Apple)**:
+-   Redness: 4, Roundness: 4.
+-   Vector $\mathbf{v}_1 = [4, 4]$.
+-   Normalized: $[0.707, 0.707]$.
+
+**Image 2 (Bright Apple - 2x Intensity)**:
+-   Redness: 8, Roundness: 8.
+-   Vector $\mathbf{v}_2 = [8, 8]$.
+-   Normalized: $[0.707, 0.707]$.
+
+**Image 3 (Rotten Apple - Different Semantics)**:
+-   Redness: 2, Roundness: 6.
+-   Vector $\mathbf{v}_3 = [2, 6]$.
+-   Normalized: $[0.316, 0.948]$.
+
+**Metric Comparison**:
+
+| Pair | Euclidean Distance | Cosine Similarity | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **Img 1 vs Img 2** | $\sqrt{(8-4)^2 + (8-4)^2} \approx 5.66$ | **1.00** | Cosine correctly sees them as identical content. Euclidean thinks they are far apart. |
+| **Img 1 vs Img 3** | $\sqrt{(2-4)^2 + (6-4)^2} \approx 2.82$ | **0.89** | Euclidean thinks the Rotten Apple (dist=2.82) is *closer* to the Standard Apple than the Bright Apple (dist=5.66). **This is a classification error.** |
+
+**Thesis Conclusion**: In this example, Euclidean distance would misclassify the Bright Apple as a different class, while Cosine Similarity correctly identifies the semantic match. This robustness is essential for Few-Shot Learning where training examples are scarce and may not cover all lighting conditions.

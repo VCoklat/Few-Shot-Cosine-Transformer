@@ -1,0 +1,146 @@
+{
+  "E1_Full": {
+    "description": "Full Dynamic VIC model",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.4796666666666667,
+    "std": 0.10437608948200519,
+    "f1_macro": 0.4796445547557207,
+    "confidence_interval": {
+      "mean": 0.4796666666666667,
+      "lower": 0.4713148400877856,
+      "upper": 0.48801849324554775,
+      "margin": 0.00835182657888106
+    }
+  },
+  "E2_InvDyn": {
+    "description": "Only invariance + dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.4894375,
+    "std": 0.09969561095529732,
+    "f1_macro": 0.4893937557793967,
+    "confidence_interval": {
+      "mean": 0.4894375,
+      "lower": 0.48146018970310694,
+      "upper": 0.4974148102968931,
+      "margin": 0.007977310296893081
+    }
+  },
+  "E3_InvCovDyn": {
+    "description": "Invariance + covariance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.4792708333333333,
+    "std": 0.09966736125385058,
+    "f1_macro": 0.4792927470711989,
+    "confidence_interval": {
+      "mean": 0.4792708333333333,
+      "lower": 0.4712957834833353,
+      "upper": 0.48724588318333134,
+      "margin": 0.007975049849998028
+    }
+  },
+  "E4_InvVarDyn": {
+    "description": "Invariance + variance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.48104166666666665,
+    "std": 0.09881568666236934,
+    "f1_macro": 0.48097981589086947,
+    "confidence_interval": {
+      "mean": 0.48104166666666665,
+      "lower": 0.47313476497708534,
+      "upper": 0.48894856835624795,
+      "margin": 0.007906901689581303
+    }
+  },
+  "E5_FullNoD": {
+    "description": "Full VIC without dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.49035416666666665,
+    "std": 0.10548711208471025,
+    "f1_macro": 0.4903536654668307,
+    "confidence_interval": {
+      "mean": 0.4903541666666667,
+      "lower": 0.48191343976445433,
+      "upper": 0.49879489356887907,
+      "margin": 0.00844072690221237
+    }
+  },
+  "E6_Baseline": {
+    "description": "Baseline cosine similarity (comparison method)",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.1978125,
+    "std": 0.020378099201921,
+    "f1_macro": 0.1971252154752585,
+    "confidence_interval": {
+      "mean": 0.1978125,
+      "lower": 0.1961819124642309,
+      "upper": 0.19944308753576911,
+      "margin": 0.0016305875357691124
+    }
+  },
+  "E7_CovDyn": {
+    "description": "Only covariance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.46447916666666667,
+    "std": 0.09404946384379634,
+    "f1_macro": 0.4644750720473347,
+    "confidence_interval": {
+      "mean": 0.46447916666666667,
+      "lower": 0.4569536422313452,
+      "upper": 0.4720046911019881,
+      "margin": 0.007525524435321451
+    }
+  },
+  "E8_VarDyn": {
+    "description": "Only variance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.4660416666666667,
+    "std": 0.10126521662062557,
+    "f1_macro": 0.46602849390311485,
+    "confidence_interval": {
+      "mean": 0.4660416666666667,
+      "lower": 0.45793876175917736,
+      "upper": 0.474144571574156,
+      "margin": 0.008102904907489328
+    }
+  }
+}

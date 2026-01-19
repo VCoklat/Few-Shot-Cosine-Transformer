@@ -1,0 +1,146 @@
+{
+  "E1_Full": {
+    "description": "Full Dynamic VIC model",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.29270833333333335,
+    "std": 0.06035880850289284,
+    "f1_macro": 0.29271964770787506,
+    "confidence_interval": {
+      "mean": 0.29270833333333335,
+      "lower": 0.28787862277772797,
+      "upper": 0.29753804388893873,
+      "margin": 0.004829710555605382
+    }
+  },
+  "E2_InvDyn": {
+    "description": "Only invariance + dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.33616666666666667,
+    "std": 0.06628767272695245,
+    "f1_macro": 0.33612863620073663,
+    "confidence_interval": {
+      "mean": 0.33616666666666667,
+      "lower": 0.33086254816902383,
+      "upper": 0.3414707851643095,
+      "margin": 0.00530411849764284
+    }
+  },
+  "E3_InvCovDyn": {
+    "description": "Invariance + covariance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.3125,
+    "std": 0.06522796562824874,
+    "f1_macro": 0.3124881884143358,
+    "confidence_interval": {
+      "mean": 0.3125,
+      "lower": 0.307280675730199,
+      "upper": 0.317719324269801,
+      "margin": 0.0052193242698009845
+    }
+  },
+  "E4_InvVarDyn": {
+    "description": "Invariance + variance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.32045833333333335,
+    "std": 0.06472456332198945,
+    "f1_macro": 0.32041518390176665,
+    "confidence_interval": {
+      "mean": 0.3204583333333333,
+      "lower": 0.31527928963719776,
+      "upper": 0.3256373770294688,
+      "margin": 0.005179043696135532
+    }
+  },
+  "E5_FullNoD": {
+    "description": "Full VIC without dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.31204166666666666,
+    "std": 0.06494226869989136,
+    "f1_macro": 0.31200841729297507,
+    "confidence_interval": {
+      "mean": 0.31204166666666666,
+      "lower": 0.30684520291225387,
+      "upper": 0.31723813042107946,
+      "margin": 0.0051964637544127945
+    }
+  },
+  "E6_Baseline": {
+    "description": "Baseline cosine similarity (comparison method)",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.20327083333333335,
+    "std": 0.03034488533463625,
+    "f1_macro": 0.20323972174454016,
+    "confidence_interval": {
+      "mean": 0.20327083333333332,
+      "lower": 0.20084273681114462,
+      "upper": 0.20569892985552202,
+      "margin": 0.0024280965221886996
+    }
+  },
+  "E7_CovDyn": {
+    "description": "Only covariance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.3393541666666667,
+    "std": 0.07087951619454115,
+    "f1_macro": 0.3393258435156297,
+    "confidence_interval": {
+      "mean": 0.3393541666666667,
+      "lower": 0.3336826241688626,
+      "upper": 0.3450257091644708,
+      "margin": 0.005671542497804105
+    }
+  },
+  "E8_VarDyn": {
+    "description": "Only variance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.3118958333333333,
+    "std": 0.06553783563183602,
+    "f1_macro": 0.31187714889216533,
+    "confidence_interval": {
+      "mean": 0.3118958333333333,
+      "lower": 0.3066517142992832,
+      "upper": 0.31713995236738346,
+      "margin": 0.005244119034050143
+    }
+  }
+}

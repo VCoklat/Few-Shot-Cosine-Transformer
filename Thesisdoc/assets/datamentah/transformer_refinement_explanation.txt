@@ -1,0 +1,148 @@
+# Chapter: Transformer-Based Prototype Refinement
+
+## 1. Introduction
+
+### 1.1. The Limitation of Static Prototypes
+In standard Prototypical Networks, the class prototype is simply the mean of the support vectors: $\mathbf{p}_c = \frac{1}{K} \sum \mathbf{x}_i$.
+This approach assumes that the mean is the best representation. However, this is "static" and "inductive"—it builds the prototype solely from the labeled data, ignoring the specific distribution of the unlabeled query data we are trying to classify.
+
+### 1.2. The Transductive Solution
+**Transformer-Based Refinement** introduces a *transductive* element. It allows the prototypes to "look at" the query set and adjust themselves to be more discriminative for those specific queries.
+-   Instead of a fixed "Dog" prototype, we get a "Dog prototype adjusted to distinguish itself from *these specific* Cat queries."
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Initial Prototype Construction
+First, we compute a weighted initial prototype from the support set. Unlike a simple mean, we allow the network to learn weights $\mathbf{w}_{proto}$ for the shots (though often initialized to uniform).
+
+$$ \mathbf{P}^{(0)} = \sum_{k=1}^K \text{softmax}(\mathbf{w}_{proto})_k \cdot \mathbf{S}_k $$
+
+Where $\mathbf{P}^{(0)} \in \mathbb{R}^{1 \times N_{way} \times D}$ is the set of initial prototypes.
+
+### 2.2. The Refinement Loop (Cross-Attention)
+We treat the Prototypes as **Queries** (in the Transformer sense) and the Query Images as **Keys/Values**. This is the core innovation: *The prototypes attend to the query set.*
+
+For each layer $l=1 \dots L$:
+
+1.  **Attention Step**:
+    $$ \mathbf{A} = \text{Attention}(\mathbf{Q}=\mathbf{P}^{(l-1)}, \mathbf{K}=\mathbf{Z}_{query}, \mathbf{V}=\mathbf{Z}_{query}) $$
+    
+    The prototype $\mathbf{P}_c$ looks at all query images $\mathbf{Z}_{query}$. It calculates similarity scores (Attention Weights). It then aggregates the query features based on these scores.
+    
+    *Intuition*: The prototype "pulls" information from query images that are similar to itself. If there is a cluster of "Dog-like" query images, the "Dog" prototype moves towards them.
+
+2.  **Residual Update**:
+    $$ \mathbf{P}^{(l)}_{attn} = \mathbf{P}^{(l-1)} + \mathbf{A} $$
+
+3.  **Feed-Forward Update**:
+    $$ \mathbf{P}^{(l)} = \mathbf{P}^{(l)}_{attn} + \text{FFN}(\mathbf{P}^{(l)}_{attn}) $$
+
+### 2.3. Final Classification
+The output of the Transformer is the **Refined Prototype Set** $\mathbf{P}^{(L)}$.
+We then use a linear layer (or Cosine Distance) to predict the match score between the refined prototypes and the original query images.
+
+---
+
+## 3. Visual Explanation
+
+### 3.1. Movement in Feature Space
+
+```mermaid
+graph TD
+    subgraph "Feature Space"
+        S1[Support Dog]
+        S2[Support Dog]
+        
+        Q1[Query Dog 1]
+        Q2[Query Dog 2]
+        
+        P_init[Initial Prototype]
+        P_final[Refined Prototype]
+        
+        S1 & S2 --> P_init
+        
+        P_init -. "Attends to" .-> Q1
+        P_init -. "Attends to" .-> Q2
+        
+        P_init ==> P_final
+        
+        style P_init fill:#ccc,stroke:#333
+        style P_final fill:#f00,stroke:#333,stroke-width:4px
+    end
+    
+    Note[Shift towards Query Distribution] --- P_final
+```
+
+-   **Initial State**: The prototype is centered on the Support examples (which might be biased or outliers).
+-   **Refinement**: The prototype "sees" that there are Query examples nearby. It shifts its position towards the density of the Query examples.
+-   **Result**: The prototype is now better aligned with the actual test data, reducing the domain shift between Support and Query sets.
+
+---
+
+## 4. Implementation Details
+
+### 4.1. Code Analysis
+File: `methods/transformer.py`
+
+```python
+# 1. Initial Prototype Construction
+# z_support: [N_way, K_shot, Dim]
+# proto_weight: Learnable weights for averaging shots
+z_proto = (z_support * self.sm(self.proto_weight)).sum(1).unsqueeze(0) 
+# z_proto shape: [1, N_way, Dim]
+
+# 2. Prepare Query Set (as Keys/Values)
+# z_query shape: [N_query_total, 1, Dim]
+x, query = z_proto, z_query
+
+# 3. Transformer Loop
+for _ in range(self.depth):
+   # x (Prototypes) attends to query (Query Images)
+   # Note: In code, q=x, k=query, v=query
+   x = self.ATTN(q = x, k = query, v = query) + x
+   x = self.FFN(x) + x
+
+# 4. Final Prediction
+return self.linear(x).squeeze()
+```
+
+### 4.2. Key Difference from Standard Transformers
+In a standard Transformer (like BERT), self-attention is used ($Q=K=V$).
+Here, we use **Cross-Attention**:
+-   **Q**: Prototypes (The concepts we want to refine).
+-   **K, V**: Query Images (The unlabeled data we want to adapt to).
+
+This is explicitly a **Semi-Supervised** or **Transductive** mechanism.
+
+---
+
+## 5. Example Scenario
+
+**Task**: Classify "Penguins".
+**Support**: 1 image of a Penguin on ice.
+**Query**: 5 images of Penguins on grass.
+
+**Without Refinement**:
+-   Prototype is "Penguin on ice".
+-   Distance to "Penguin on grass" is large (due to background mismatch).
+-   Risk: Misclassification.
+
+**With Refinement**:
+-   The "Penguin on ice" prototype attends to the 5 query images.
+-   It notices they all share "black and white body" features, even though the background is green.
+-   The attention mechanism updates the prototype vector: `Prototype_New = Prototype_Old + 0.2 * (Query_Features)`.
+-   The new prototype incorporates "grass background" or emphasizes the "body shape" more.
+-   Distance to queries decreases. Accuracy improves.
+
+---
+
+## 6. Theoretical Justification
+
+### 6.1. Distribution Alignment
+Few-Shot Learning suffers from **Distribution Shift**. The support set $P_S(x)$ and query set $P_Q(x)$ are sampled from the same class but might differ in variance, lighting, or pose.
+Refinement acts as a **Domain Adaptation** step. By mixing query statistics into the prototype, we align the support distribution $P_S$ to overlap better with $P_Q$.
+
+### 6.2. Label Propagation
+This mechanism can be viewed as a soft version of **Label Propagation**. The prototype "claims" nearby query points and uses them to reinforce its own definition, effectively increasing the effective "shot" count ($K_{eff} > K_{nominal}$).

@@ -1,0 +1,806 @@
+{
+  "algorithm_names": [
+    "E1_Full",
+    "E2_InvDyn",
+    "E3_InvCovDyn",
+    "E4_InvVarDyn",
+    "E5_FullNoD",
+    "E6_Baseline",
+    "E7_CovDyn",
+    "E8_VarDyn"
+  ],
+  "pairwise_comparisons": [
+    {
+      "contingency_table": [
+        18097,
+        10412,
+        11740,
+        7751
+      ],
+      "statistic": 79.49300288912966,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22152,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10412,
+      "n10": 11740,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E2_InvDyn"
+    },
+    {
+      "contingency_table": [
+        17255,
+        11254,
+        11242,
+        8249
+      ],
+      "statistic": 0.00537873399715505,
+      "p_value": 0.9415356791856957,
+      "significant_at_0.05": false,
+      "significant_at_0.01": false,
+      "algorithm_a_better": false,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22496,
+      "effect_description": "No significant difference between algorithms (not significant (p >= 0.05))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11254,
+      "n10": 11242,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E3_InvCovDyn"
+    },
+    {
+      "contingency_table": [
+        17830,
+        10679,
+        11544,
+        7947
+      ],
+      "statistic": 33.59114430994915,
+      "p_value": 6.800161878040001e-09,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22223,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10679,
+      "n10": 11544,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E4_InvVarDyn"
+    },
+    {
+      "contingency_table": [
+        17798,
+        10711,
+        11661,
+        7830
+      ],
+      "statistic": 40.25572143751118,
+      "p_value": 2.2280188805012813e-10,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22372,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10711,
+      "n10": 11661,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E5_FullNoD"
+    },
+    {
+      "contingency_table": [
+        22324,
+        6185,
+        15259,
+        4232
+      ],
+      "statistic": 3838.804747248648,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 21444,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 6185,
+      "n10": 15259,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E6_Baseline"
+    },
+    {
+      "contingency_table": [
+        17159,
+        11350,
+        11164,
+        8327
+      ],
+      "statistic": 1.52016523052323,
+      "p_value": 0.21759449065653302,
+      "significant_at_0.05": false,
+      "significant_at_0.01": false,
+      "algorithm_a_better": false,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22514,
+      "effect_description": "No significant difference between algorithms (not significant (p >= 0.05))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11350,
+      "n10": 11164,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E7_CovDyn"
+    },
+    {
+      "contingency_table": [
+        18508,
+        10001,
+        12297,
+        7194
+      ],
+      "statistic": 236.21064669477084,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22298,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10001,
+      "n10": 12297,
+      "algorithm_a": "E1_Full",
+      "algorithm_b": "E8_VarDyn"
+    },
+    {
+      "contingency_table": [
+        18091,
+        11746,
+        10406,
+        7757
+      ],
+      "statistic": 80.93720657276995,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 22152,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11746,
+      "n10": 10406,
+      "algorithm_a": "E2_InvDyn",
+      "algorithm_b": "E3_InvCovDyn"
+    },
+    {
+      "contingency_table": [
+        18600,
+        11237,
+        10774,
+        7389
+      ],
+      "statistic": 9.697151424287856,
+      "p_value": 0.001845538793567747,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 22011,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11237,
+      "n10": 10774,
+      "algorithm_a": "E2_InvDyn",
+      "algorithm_b": "E4_InvVarDyn"
+    },
+    {
+      "contingency_table": [
+        18613,
+        11224,
+        10846,
+        7317
+      ],
+      "statistic": 6.439918441323063,
+      "p_value": 0.011158376931758807,
+      "significant_at_0.05": true,
+      "significant_at_0.01": false,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 22070,
+      "effect_description": "Algorithm B significantly outperforms A (significant (p < 0.05))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11224,
+      "n10": 10846,
+      "algorithm_a": "E2_InvDyn",
+      "algorithm_b": "E5_FullNoD"
+    },
+    {
+      "contingency_table": [
+        23305,
+        6532,
+        14278,
+        3885
+      ],
+      "statistic": 2882.5096107640557,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 20810,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 6532,
+      "n10": 14278,
+      "algorithm_a": "E2_InvDyn",
+      "algorithm_b": "E6_Baseline"
+    },
+    {
+      "contingency_table": [
+        17842,
+        11995,
+        10481,
+        7682
+      ],
+      "statistic": 101.8494838939313,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 22476,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11995,
+      "n10": 10481,
+      "algorithm_a": "E2_InvDyn",
+      "algorithm_b": "E7_CovDyn"
+    },
+    {
+      "contingency_table": [
+        19393,
+        10444,
+        11412,
+        6751
+      ],
+      "statistic": 42.78408674963397,
+      "p_value": 6.11274364459291e-11,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 21856,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10444,
+      "n10": 11412,
+      "algorithm_a": "E2_InvDyn",
+      "algorithm_b": "E8_VarDyn"
+    },
+    {
+      "contingency_table": [
+        17757,
+        10740,
+        11617,
+        7886
+      ],
+      "statistic": 34.32374647761328,
+      "p_value": 4.666530051267159e-09,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22357,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10740,
+      "n10": 11617,
+      "algorithm_a": "E3_InvCovDyn",
+      "algorithm_b": "E4_InvVarDyn"
+    },
+    {
+      "contingency_table": [
+        17929,
+        10568,
+        11530,
+        7973
+      ],
+      "statistic": 41.79206263010227,
+      "p_value": 1.015146855465332e-10,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22098,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10568,
+      "n10": 11530,
+      "algorithm_a": "E3_InvCovDyn",
+      "algorithm_b": "E5_FullNoD"
+    },
+    {
+      "contingency_table": [
+        22284,
+        6213,
+        15299,
+        4204
+      ],
+      "statistic": 3836.799228337672,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 21512,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 6213,
+      "n10": 15299,
+      "algorithm_a": "E3_InvCovDyn",
+      "algorithm_b": "E6_Baseline"
+    },
+    {
+      "contingency_table": [
+        17193,
+        11304,
+        11130,
+        8373
+      ],
+      "statistic": 1.334091111705447,
+      "p_value": 0.2480787068332655,
+      "significant_at_0.05": false,
+      "significant_at_0.01": false,
+      "algorithm_a_better": false,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22434,
+      "effect_description": "No significant difference between algorithms (not significant (p >= 0.05))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11304,
+      "n10": 11130,
+      "algorithm_a": "E3_InvCovDyn",
+      "algorithm_b": "E7_CovDyn"
+    },
+    {
+      "contingency_table": [
+        18458,
+        10039,
+        12347,
+        7156
+      ],
+      "statistic": 237.74899490753148,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22386,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10039,
+      "n10": 12347,
+      "algorithm_a": "E3_InvCovDyn",
+      "algorithm_b": "E8_VarDyn"
+    },
+    {
+      "contingency_table": [
+        18386,
+        10988,
+        11073,
+        7553
+      ],
+      "statistic": 0.31984044240968224,
+      "p_value": 0.5717035489927611,
+      "significant_at_0.05": false,
+      "significant_at_0.01": false,
+      "algorithm_a_better": false,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22061,
+      "effect_description": "No significant difference between algorithms (not significant (p >= 0.05))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10988,
+      "n10": 11073,
+      "algorithm_a": "E4_InvVarDyn",
+      "algorithm_b": "E5_FullNoD"
+    },
+    {
+      "contingency_table": [
+        23071,
+        6303,
+        14512,
+        4114
+      ],
+      "statistic": 3236.668940667788,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 20815,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 6303,
+      "n10": 14512,
+      "algorithm_a": "E4_InvVarDyn",
+      "algorithm_b": "E6_Baseline"
+    },
+    {
+      "contingency_table": [
+        17767,
+        11607,
+        10556,
+        8070
+      ],
+      "statistic": 49.74507061318413,
+      "p_value": 1.7508217098338719e-12,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 22163,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11607,
+      "n10": 10556,
+      "algorithm_a": "E4_InvVarDyn",
+      "algorithm_b": "E7_CovDyn"
+    },
+    {
+      "contingency_table": [
+        19156,
+        10218,
+        11649,
+        6977
+      ],
+      "statistic": 93.51534275392143,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 21867,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10218,
+      "n10": 11649,
+      "algorithm_a": "E4_InvVarDyn",
+      "algorithm_b": "E8_VarDyn"
+    },
+    {
+      "contingency_table": [
+        23083,
+        6376,
+        14500,
+        4041
+      ],
+      "statistic": 3160.7170434949226,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 20876,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 6376,
+      "n10": 14500,
+      "algorithm_a": "E5_FullNoD",
+      "algorithm_b": "E6_Baseline"
+    },
+    {
+      "contingency_table": [
+        17737,
+        11722,
+        10586,
+        7955
+      ],
+      "statistic": 57.74722072798996,
+      "p_value": 2.9753977059954195e-14,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 22308,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 11722,
+      "n10": 10586,
+      "algorithm_a": "E5_FullNoD",
+      "algorithm_b": "E7_CovDyn"
+    },
+    {
+      "contingency_table": [
+        19181,
+        10278,
+        11624,
+        6917
+      ],
+      "statistic": 82.59633823395124,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 21902,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 10278,
+      "n10": 11624,
+      "algorithm_a": "E5_FullNoD",
+      "algorithm_b": "E8_VarDyn"
+    },
+    {
+      "contingency_table": [
+        22183,
+        15400,
+        6140,
+        4277
+      ],
+      "statistic": 3979.9944753946147,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 21540,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 15400,
+      "n10": 6140,
+      "algorithm_a": "E6_Baseline",
+      "algorithm_b": "E7_CovDyn"
+    },
+    {
+      "contingency_table": [
+        24152,
+        13431,
+        6653,
+        3764
+      ],
+      "statistic": 2286.781965743876,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": false,
+      "algorithm_b_better": true,
+      "discordant_pairs": 20084,
+      "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 13431,
+      "n10": 6653,
+      "algorithm_a": "E6_Baseline",
+      "algorithm_b": "E8_VarDyn"
+    },
+    {
+      "contingency_table": [
+        18421,
+        9902,
+        12384,
+        7293
+      ],
+      "statistic": 276.1985551467289,
+      "p_value": 0.0,
+      "significant_at_0.05": true,
+      "significant_at_0.01": true,
+      "algorithm_a_better": true,
+      "algorithm_b_better": false,
+      "discordant_pairs": 22286,
+      "effect_description": "Algorithm A significantly outperforms B (highly significant (p < 0.01))",
+      "test_type": "chi_squared_corrected",
+      "n01": 9902,
+      "n10": 12384,
+      "algorithm_a": "E7_CovDyn",
+      "algorithm_b": "E8_VarDyn"
+    }
+  ],
+  "summary_matrix": [
+    [
+      0.0,
+      0.0,
+      0.9415356791856957,
+      6.800161878040001e-09,
+      2.2280188805012813e-10,
+      0.0,
+      0.21759449065653302,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.001845538793567747,
+      0.011158376931758807,
+      0.0,
+      0.0,
+      6.11274364459291e-11
+    ],
+    [
+      0.9415356791856957,
+      0.0,
+      0.0,
+      4.666530051267159e-09,
+      1.015146855465332e-10,
+      0.0,
+      0.2480787068332655,
+      0.0
+    ],
+    [
+      6.800161878040001e-09,
+      0.001845538793567747,
+      4.666530051267159e-09,
+      0.0,
+      0.5717035489927611,
+      0.0,
+      1.7508217098338719e-12,
+      0.0
+    ],
+    [
+      2.2280188805012813e-10,
+      0.011158376931758807,
+      1.015146855465332e-10,
+      0.5717035489927611,
+      0.0,
+      0.0,
+      2.9753977059954195e-14,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.21759449065653302,
+      0.0,
+      0.2480787068332655,
+      1.7508217098338719e-12,
+      2.9753977059954195e-14,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      6.11274364459291e-11,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "significant_differences": [
+    {
+      "winner": "E1_Full",
+      "loser": "E2_InvDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E1_Full",
+      "loser": "E4_InvVarDyn",
+      "p_value": 6.800161878040001e-09
+    },
+    {
+      "winner": "E1_Full",
+      "loser": "E5_FullNoD",
+      "p_value": 2.2280188805012813e-10
+    },
+    {
+      "winner": "E1_Full",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E1_Full",
+      "loser": "E8_VarDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E3_InvCovDyn",
+      "loser": "E2_InvDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E4_InvVarDyn",
+      "loser": "E2_InvDyn",
+      "p_value": 0.001845538793567747
+    },
+    {
+      "winner": "E5_FullNoD",
+      "loser": "E2_InvDyn",
+      "p_value": 0.011158376931758807
+    },
+    {
+      "winner": "E2_InvDyn",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E7_CovDyn",
+      "loser": "E2_InvDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E2_InvDyn",
+      "loser": "E8_VarDyn",
+      "p_value": 6.11274364459291e-11
+    },
+    {
+      "winner": "E3_InvCovDyn",
+      "loser": "E4_InvVarDyn",
+      "p_value": 4.666530051267159e-09
+    },
+    {
+      "winner": "E3_InvCovDyn",
+      "loser": "E5_FullNoD",
+      "p_value": 1.015146855465332e-10
+    },
+    {
+      "winner": "E3_InvCovDyn",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E3_InvCovDyn",
+      "loser": "E8_VarDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E4_InvVarDyn",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E7_CovDyn",
+      "loser": "E4_InvVarDyn",
+      "p_value": 1.7508217098338719e-12
+    },
+    {
+      "winner": "E4_InvVarDyn",
+      "loser": "E8_VarDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E5_FullNoD",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E7_CovDyn",
+      "loser": "E5_FullNoD",
+      "p_value": 2.9753977059954195e-14
+    },
+    {
+      "winner": "E5_FullNoD",
+      "loser": "E8_VarDyn",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E7_CovDyn",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E8_VarDyn",
+      "loser": "E6_Baseline",
+      "p_value": 0.0
+    },
+    {
+      "winner": "E7_CovDyn",
+      "loser": "E8_VarDyn",
+      "p_value": 0.0
+    }
+  ]
+}

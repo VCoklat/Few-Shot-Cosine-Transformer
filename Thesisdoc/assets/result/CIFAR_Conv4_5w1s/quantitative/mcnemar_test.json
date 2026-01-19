@@ -1,0 +1,19 @@
+{
+  "contingency_table": [
+    12796,
+    11996,
+    11717,
+    11491
+  ],
+  "statistic": 3.259140555813267,
+  "p_value": 0.07102634335811497,
+  "significant_at_0.05": false,
+  "significant_at_0.01": false,
+  "algorithm_a_better": false,
+  "algorithm_b_better": false,
+  "discordant_pairs": 23713,
+  "effect_description": "No significant difference between algorithms (not significant (p >= 0.05))",
+  "test_type": "chi_squared_corrected",
+  "n01": 11996,
+  "n10": 11717
+}

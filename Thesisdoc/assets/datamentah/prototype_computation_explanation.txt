@@ -1,0 +1,141 @@
+# Chapter: Prototype Computation and Representation
+
+## 1. Introduction
+
+### 1.1. The Concept of a Prototype
+In Few-Shot Learning, specifically in Prototypical Networks, a "Prototype" is a single vector representation that summarizes an entire class. It acts as the "centroid" or "average idea" of that class based on the available support examples.
+
+### 1.2. Why Compute Prototypes?
+Instead of comparing a query image to every single support image (which is computationally expensive and noisy), we compare the query image to the class prototypes. This reduces the problem to a simple nearest-neighbor classification in the prototype space.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Input Data
+Let $S_c$ be the set of support examples for class $c$, where $|S_c| = K$ (the "shot" count).
+Let $\mathbf{z}_i \in \mathbb{R}^D$ be the *refined* feature vector of the $i$-th image in $S_c$.
+(Note: These are the outputs from the Lightweight Cosine Transformer, not the raw backbone outputs).
+
+### 2.2. Mean Centroid Calculation
+The raw prototype $\mathbf{p}'_c$ is calculated as the element-wise mean of the support vectors:
+
+$$ \mathbf{p}'_c = \frac{1}{K} \sum_{\mathbf{z}_i \in S_c} \mathbf{z}_i $$
+
+*Note on Weighted Averaging*: While some architectures (like the Few-Shot Transformer) employ learnable weighted averages to discount outliers, the **Optimal Few-Shot Model** strictly uses the **Simple Mean**. Empirical analysis showed that learnable weights in the prototype aggregation step often led to overfitting on the support set in the 5-shot regime. The Simple Mean acts as a stronger regularizer.
+
+### 2.3. L2 Normalization (Crucial Step)
+Since we are using Cosine Similarity for classification, the magnitude of the prototype vector is irrelevant and potentially harmful (biasing the dot product). We project the prototype onto the unit hypersphere:
+
+$$ \mathbf{p}_c = \frac{\mathbf{p}'_c}{\|\mathbf{p}'_c\|_2} $$
+
+This ensures that $\|\mathbf{p}_c\|_2 = 1$.
+
+---
+
+## 3. Visual Explanation
+
+### 3.1. 2D Feature Space Visualization
+
+Imagine a 2D feature space where points are plotted.
+
+**Scenario: 3-Way 5-Shot** (3 classes, 5 examples each).
+
+```mermaid
+graph TD
+    subgraph "Feature Space"
+        C1_1((.)):::c1
+        C1_2((.)):::c1
+        C1_3((.)):::c1
+        C1_4((.)):::c1
+        C1_5((.)):::c1
+        
+        C2_1((.)):::c2
+        C2_2((.)):::c2
+        C2_3((.)):::c2
+        C2_4((.)):::c2
+        C2_5((.)):::c2
+        
+        P1[Prototype 1]:::p1
+        P2[Prototype 2]:::p2
+        
+        C1_1 & C1_2 & C1_3 & C1_4 & C1_5 -.-> P1
+        C2_1 & C2_2 & C2_3 & C2_4 & C2_5 -.-> P2
+    end
+    
+    classDef c1 fill:#f9f,stroke:#333,stroke-width:1px;
+    classDef c2 fill:#bbf,stroke:#333,stroke-width:1px;
+    classDef p1 fill:#f0f,stroke:#333,stroke-width:4px,shape:rect;
+    classDef p2 fill:#00f,stroke:#333,stroke-width:4px,shape:rect;
+```
+
+-   The **Pink Dots** are the 5 support images for Class 1.
+-   The **Pink Square** (Prototype 1) is the geometric center of those dots.
+-   The **Blue Dots** are the 5 support images for Class 2.
+-   The **Blue Square** (Prototype 2) is the geometric center of those dots.
+
+### 3.2. The Effect of Refinement
+Because we use *refined* features (post-Transformer), the support points are already "pulled" closer together and "pushed" away from other classes before we even calculate the mean. This makes the resulting prototype significantly more robust than a simple average of raw CNN features.
+
+---
+
+## 4. Implementation Details
+
+### 4.1. Code Snippet
+From `methods/optimal_few_shot.py`:
+
+```python
+# 1. Reshape support features to separate classes
+# Input Shape: [N_way * K_shot, Dim]
+# Output Shape: [N_way, K_shot, Dim]
+support_features_per_way = support_features.reshape(self.n_way, self.k_shot, -1)
+
+# 2. Calculate Mean (Centroid)
+# Output Shape: [N_way, Dim]
+prototypes = support_features_per_way.mean(dim=1)
+
+# 3. Normalize
+# Output Shape: [N_way, Dim] (Unit Vectors)
+prototypes = F.normalize(prototypes, p=2, dim=1)
+```
+
+### 4.2. Tensor Shape Trace (5-Way 5-Shot, Dim=64)
+
+1.  `support_features`: `[25, 64]` (25 total images).
+2.  `reshape`: `[5, 5, 64]` (5 classes, 5 images each).
+3.  `mean(dim=1)`: `[5, 64]` (5 prototypes).
+4.  `normalize`: `[5, 64]` (Lengths become 1.0).
+
+---
+
+## 5. Theoretical Implications
+
+### 5.1. Bregman Divergence
+Prototypical Networks can be viewed as a linear classifier in a specific embedding space.
+-   If the distance metric is Euclidean ($d(x,y) = \|x-y\|^2$), the prototype is the mean.
+-   If the distance metric is Cosine ($d(x,y) = 1 - \cos(x,y)$), the optimal prototype is actually the **von Mises-Fisher mean** (direction of the sum of vectors).
+-   Our implementation: `mean()` followed by `normalize()` is exactly the Maximum Likelihood Estimation (MLE) for the mean direction of a von Mises-Fisher distribution on the hypersphere.
+
+### 5.2. Noise Reduction
+A single shot ($K=1$) is noisy. The prototype $\mathbf{p}_c$ acts as an ensemble of $K$ views of the concept.
+$$ \text{Variance}(\mathbf{p}_c) \approx \frac{1}{K} \text{Variance}(\mathbf{x}) $$
+As $K$ increases, the prototype becomes a more stable representation of the true class semantics.
+
+---
+
+## 6. Example Calculation
+
+**Class**: "Apple" ($K=2$ shots).
+**Dimension**: 2D (for simplicity).
+
+1.  **Support 1** (Red Apple): $\mathbf{z}_1 = [0.8, 0.6]$ (Normalized).
+2.  **Support 2** (Green Apple): $\mathbf{z}_2 = [0.6, 0.8]$ (Normalized).
+
+**Step 1: Mean**
+$$ \mathbf{p}' = \frac{[0.8, 0.6] + [0.6, 0.8]}{2} = [0.7, 0.7] $$
+
+**Step 2: Normalize**
+Length of $\mathbf{p}'$: $\sqrt{0.7^2 + 0.7^2} = \sqrt{0.49 + 0.49} = \sqrt{0.98} \approx 0.99$
+$$ \mathbf{p} = \frac{[0.7, 0.7]}{0.99} \approx [0.707, 0.707] $$
+
+**Result**: The prototype points exactly 45 degrees between the two examples, representing the "average apple concept".

@@ -1,0 +1,146 @@
+{
+  "E1_Full": {
+    "description": "Full Dynamic VIC model",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.5219791666666667,
+    "std": 0.08106141308274993,
+    "f1_macro": 0.5219766562142101,
+    "confidence_interval": {
+      "mean": 0.5219791666666667,
+      "lower": 0.5154929027371976,
+      "upper": 0.5284654305961357,
+      "margin": 0.006486263929469049
+    }
+  },
+  "E2_InvDyn": {
+    "description": "Only invariance + dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.5609895833333334,
+    "std": 0.09097989358823404,
+    "f1_macro": 0.5609890581493453,
+    "confidence_interval": {
+      "mean": 0.5609895833333334,
+      "lower": 0.5537096756726332,
+      "upper": 0.5682694909940336,
+      "margin": 0.007279907660700191
+    }
+  },
+  "E3_InvCovDyn": {
+    "description": "Invariance + covariance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.5356770833333333,
+    "std": 0.09455348682444092,
+    "f1_macro": 0.5356745327173631,
+    "confidence_interval": {
+      "mean": 0.5356770833333333,
+      "lower": 0.5281112286600521,
+      "upper": 0.5432429380066145,
+      "margin": 0.0075658546732811915
+    }
+  },
+  "E4_InvVarDyn": {
+    "description": "Invariance + variance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.5376041666666667,
+    "std": 0.08670766007667502,
+    "f1_macro": 0.5374756876910254,
+    "confidence_interval": {
+      "mean": 0.5376041666666667,
+      "lower": 0.5306661088833675,
+      "upper": 0.5445422244499658,
+      "margin": 0.006938057783299145
+    }
+  },
+  "E5_FullNoD": {
+    "description": "Full VIC without dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.5397916666666667,
+    "std": 0.08292713501756963,
+    "f1_macro": 0.5397397075945943,
+    "confidence_interval": {
+      "mean": 0.5397916666666667,
+      "lower": 0.5331561138902848,
+      "upper": 0.5464272194430485,
+      "margin": 0.006635552776381837
+    }
+  },
+  "E6_Baseline": {
+    "description": "Baseline cosine similarity (comparison method)",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.5028645833333333,
+    "std": 0.06825053339102723,
+    "f1_macro": 0.5026432863092363,
+    "confidence_interval": {
+      "mean": 0.5028645833333333,
+      "lower": 0.4974034032716271,
+      "upper": 0.5083257633950394,
+      "margin": 0.005461180061706206
+    }
+  },
+  "E7_CovDyn": {
+    "description": "Only covariance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.5675520833333333,
+    "std": 0.10797706592833986,
+    "f1_macro": 0.5674341685442785,
+    "confidence_interval": {
+      "mean": 0.5675520833333333,
+      "lower": 0.5589121186287218,
+      "upper": 0.5761920480379448,
+      "margin": 0.00863996470461148
+    }
+  },
+  "E8_VarDyn": {
+    "description": "Only variance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.5368229166666667,
+    "std": 0.08502755310678056,
+    "f1_macro": 0.5368169346392844,
+    "confidence_interval": {
+      "mean": 0.5368229166666667,
+      "lower": 0.5300192954398257,
+      "upper": 0.5436265378935077,
+      "margin": 0.006803621226840972
+    }
+  }
+}

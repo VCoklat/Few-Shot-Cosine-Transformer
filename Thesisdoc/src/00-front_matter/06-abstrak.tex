@@ -1,0 +1,33 @@
+%
+% Halaman Abstrak
+%
+% @author  Andreas Febrian
+% @version 1.00
+%
+
+\chapter*{Abstrak}
+
+\vspace*{0.2cm}
+{
+	\setlength{\parindent}{0pt}
+	
+	\begin{tabular}{@{}l l p{10cm}}
+		Nama&: & \penulis \\
+		Program Studi&: & \program \\
+		Judul&: & \judul \\
+		Pembimbing 1&: & \pembimbing \\
+        Pembimbing 2&: & \pembimbin \\
+	\end{tabular}
+
+	\bigskip
+	\bigskip
+
+	Penyakit kulit merupakan masalah kesehatan utama dengan distribusi layanan dermatologi yang timpang dan keterbatasan data berlabel. Metode \textit{few-shot learning} (FSL) klasik memiliki parameter regularisasi statis yang tidak adaptif terhadap variasi kesulitan antar episode. Penelitian ini mengusulkan \textit{Dynamic VIC Few-Shot Learning} yang mengintegrasikan regularisasi statistik \textit{Variance-Invariance-Covariance} (VIC) dengan mekanisme pembobotan dinamis melalui \textit{Episode-Adaptive Lambda Predictor}. Arsitektur menggunakan \textit{Lightweight Cosine Transformer} dan \textit{SE-Enhanced Conv4 backbone} yang dioptimalkan untuk efisiensi komputasi. Evaluasi pada dataset HAM10000 menunjukkan peningkatan macro-F1 score hingga \textbf{0,7744} pada konfigurasi Conv4 2-way 5-shot---peningkatan \textbf{+20,52\%} dari baseline. Peningkatan macro-F1 mengindikasikan kemampuan model mendeteksi kelas minoritas yang kritis secara klinis pada dataset dengan ketidakseimbangan ekstrem. Dengan pengurangan parameter hingga 90\% dan efisiensi yang tinggi, metode ini berpotensi sebagai solusi klasifikasi penyakit kulit untuk fasilitas kesehatan primer dengan sumber daya terbatas.
+
+	\bigskip
+
+	Kata kunci:\\
+	few-shot learning, klasifikasi penyakit kulit, Dynamic VIC, Cosine Transformer, HAM10000
+}
+
+\newpage

@@ -1,0 +1,164 @@
+# Chapter: CrossTransformers (CTX) for Spatially-Aware Few-Shot Transfer
+
+## 1. Introduction
+
+### 1.1. The Limitation of Global Pooling
+Most Few-Shot Learning methods (like Prototypical Networks) rely on **Global Average Pooling (GAP)**. They compress the entire spatial feature map ($H \times W$) into a single vector.
+-   **Problem**: This destroys spatial information. A "Dog head" at the top-left is averaged with "Grass" at the bottom-right.
+-   **Consequence**: If the query image has the object in a different location or pose, or if the background is cluttered, the global vectors might not match.
+
+### 1.2. The CTX Solution
+**CrossTransformers (CTX)** addresses this by preserving the spatial dimensions ($H \times W$) and using an **Attention Mechanism** to find correspondences between local patches of the query image and local patches of the support images.
+-   It asks: *"For this specific pixel in the query image, where is the corresponding pixel in the support image?"*
+
+> **Note**: This chapter describes the **CrossTransformers (CTX)** method, which serves as a **baseline** and **comparative architecture** in this thesis. The final **Optimal Few-Shot Model** adopts a global-vector refinement approach (Lightweight Cosine Transformer) rather than this patch-based alignment, prioritizing computational efficiency over fine-grained spatial reconstruction.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Feature Extraction
+Let $\mathbf{Z}_Q \in \mathbb{R}^{C \times H \times W}$ be the feature map of a Query image.
+Let $\mathbf{Z}_S \in \mathbb{R}^{C \times H \times W}$ be the feature map of a Support image.
+
+We flatten the spatial dimensions to get a sequence of $L = H \times W$ local descriptors:
+$$ \mathbf{Q} \in \mathbb{R}^{L \times C}, \quad \mathbf{S} \in \mathbb{R}^{L \times C} $$
+
+### 2.2. Cross-Attention (Alignment)
+We want to reconstruct the Query image using patches from the Support image.
+
+1.  **Similarity Matrix**: Compute the similarity between every query patch $i$ and every support patch $j$.
+    $$ \mathbf{A}_{ij} = \text{sim}(\mathbf{q}_i, \mathbf{s}_j) $$
+    (Using Dot Product or Cosine Similarity).
+
+2.  **Attention Weights**: Normalize the similarities for each query patch.
+    $$ \mathbf{W}_{ij} = \text{softmax}_j(\mathbf{A}_{ij}) $$
+    *Interpretation*: $\mathbf{W}_{ij}$ is the probability that query patch $i$ corresponds to support patch $j$.
+
+3.  **Aligned Prototype**: Construct a "hallucinated" support feature map $\hat{\mathbf{S}}$ that is spatially aligned with $\mathbf{Q}$.
+    $$ \hat{\mathbf{s}}_i = \sum_{j=1}^L \mathbf{W}_{ij} \mathbf{s}_j $$
+    *Result*: $\hat{\mathbf{S}}$ looks like the Support image, but its pixels have been rearranged to match the layout of the Query image.
+
+### 2.3. Distance Calculation
+Now that $\mathbf{Q}$ and $\hat{\mathbf{S}}$ are spatially aligned (pixel-to-pixel), we can compute the Euclidean distance between them.
+
+$$ D(\mathbf{Q}, \mathbf{S}) = \sum_{i=1}^L \|\mathbf{q}_i - \hat{\mathbf{s}}_i\|^2 $$
+
+The final class score is the negative distance.
+
+---
+
+## 3. Visual Explanation
+
+### 3.1. The Alignment Process
+
+**Scenario**:
+-   **Support**: A dog standing on the **Left**.
+-   **Query**: A dog standing on the **Right**.
+
+```mermaid
+graph TD
+    subgraph "Support Image (Dog Left)"
+        SL[Patch: Dog Head (Left)]
+        SR[Patch: Grass (Right)]
+    end
+    
+    subgraph "Query Image (Dog Right)"
+        QL[Patch: Grass (Left)]
+        QR[Patch: Dog Head (Right)]
+    end
+    
+    QR -.->|Attention: High Sim| SL
+    QR -.->|Attention: Low Sim| SR
+    
+    QL -.->|Attention: High Sim| SR
+    QL -.->|Attention: Low Sim| SL
+    
+    subgraph "Aligned Support (Hallucination)"
+        HL[Reconstructed: Grass]
+        HR[Reconstructed: Dog Head]
+    end
+    
+    SL --> HR
+    SR --> HL
+    
+    Note[Support patches are 'moved'<br>to match Query layout]
+```
+
+-   The model realizes that the "Dog Head" at Query-Right corresponds to the "Dog Head" at Support-Left.
+-   It moves the Support feature to the Right.
+-   Now we compare Query-Right (Dog) with Aligned-Support-Right (Dog). **Perfect Match.**
+-   (Without alignment, we would compare Query-Right (Dog) with Support-Right (Grass). **Mismatch.**)
+
+---
+
+## 4. Implementation Details
+
+### 4.1. Code Snippet (`methods/CTX.py`)
+
+```python
+# 1. Flatten Spatial Dims
+# query_q: [N_query, Dim, H*W] -> [N_query, 1, Dim*H*W] (Conceptually)
+# Actually reshaped to: [N_query, 1, L] vectors of Dim C
+
+# 2. Compute Similarity (Dot Product)
+# dots: [N_query, N_support, L_query, L_support]
+dots = torch.matmul(query_q, support_k)
+
+# 3. Softmax (Attention Weights)
+attn_weights = self.sm(dots / scale)
+
+# 4. Reconstruct (Weighted Sum)
+# out: [N_query, N_support, Dim, L_query]
+out = torch.einsum('nqk, ndk -> qnd', attn_weights, support_v)
+
+# 5. Compute Euclidean Distance
+# query_v - out: Difference between Query and Aligned Support
+euclidean_dist = -((query_v - out) ** 2).sum(dim=-1)
+```
+
+### 4.2. Complexity
+-   Standard ProtoNet: $O(1)$ per pair (vector-vector).
+-   CTX: $O(L^2)$ per pair (patch-patch).
+-   If $H=W=5$ (Conv4 output), $L=25$. $L^2=625$. Manageable.
+-   If $H=W=21$ (ResNet output), $L=441$. $L^2 \approx 200,000$. Expensive.
+-   **Optimization**: We often use $1 \times 1$ convolutions to reduce the channel dimension before attention to save memory.
+
+---
+
+## 5. Thesis Comparison: CTX vs. Optimal Model
+
+| Feature | CrossTransformers (CTX) | Optimal Few-Shot Model (Ours) |
+| :--- | :--- | :--- |
+| **Core Mechanism** | Spatial Alignment (Patch-to-Patch) | Contextual Refinement (Image-to-Image) |
+| **Granularity** | Local (Pixels/Patches) | Global (Image Vectors) |
+| **Attention Target** | Query attends to Support Patches | Prototype attends to Query Set |
+| **Strength** | Handles pose/location shifts perfectly. | Handles distribution shifts and outliers. |
+| **Weakness** | Computationally expensive ($O(L^2)$). | Ignores spatial layout (GAP). |
+
+**Conclusion**: CTX is superior for objects with high spatial variance (e.g., articulated bodies), while our Optimal Model is superior for semantic consistency and efficiency.
+
+---
+
+## 6. Example Calculation
+
+**Query Patch $q_1$**: "Eye" feature vector.
+**Support Patches**:
+-   $s_1$: "Tail"
+-   $s_2$: "Eye"
+-   $s_3$: "Leg"
+
+**Step 1: Similarity**
+-   $q_1 \cdot s_1 = 0.1$
+-   $q_1 \cdot s_2 = 0.9$
+-   $q_1 \cdot s_3 = 0.2$
+
+**Step 2: Attention (Softmax)**
+-   $w = [0.2, 0.7, 0.1]$ (approx)
+
+**Step 3: Reconstruction**
+-   $\hat{s}_1 = 0.2 s_1 + 0.7 s_2 + 0.1 s_3$
+-   Result is a vector that is mostly "Eye" (70%), with some noise.
+
+**Step 4: Distance**
+-   $\|q_1 - \hat{s}_1\|^2$ is small because both are "Eye" vectors.

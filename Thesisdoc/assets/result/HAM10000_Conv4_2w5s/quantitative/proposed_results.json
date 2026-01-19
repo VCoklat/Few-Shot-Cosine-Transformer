@@ -1,0 +1,30 @@
+{
+  "accuracy": 0.774375,
+  "std": 0.08945873117439869,
+  "precision": 0.774376190868884,
+  "recall": 0.774375,
+  "f1_macro": 0.774374755180941,
+  "confidence_interval_95": {
+    "mean": 0.774375,
+    "lower": 0.7672168106824732,
+    "upper": 0.7815331893175269,
+    "margin": 0.007158189317526875
+  },
+  "param_count": 0.249564,
+  "avg_inference_time": 0.009049431085586548,
+  "confusion_matrix": [
+    [
+      7424,
+      2176
+    ],
+    [
+      2156,
+      7444
+    ]
+  ],
+  "training": {
+    "training_time": 2548.206917285919,
+    "best_val_acc": 0.7625,
+    "best_epoch": 13
+  }
+}

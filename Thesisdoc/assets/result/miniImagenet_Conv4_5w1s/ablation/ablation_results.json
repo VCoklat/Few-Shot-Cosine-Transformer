@@ -1,0 +1,146 @@
+{
+  "E1_Full": {
+    "description": "Full Dynamic VIC model",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.25764583333333335,
+    "std": 0.06271736853513724,
+    "f1_macro": 0.25763693737257215,
+    "confidence_interval": {
+      "mean": 0.2576458333333333,
+      "lower": 0.25262739866990835,
+      "upper": 0.26266426799675824,
+      "margin": 0.005018434663424942
+    }
+  },
+  "E2_InvDyn": {
+    "description": "Only invariance + dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.2612083333333333,
+    "std": 0.061976123874888746,
+    "f1_macro": 0.26116599095408743,
+    "confidence_interval": {
+      "mean": 0.2612083333333334,
+      "lower": 0.25624921059551936,
+      "upper": 0.2661674560711474,
+      "margin": 0.004959122737814015
+    }
+  },
+  "E3_InvCovDyn": {
+    "description": "Invariance + covariance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.2625416666666667,
+    "std": 0.06286144099437181,
+    "f1_macro": 0.26253554670009416,
+    "confidence_interval": {
+      "mean": 0.2625416666666666,
+      "lower": 0.25751170380554533,
+      "upper": 0.2675716295277879,
+      "margin": 0.005029962861121284
+    }
+  },
+  "E4_InvVarDyn": {
+    "description": "Invariance + variance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.2575208333333333,
+    "std": 0.06330275783333263,
+    "f1_macro": 0.25748624047582425,
+    "confidence_interval": {
+      "mean": 0.2575208333333333,
+      "lower": 0.25245555777058054,
+      "upper": 0.2625861088960861,
+      "margin": 0.005065275562752769
+    }
+  },
+  "E5_FullNoD": {
+    "description": "Full VIC without dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.265625,
+    "std": 0.06394272339367475,
+    "f1_macro": 0.2656031564630147,
+    "confidence_interval": {
+      "mean": 0.265625,
+      "lower": 0.260508516527438,
+      "upper": 0.270741483472562,
+      "margin": 0.0051164834725619945
+    }
+  },
+  "E6_Baseline": {
+    "description": "Baseline cosine similarity (comparison method)",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.19839583333333333,
+    "std": 0.0264236238866957,
+    "f1_macro": 0.19835307301569416,
+    "confidence_interval": {
+      "mean": 0.19839583333333333,
+      "lower": 0.19628150307453102,
+      "upper": 0.20051016359213564,
+      "margin": 0.0021143302588023105
+    }
+  },
+  "E7_CovDyn": {
+    "description": "Only covariance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.2528125,
+    "std": 0.05878240462715012,
+    "f1_macro": 0.25278889742913474,
+    "confidence_interval": {
+      "mean": 0.2528125,
+      "lower": 0.24810892802511572,
+      "upper": 0.25751607197488424,
+      "margin": 0.004703571974884274
+    }
+  },
+  "E8_VarDyn": {
+    "description": "Only variance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.24947916666666667,
+    "std": 0.06274526528728859,
+    "f1_macro": 0.24941769002971945,
+    "confidence_interval": {
+      "mean": 0.24947916666666667,
+      "lower": 0.2444584997981722,
+      "upper": 0.25449983353516115,
+      "margin": 0.005020666868494478
+    }
+  }
+}

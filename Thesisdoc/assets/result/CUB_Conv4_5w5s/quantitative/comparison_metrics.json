@@ -1,0 +1,11 @@
+{
+  "baseline_accuracy": 0.68925,
+  "proposed_accuracy": 0.6772708333333334,
+  "accuracy_improvement": -0.011979166666666652,
+  "baseline_f1": 0.6892453870153046,
+  "proposed_f1": 0.6772853777572386,
+  "f1_improvement": -0.011960009258065951,
+  "baseline_params": 2.686554,
+  "proposed_params": 0.249564,
+  "param_overhead": -2.43699
+}

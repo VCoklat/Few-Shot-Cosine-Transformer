@@ -1,0 +1,130 @@
+# Chapter: Few-Shot Transformer (FST)
+
+## 1. Introduction
+
+### 1.1. The Concept
+The **Few-Shot Transformer (FST)** is a meta-learning architecture that treats the entire few-shot classification task as a **Set-to-Set** problem.
+
+> **Crucial Distinction**: The FST described in this chapter is a more complex **variant** of the Transformer approach. The final **Optimal Few-Shot Model** (implemented in `methods/optimal_few_shot.py`) uses a simplified "Lightweight Cosine Transformer" and **Mean Prototypes** instead of the **Weighted Prototypes** described below. This chapter serves to document the theoretical exploration of weighted prototyping.
+-   **Input**: A set of Support Images (labeled) and a set of Query Images (unlabeled).
+-   **Process**: A Transformer mechanism allows information to flow between the Support set and the Query set.
+-   **Output**: A set of classification scores for the Query images.
+
+### 1.2. Key Innovation: Learnable Prototype Weights
+Unlike standard Prototypical Networks which simply average the $K$ shots ($\text{mean}(S_1, \dots, S_K)$), FST learns a **Weighted Average**.
+-   Maybe $S_1$ is a "bad" example (occluded, blurry).
+-   Maybe $S_2$ is a "good" example (canonical view).
+-   FST learns to assign higher weight to $S_2$ when constructing the class prototype.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. Initial Prototype Construction
+Let $\mathbf{S}_{c,k}$ be the feature vector of the $k$-th shot for class $c$.
+We define a learnable weight parameter $\mathbf{w}_{proto} \in \mathbb{R}^{N_{way} \times K_{shot}}$.
+
+The initial prototype $\mathbf{P}_c^{(0)}$ is:
+$$ \alpha_{c,k} = \text{softmax}_k(\mathbf{w}_{proto}[c, :]) $$
+$$ \mathbf{P}_c^{(0)} = \sum_{k=1}^K \alpha_{c,k} \mathbf{S}_{c,k} $$
+
+*Note*: This allows the model to learn that, for example, the "3rd shot" in the provided set is usually more important, or simply to learn a uniform prior that can be updated later.
+
+### 2.2. Transformer Refinement (Cross-Attention)
+This is identical to the mechanism described in the "Transformer-Based Refinement" chapter, but applied here as the core definition of the FST model.
+
+$$ \mathbf{P}^{(l)} = \text{TransformerLayer}(\mathbf{Q}=\mathbf{P}^{(l-1)}, \mathbf{K}=\mathbf{Z}_{query}, \mathbf{V}=\mathbf{Z}_{query}) $$
+
+### 2.3. Final Classification Layer
+The FST uses a specialized output head.
+After refinement, we have $\mathbf{P}^{(L)}$ (Refined Prototypes).
+We project both Prototypes and Queries to a lower dimension $d_{head}$ and compute similarity.
+
+$$ \text{Score}(\mathbf{q}, \mathbf{p}_c) = \text{CosineDistLinear}(\mathbf{q}, \mathbf{p}_c) $$
+
+---
+
+## 3. Visual Explanation
+
+### 3.1. Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph "Input"
+        S[Support Set (N x K)]
+        Q[Query Set (N x Q)]
+    end
+    
+    S --> WeightedAvg[Weighted Average]
+    WeightedAvg --> Proto0[Initial Prototypes P0]
+    
+    Proto0 --> Trans[Transformer Block]
+    Q --> Trans
+    
+    Trans --> ProtoRef[Refined Prototypes P']
+    
+    ProtoRef --> Classifier
+    Q --> Classifier
+    
+    Classifier --> Logits
+```
+
+### 3.2. Weighted Averaging Example
+
+**Class**: "Chair". **Shots**: 3.
+1.  **Shot 1**: A standard wooden chair. (Good)
+2.  **Shot 2**: A beanbag chair. (Outlier)
+3.  **Shot 3**: A broken chair leg. (Noisy)
+
+**Standard ProtoNet**:
+$$ P = \frac{S_1 + S_2 + S_3}{3} $$
+Result: A "mushy" prototype that looks like a broken wooden beanbag.
+
+**FST (Learned Weights)**:
+The model might learn weights $\alpha = [0.8, 0.1, 0.1]$.
+$$ P = 0.8 S_1 + 0.1 S_2 + 0.1 S_3 $$
+Result: A prototype that is mostly "Standard Chair", ignoring the outliers.
+
+---
+
+## 4. Implementation Details
+
+### 4.1. Code Snippet (`methods/transformer.py`)
+
+```python
+# Learnable Weights
+# Shape: [N_way, K_shot, 1] initialized to 1.0 (Uniform)
+self.proto_weight = nn.Parameter(torch.ones(n_way, k_shot, 1))
+
+# Forward Pass
+# 1. Softmax over K_shot dimension
+weights = self.sm(self.proto_weight)
+
+# 2. Weighted Sum
+# z_support: [N, K, D] * weights: [N, K, 1] -> Sum over K -> [N, D]
+z_proto = (z_support * weights).sum(1).unsqueeze(0)
+```
+
+### 4.2. Output Layer
+The `CosineDistLinear` is used if `variant="cosine"`.
+```python
+self.linear = nn.Sequential(
+    nn.LayerNorm(dim),
+    nn.Linear(dim, dim_head),
+    CosineDistLinear(dim_head, 1) # Custom layer for Cosine Sim
+)
+```
+
+---
+
+## 5. Thesis Comparison: FST vs. CTX vs. Optimal
+
+| Feature | Few-Shot Transformer (FST) | CrossTransformers (CTX) | Optimal Model (Ours) |
+| :--- | :--- | :--- | :--- |
+| **Input** | Image Vectors | Image Patches | Image Vectors |
+| **Prototype** | **Weighted** Average | N/A (Patch matching) | **Simple** Average |
+| **Refinement** | Yes (Transformer) | No | Yes (Transformer) |
+| **Metric** | Cosine / Linear | Euclidean | Cosine |
+| **Best For** | Noisy Support Sets | Spatial Misalignment | General Performance |
+
+**Thesis Conclusion**: The FST introduces the critical idea of **Weighted Prototypes**, acknowledging that not all support examples are created equal. While our final **Optimal Model** uses a simple average for stability and efficiency, the FST demonstrates how learnable weighting can theoretically improve robustness against outliers, albeit at the cost of higher overfitting risk in low-data regimes.

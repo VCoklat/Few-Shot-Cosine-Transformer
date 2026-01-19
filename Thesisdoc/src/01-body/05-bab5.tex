@@ -1,0 +1,119 @@
+%-----------------------------------------------------------------------------%
+\chapter{\babLima}
+%-----------------------------------------------------------------------------%
+
+\section{Kesimpulan}
+
+Penelitian ini berhasil mengembangkan dan mengevaluasi metode \textit{Dynamic VIC Few-Shot Learning} untuk klasifikasi penyakit kulit pada skenario data terbatas. Berdasarkan hasil eksperimen komprehensif pada 24 konfigurasi yang mencakup enam dataset (Omniglot, miniImageNet, CIFAR-FS, CUB, Yoga, dan HAM10000), dua arsitektur backbone (Conv4 dan ResNet-34), dan dua skenario few-shot (1-shot dan 5-shot), dapat ditarik kesimpulan sebagai berikut:
+
+\subsection{Efektivitas Metode Usulan}
+
+\begin{enumerate}
+    \item \textbf{Peningkatan Performa Signifikan}: Metode usulan menunjukkan peningkatan akurasi pada 18 dari 24 konfigurasi (75\%), dengan rata-rata peningkatan \textbf{+3,15\%} dan peningkatan maksimal \textbf{+20,52\%} pada dataset medis HAM10000 (Conv4 2-way 5-shot). Pada dataset \textit{imbalanced} seperti HAM10000, peningkatan macro-F1 score dari 0,5692 menjadi \textbf{0,7744} (peningkatan 36,05\%) mengindikasikan bahwa model usulan tidak hanya meningkatkan akurasi keseluruhan, tetapi juga mampu mengenali kelas minoritas dengan lebih seimbang---aspek yang krusial dalam konteks diagnostik klinis. Peningkatan ini terbukti signifikan secara statistik pada 79,17\% konfigurasi (Uji McNemar, $p < 0,05$).
+    
+    \item \textbf{Superioritas pada Dataset Medis}: Pada target domain utama (HAM10000), metode usulan mencapai rata-rata peningkatan tertinggi (+7,13\%) dibandingkan dataset lain, memvalidasi efektivitas regularisasi VIC untuk menangani karakteristik unik citra dermatologi dengan variasi intra-kelas tinggi dan ketimpangan distribusi kelas. Konsistensi antara peningkatan akurasi dan macro-F1 mengkonfirmasi bahwa perbaikan performa bukan disebabkan oleh bias terhadap kelas mayoritas.
+    
+    \item \textbf{Efisiensi Komputasi}: Arsitektur usulan mencapai pengurangan jumlah parameter hingga 90,71\% (dari 2,69M menjadi 0,25M pada konfigurasi Conv4) tanpa mengorbankan performa, menjadikannya sangat layak untuk implementasi pada perangkat dengan sumber daya terbatas.
+\end{enumerate}
+
+\subsection{Kontribusi Komponen Arsitektur}
+
+Studi ablasi mengungkapkan kontribusi spesifik setiap komponen regularisasi VIC:
+
+\begin{enumerate}
+    \item \textbf{Covariance Regularization}: Komponen paling kritis untuk klasifikasi dermatologi, memberikan peningkatan hingga +16,18\% dari baseline pada HAM10000. Dekorelasi dimensi fitur terbukti sangat efektif untuk data medis dengan korelasi visual tinggi.
+    
+    \item \textbf{Invariance Regularization}: Memberikan kontribusi signifikan (+13,25\% pada HAM10000) dalam mempelajari representasi fitur yang robust terhadap variasi non-diagnostik seperti pencahayaan, orientasi, dan warna kulit.
+    
+    \item \textbf{Variance Regularization}: Efektif untuk memaksimalkan separabilitas antar-kelas (+12,19\% pada miniImageNet), penting untuk mengatasi \textit{inter-class similarity} yang tinggi pada penyakit kulit.
+    
+    \item \textbf{Dynamic Weighting}: Memberikan kontribusi positif hingga +6,57\% ketika dikombinasikan dengan komponen yang tepat, dengan catatan bahwa efektivitasnya bergantung pada karakteristik dataset.
+\end{enumerate}
+
+\subsection{Validasi Hipotesis}
+
+Berdasarkan hasil eksperimen, \textbf{Hipotesis $H_1$ diterima}: Metode usulan \textit{Dynamic VIC Few-Shot Learning} menghasilkan peningkatan performa yang signifikan (baik akurasi maupun macro-F1) dibandingkan metode baseline pada skenario data terbatas. Integrasi komponen VIC memberikan kontribusi positif yang terukur terhadap stabilitas dan akurasi model, meskipun konfigurasi optimal bergantung pada karakteristik spesifik dataset.
+
+\section{Kontribusi Penelitian}
+
+Penelitian ini memberikan kontribusi pada bidang \textit{Computer Vision} dan \textit{Medical AI} sebagai berikut:
+
+\begin{enumerate}
+    \item \textbf{Kontribusi Metodologis}: Mengusulkan kerangka kerja regularisasi VIC adaptif yang secara simultan menangani \textit{feature collapse}, variasi representasi, dan korelasi fitur dalam konteks \textit{few-shot learning} untuk klasifikasi citra medis.
+    
+    \item \textbf{Kontribusi Empiris}: Menyajikan evaluasi komprehensif pada 24 konfigurasi eksperimen dengan validasi statistik yang ketat, memberikan bukti empiris mengenai efektivitas pendekatan regularisasi statistik untuk dermatologi digital.
+    
+    \item \textbf{Kontribusi Praktis}: Memvalidasi kelayakan penggunaan arsitektur ringan (Conv4 dengan $\approx$0,25M parameter) yang mencapai performa kompetitif, mendukung potensi implementasi di fasilitas kesehatan primer dengan sumber daya terbatas.
+\end{enumerate}
+
+\subsection{Keunggulan Unik Dynamic VIC dibanding Metode Lain}
+
+Secara eksplisit, \textbf{Dynamic VIC dapat melakukan hal-hal yang tidak dapat dilakukan oleh metode baseline lainnya}:
+
+\begin{enumerate}
+    \item \textbf{Adaptasi terhadap Kesulitan Episode}: Berbeda dengan ProFONet yang menggunakan bobot regularisasi statis ($\lambda$ tetap), Dynamic VIC secara otomatis menyesuaikan kekuatan regularisasi berdasarkan statistik episode saat runtime. Pada episode sulit (varians tinggi, separabilitas rendah), model meningkatkan $\lambda_{cov}$ untuk memperkuat dekorelasi; pada episode mudah, regularisasi dikurangi agar tidak menghambat pembelajaran fitur spesifik.
+    
+    \item \textbf{Mencegah \textit{Feature Collapse} pada Data Medis}: FS-CT (Cosine Transformer) tidak memiliki mekanisme regularisasi representasi, menyebabkan rentan terhadap \textit{dimensional collapse} di mana banyak dimensi embedding mengkodekan informasi yang sama. Dynamic VIC secara eksplisit mencegah hal ini melalui Covariance Regularization.
+    
+    \item \textbf{Efisiensi Parameter Ekstrem}: Dengan hanya 0,25M parameter (Conv4), Dynamic VIC mencapai akurasi 77,44\% pada HAM10000---performa yang kompetitif dengan model 10$\times$ lebih besar. Tidak ada metode baseline yang mencapai keseimbangan performa-efisiensi serupa.
+\end{enumerate}
+
+\section{Keterbatasan Penelitian}
+
+Penelitian ini memiliki beberapa keterbatasan yang perlu diakui:
+
+\begin{enumerate}
+    \item \textbf{Variabilitas Performa}: Metode usulan tidak konsisten mengungguli baseline pada seluruh konfigurasi; 6 dari 24 konfigurasi (25\%) menunjukkan penurunan performa, terutama pada backbone Conv4 dengan dataset yang memerlukan fitur kompleks (CUB, Yoga).
+    
+    \item \textbf{Sensitivitas terhadap Konfigurasi}: Efektivitas komponen VIC sangat bergantung pada karakteristik dataset; konfigurasi optimal untuk satu domain mungkin tidak optimal untuk domain lain.
+    
+    \item \textbf{Keterbatasan Validasi Klinis}: Evaluasi dilakukan pada dataset terkurasi (\textit{in-silico}). Validasi prospektif dengan pasien nyata dan penilaian oleh dermatolog belum dilakukan.
+    
+    \item \textbf{Bias Demografis Dataset}: Dataset HAM10000 didominasi oleh populasi kulit terang (Fitzpatrick I--III), sehingga generalisasi ke populasi Indonesia dengan kulit lebih gelap (Fitzpatrick IV--VI) memerlukan validasi lebih lanjut. Meskipun demikian, keberhasilan metode Invariance Regularization pada HAM10000 menunjukkan potensi kuat model untuk mentransfer kemampuan tersebut ke domain kulit gelap, karena regularisasi ini secara eksplisit mendorong pembelajaran fitur struktural yang invarian terhadap warna kulit.
+    
+    \item \textbf{Keterbatasan Dataset Lokal Indonesia}: Evaluasi pada dataset HAM10000 dengan mayoritas kulit Fitzpatrick I--III merupakan keterbatasan utama penelitian ini. Rencana awal penelitian adalah menggunakan dataset kustom dari rumah sakit lokal untuk merepresentasikan profil kulit Indonesia. Namun, karena kompleksitas proses etika, akuisisi, dan validasi ahli yang tidak dapat diselesaikan dalam rentang waktu penelitian ini, penggunaan dataset HAM10000 menjadi pilihan rasional untuk menjamin validitas eksperimen algoritma. Validasi lanjutan pada dataset lokal Indonesia mutlak diperlukan sebelum \textit{deployment} klinis.
+\end{enumerate}
+
+\section{Saran Penelitian Lanjutan}
+
+Berdasarkan temuan dan keterbatasan penelitian, disarankan arah pengembangan berikut:
+
+\subsection{Jangka Pendek (1--2 Tahun)}
+
+\begin{enumerate}
+    \item \textbf{Optimasi Konfigurasi VIC}: Mengembangkan mekanisme otomatis untuk menentukan kombinasi komponen VIC yang optimal berdasarkan karakteristik dataset, mengurangi kebutuhan studi ablasi manual.
+    
+    \item \textbf{Evaluasi pada Dataset Lokal}: Menguji metode pada dataset dermatologi Indonesia untuk memvalidasi adaptabilitas terhadap karakteristik kulit tropis (Fitzpatrick IV--VI).
+    
+    \item \textbf{Ekspansi ke Dataset Publik Lain}: Mengevaluasi pada dataset dermatologi tambahan seperti ISIC 2024 dan Fitzpatrick17k untuk memvalidasi generalisasi.
+\end{enumerate}
+
+\subsection{Jangka Menengah (2--3 Tahun)}
+
+\begin{enumerate}
+    \item \textbf{Studi Kelayakan Klinis}: Berkolaborasi dengan institusi kesehatan untuk melakukan validasi awal dengan dermatolog dan menganalisis kasus kegagalan model.
+    
+    \item \textbf{Pengembangan Adaptasi Domain}: Mengintegrasikan teknik \textit{domain adaptation} untuk menjembatani kesenjangan distribusi antara data dermoskopik internasional dan kondisi klinis Indonesia.
+    
+    \item \textbf{Implementasi Prototipe}: Mengembangkan aplikasi prototipe berbasis web atau mobile untuk uji coba terbatas di fasilitas kesehatan primer.
+    
+    \item \textbf{Potensi Implementasi sebagai Edge-AI Teledermatology}: Model yang dikembangkan, khususnya varian Conv4 yang sangat ringan ($\approx$0,25M parameter), sangat ideal untuk diimplementasikan sebagai sistem **On-Device AI** pada perangkat seluler tanpa memerlukan koneksi internet stabil atau server cloud mahal (Edge Computing). Dalam skenario klinis, aplikasi dapat berfungsi sebagai "Asisten Diagnostik Cerdas": dokter memotret lesi pasien (*Query*), dan sistem membandingkannya secara real-time dengan basis data referensi (*Support Set*) lokal yang berisi sampel tervalidasi dari HAM10000. Keunggulan utama pendekatan \textit{Few-Shot} ini adalah kemampuan adaptasi; dokter dapat menambahkan contoh kasus lokal baru (misal: kulit Fitzpatrick IV-VI) ke dalam \textit{Support Set} aplikasi untuk meningkatkan akurasi diagnosa pada populasi setempat tanpa perlu melatih ulang model dari awal (\textit{retraining-free adaptation}).
+
+    \item \textbf{Rekomendasi Konfigurasi Klinis}: Berdasarkan analisis dominasi Covariance pada Bab 4, untuk aplikasi deteksi penyakit kulit disarankan menggunakan konfigurasi **Conv4 + 5-shot + Covariance Regularization**. Konfigurasi ini terbukti paling efektif menangani kemiripan visual antar-lesi (Nevus vs Melanoma) sekaligus efisien secara komputasi.
+\end{enumerate}
+
+\subsection{Jangka Panjang (3+ Tahun)}
+
+\begin{enumerate}
+    \item \textbf{Validasi Multi-Senter}: Melakukan studi validasi klinis di beberapa pusat kesehatan dengan protokol evaluasi yang terstandarisasi.
+    
+    \item \textbf{Integrasi Sistem}: Mengintegrasikan sistem dengan rekam medis elektronik dan alur kerja klinis yang ada.
+    
+    \item \textbf{Persiapan Regulasi}: Mempersiapkan dokumentasi untuk sertifikasi alat kesehatan sesuai regulasi yang berlaku.
+\end{enumerate}
+
+\section{Penutup}
+
+Penelitian ini telah berhasil mendemonstrasikan bahwa pendekatan \textit{Dynamic VIC Few-Shot Learning} merupakan solusi yang menjanjikan untuk klasifikasi penyakit kulit pada skenario data terbatas. Dengan peningkatan akurasi rata-rata +3,15\% dan peningkatan maksimal +20,52\% pada dataset medis HAM10000, serta peningkatan macro-F1 score yang substansial (dari 0,5692 menjadi 0,7744), metode ini menunjukkan kemampuan yang lebih baik dalam mengenali kelas minoritas yang kritis secara klinis. Efisiensi parameter yang luar biasa (pengurangan hingga 90\%) menjadikan metode ini berpotensi menjadi fondasi bagi pengembangan sistem diagnosis berbantuan AI yang dapat diimplementasikan di fasilitas kesehatan primer. Temuan bahwa komponen Covariance Regularization sangat efektif untuk data dermatologi memberikan \textit{insight} berharga bagi penelitian lanjutan di bidang \textit{medical AI}.
+
+Diharapkan hasil penelitian ini tidak hanya memberikan kontribusi teoritis pada ranah \textit{Computer Vision} dan \textit{Few-Shot Learning}, tetapi juga menjadi langkah awal menuju pengembangan sistem diagnosis dermatologi berbantuan AI yang dapat diakses secara luas. Validasi lanjutan pada dataset lokal dengan karakteristik kulit Fitzpatrick IV--VI menjadi prioritas untuk memastikan generalisasi ke populasi yang lebih beragam.

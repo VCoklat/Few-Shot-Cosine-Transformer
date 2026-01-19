@@ -1,0 +1,19 @@
+{
+  "contingency_table": [
+    4819,
+    11462,
+    9437,
+    22282
+  ],
+  "statistic": 196.0177998947318,
+  "p_value": 0.0,
+  "significant_at_0.05": true,
+  "significant_at_0.01": true,
+  "algorithm_a_better": false,
+  "algorithm_b_better": true,
+  "discordant_pairs": 20899,
+  "effect_description": "Algorithm B significantly outperforms A (highly significant (p < 0.01))",
+  "test_type": "chi_squared_corrected",
+  "n01": 11462,
+  "n10": 9437
+}

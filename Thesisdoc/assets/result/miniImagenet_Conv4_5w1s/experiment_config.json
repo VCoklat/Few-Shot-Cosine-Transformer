@@ -1,0 +1,16 @@
+{
+  "dataset": "miniImagenet",
+  "backbone": "Conv4",
+  "n_way": 5,
+  "k_shot": 1,
+  "n_query": 16,
+  "num_epochs": 20,
+  "learning_rate": 0.001,
+  "weight_decay": 1e-05,
+  "optimization": "AdamW",
+  "test_iter": 600,
+  "run_mode": "all",
+  "output_dir": "/kaggle/working/Few-Shot-Cosine-Transformer/record",
+  "seed": 4040,
+  "device": "cuda"
+}

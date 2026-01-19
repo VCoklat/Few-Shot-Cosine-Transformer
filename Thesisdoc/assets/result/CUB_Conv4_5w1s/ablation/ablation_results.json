@@ -1,0 +1,146 @@
+{
+  "E1_Full": {
+    "description": "Full Dynamic VIC model",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.24347916666666666,
+    "std": 0.05569569088034449,
+    "f1_macro": 0.24342386696754423,
+    "confidence_interval": {
+      "mean": 0.24347916666666664,
+      "lower": 0.23902258323139816,
+      "upper": 0.2479357501019351,
+      "margin": 0.004456583435268474
+    }
+  },
+  "E2_InvDyn": {
+    "description": "Only invariance + dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.26145833333333335,
+    "std": 0.058465252619730367,
+    "f1_macro": 0.26146229628903916,
+    "confidence_interval": {
+      "mean": 0.2614583333333333,
+      "lower": 0.2567801388043589,
+      "upper": 0.2661365278623077,
+      "margin": 0.004678194528974389
+    }
+  },
+  "E3_InvCovDyn": {
+    "description": "Invariance + covariance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.2519166666666667,
+    "std": 0.059116528051712317,
+    "f1_macro": 0.2519049723532299,
+    "confidence_interval": {
+      "mean": 0.2519166666666667,
+      "lower": 0.24718635924967364,
+      "upper": 0.2566469740836597,
+      "margin": 0.00473030741699304
+    }
+  },
+  "E4_InvVarDyn": {
+    "description": "Invariance + variance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.25775,
+    "std": 0.06509080196156751,
+    "f1_macro": 0.25775868326961576,
+    "confidence_interval": {
+      "mean": 0.25775000000000003,
+      "lower": 0.2525416511093566,
+      "upper": 0.26295834889064346,
+      "margin": 0.005208348890643422
+    }
+  },
+  "E5_FullNoD": {
+    "description": "Full VIC without dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.24922916666666667,
+    "std": 0.056969286163442684,
+    "f1_macro": 0.24910928617037617,
+    "confidence_interval": {
+      "mean": 0.24922916666666667,
+      "lower": 0.24467067438437293,
+      "upper": 0.2537876589489604,
+      "margin": 0.004558492282293741
+    }
+  },
+  "E6_Baseline": {
+    "description": "Baseline cosine similarity (comparison method)",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.20010416666666667,
+    "std": 0.026872375517847734,
+    "f1_macro": 0.19965827305985892,
+    "confidence_interval": {
+      "mean": 0.20010416666666667,
+      "lower": 0.19795392879895726,
+      "upper": 0.20225440453437607,
+      "margin": 0.0021502378677094036
+    }
+  },
+  "E7_CovDyn": {
+    "description": "Only covariance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.26485416666666667,
+    "std": 0.06407945575069716,
+    "f1_macro": 0.26484859574063574,
+    "confidence_interval": {
+      "mean": 0.26485416666666667,
+      "lower": 0.2597267423269076,
+      "upper": 0.2699815910064257,
+      "margin": 0.005127424339759046
+    }
+  },
+  "E8_VarDyn": {
+    "description": "Only variance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.252625,
+    "std": 0.060698065935689695,
+    "f1_macro": 0.25257537686488923,
+    "confidence_interval": {
+      "mean": 0.25262500000000004,
+      "lower": 0.24776814319606924,
+      "upper": 0.2574818568039308,
+      "margin": 0.0048568568039308035
+    }
+  }
+}

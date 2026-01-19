@@ -1,0 +1,146 @@
+{
+  "E1_Full": {
+    "description": "Full Dynamic VIC model",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.7286979166666666,
+    "std": 0.11395327485345205,
+    "f1_macro": 0.7286961496295987,
+    "confidence_interval": {
+      "mean": 0.7286979166666666,
+      "lower": 0.7195797556549373,
+      "upper": 0.737816077678396,
+      "margin": 0.009118161011729353
+    }
+  },
+  "E2_InvDyn": {
+    "description": "Only invariance + dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.7123958333333333,
+    "std": 0.11533743331765951,
+    "f1_macro": 0.712395131173009,
+    "confidence_interval": {
+      "mean": 0.7123958333333333,
+      "lower": 0.7031669165775621,
+      "upper": 0.7216247500891045,
+      "margin": 0.0092289167557712
+    }
+  },
+  "E3_InvCovDyn": {
+    "description": "Invariance + covariance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.69578125,
+    "std": 0.11939834659353886,
+    "f1_macro": 0.6957603855205793,
+    "confidence_interval": {
+      "mean": 0.69578125,
+      "lower": 0.6862273925073193,
+      "upper": 0.7053351074926807,
+      "margin": 0.009553857492680673
+    }
+  },
+  "E4_InvVarDyn": {
+    "description": "Invariance + variance + dynamic",
+    "vic_components": {
+      "invariance": true,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.7147395833333333,
+    "std": 0.12265454705116476,
+    "f1_macro": 0.7147246316042948,
+    "confidence_interval": {
+      "mean": 0.7147395833333333,
+      "lower": 0.7049251755396868,
+      "upper": 0.7245539911269798,
+      "margin": 0.009814407793646507
+    }
+  },
+  "E5_FullNoD": {
+    "description": "Full VIC without dynamic weight",
+    "vic_components": {
+      "invariance": true,
+      "covariance": true,
+      "variance": true,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.6705729166666666,
+    "std": 0.1173780279864722,
+    "f1_macro": 0.6705491721488575,
+    "confidence_interval": {
+      "mean": 0.6705729166666666,
+      "lower": 0.6611807183310212,
+      "upper": 0.679965115002312,
+      "margin": 0.009392198335645419
+    }
+  },
+  "E6_Baseline": {
+    "description": "Baseline cosine similarity (comparison method)",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": false,
+      "dynamic_weight": false
+    },
+    "accuracy": 0.4991145833333333,
+    "std": 0.041624685882615246,
+    "f1_macro": 0.49878412538761757,
+    "confidence_interval": {
+      "mean": 0.4991145833333333,
+      "lower": 0.4957839147902094,
+      "upper": 0.5024452518764572,
+      "margin": 0.003330668543123916
+    }
+  },
+  "E7_CovDyn": {
+    "description": "Only covariance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": true,
+      "variance": false,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.7521354166666666,
+    "std": 0.12660556323279423,
+    "f1_macro": 0.7521316344955622,
+    "confidence_interval": {
+      "mean": 0.7521354166666666,
+      "lower": 0.7420048617350781,
+      "upper": 0.7622659715982552,
+      "margin": 0.010130554931588542
+    }
+  },
+  "E8_VarDyn": {
+    "description": "Only variance + dynamic",
+    "vic_components": {
+      "invariance": false,
+      "covariance": false,
+      "variance": true,
+      "dynamic_weight": true
+    },
+    "accuracy": 0.7170833333333333,
+    "std": 0.12344273019861837,
+    "f1_macro": 0.717082961881927,
+    "confidence_interval": {
+      "mean": 0.7170833333333333,
+      "lower": 0.7072058577528728,
+      "upper": 0.7269608089137938,
+      "margin": 0.009877475580460482
+    }
+  }
+}

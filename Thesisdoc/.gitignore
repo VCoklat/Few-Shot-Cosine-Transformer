@@ -1,0 +1,24 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.lof
+*.lot
+*.lol
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Output directory
+out/
+
+# PDF output (optional - uncomment if you don't want to track the PDF)
+# thesis.pdf
+
+# Temporary files
+*~
+*.swp
+*.swo

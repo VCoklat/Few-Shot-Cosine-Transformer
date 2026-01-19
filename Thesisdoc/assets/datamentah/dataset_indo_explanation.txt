@@ -1,0 +1,43 @@
+# Dataset Specification: DatasetIndo (Atopic Dermatitis Detection)
+
+## 1. Overview
+**DatasetIndo** (originally "Dermatitis Atopic Detection") is a specialized medical dataset sourced from Roboflow. It focuses on the detection and classification of **Atopic Dermatitis** (Eczema) lesions. This dataset serves as a **Local/Regional Contribution** to the thesis, demonstrating the model's applicability to specific dermatological conditions relevant to the Indonesian context or specific medical studies.
+
+## 2. Technical Specifications
+
+| Property | Value |
+| :--- | :--- |
+| **Source** | Roboflow (User Contributed) |
+| **Total Images** | 3,673 |
+| **Original Resolution** | Various (Resized to $224 \times 224$) |
+| **Target Resolution** | $84 \times 84$ (for FSL Model) |
+| **Format** | Clip-format annotations (Object Detection converted to Classification) |
+
+### 2.1. Data Composition
+The dataset contains images of skin lesions categorized by severity or type (based on the specific split configuration in `base.json`, `val.json`, `novel.json`).
+-   **Base (Train)**: Common lesion presentations.
+-   **Val**: Validation set for hyperparameter tuning.
+-   **Novel (Test)**: Rare or unseen lesion types/severities.
+
+## 3. Role in Thesis
+This dataset acts as a **Stress Test** for the model's adaptability to:
+1.  **Noisy Data**: Unlike curated academic datasets (HAM10000), Roboflow datasets often contain variable lighting, blur, and inconsistent framing.
+2.  **Fine-Grained Medical Classification**: Distinguishing between different grades or types of dermatitis requires learning texture-based features (redness, scaling, crusting).
+3.  **Domain Adaptation**: Transferring knowledge from generic object recognition (miniImageNet) to specific skin pathology.
+
+## 4. Preprocessing and Augmentation
+The dataset comes with pre-applied augmentations from Roboflow, which we further process:
+1.  **Roboflow Preprocessing**:
+    -   Auto-orientation.
+    -   Resize to $224 \times 224$ (Stretch).
+2.  **Thesis Preprocessing**:
+    -   Downsample to $84 \times 84$ to match the backbone input.
+    -   Normalization (ImageNet stats).
+3.  **Roboflow Augmentations** (Already present in images):
+    -   Horizontal/Vertical Flip (50%).
+    -   Rotation (90, 180, 270).
+
+## 5. Experimental Protocol
+We utilize the standard JSON split files (`base.json`, `val.json`, `novel.json`) to define the episodic tasks.
+-   **Metric**: 5-Way 5-Shot Accuracy.
+-   **Regularization**: We expect the **Episode-Adaptive Lambda** to predict high $\lambda_{cov}$ (Covariance Loss) to force the model to learn diverse textural features rather than relying on simple color histograms (redness).

@@ -1,0 +1,119 @@
+# Chapter: Training Protocol and Optimization Strategy
+
+## 1. Introduction
+
+### 1.1. The Episodic Training Paradigm
+Unlike standard supervised learning (where we train on batches of images), Few-Shot Learning uses **Episodic Training**.
+-   We simulate the test-time scenario during training.
+-   Each "iteration" is not a batch of random images, but a self-contained **N-Way K-Shot Task**.
+-   Goal: Learn a model $f_\theta$ that can quickly adapt to *any* random task sampled from the distribution.
+
+---
+
+## 2. Mathematical Formulation
+
+### 2.1. The Objective Function
+We aim to minimize the expected loss over a distribution of tasks $\mathcal{T}$:
+
+$$ \theta^* = \arg\min_\theta \mathbb{E}_{\mathcal{T} \sim P(\mathcal{T})} [\mathcal{L}(\mathcal{T}; \theta)] $$
+
+Where each task $\mathcal{T} = (\mathcal{S}, \mathcal{Q})$ consists of a Support Set and a Query Set.
+
+### 2.2. The Optimization Step
+For each episode:
+1.  Sample Task $\mathcal{T}_i$.
+2.  Compute Forward Pass: $\hat{y} = f_\theta(\mathcal{S}, \mathcal{Q})$.
+3.  Compute Loss: $\mathcal{L}_{total} = \mathcal{L}_{CE} + \lambda \mathcal{L}_{reg}$.
+4.  Update Weights: $\theta \leftarrow \theta - \eta \nabla_\theta \mathcal{L}_{total}$.
+
+---
+
+## 3. Training Configuration
+
+### 3.1. Hyperparameters
+Based on `train.py` and `configs.py`:
+
+| Parameter | Value (Typical) | Description |
+| :--- | :--- | :--- |
+| **Optimization** | Adam | Adaptive Moment Estimation. Good for Transformers. |
+| **Learning Rate** | $10^{-3}$ or $5 \times 10^{-4}$ | Depends on dataset complexity. |
+| **Weight Decay** | $10^{-4}$ | L2 Regularization on weights. |
+| **Epochs** | 100 | Number of passes over the *task distribution*. |
+| **Episodes/Epoch** | 100 - 1000 | Number of random tasks sampled per epoch. |
+| **Validation Freq** | 1 Epoch | How often we check performance on Val Set. |
+
+### 3.2. The "Epoch" in Meta-Learning
+In standard DL, an epoch is one pass over the entire dataset.
+In FSL, the number of possible tasks is combinatorially huge ($\binom{64}{5} \times \dots$). We cannot iterate over all of them.
+-   **Definition**: Here, an "Epoch" is arbitrarily defined as a fixed number of sampled episodes (e.g., 1000).
+-   **Implication**: "100 Epochs" means we train on $100 \times 1000 = 100,000$ unique few-shot tasks.
+
+---
+
+## 4. Visual Explanation
+
+### 4.1. The Training Loop Diagram
+
+```mermaid
+graph TD
+    Start[Start Training] --> EpochLoop{Epoch < Max?}
+    EpochLoop -- Yes --> TrainPhase[Train Phase]
+    EpochLoop -- No --> End[End Training]
+    
+    subgraph "Train Phase (1000 Episodes)"
+        Sample[Sample N-Way K-Shot Task]
+        Forward[Forward Pass (Support + Query)]
+        Loss[Calc Total Loss]
+        Backprop[Optimizer Step]
+        
+        Sample --> Forward --> Loss --> Backprop
+    end
+    
+    TrainPhase --> ValPhase[Validation Phase]
+    
+    subgraph "Validation Phase (600 Episodes)"
+        VSample[Sample Val Task]
+        VForward[Forward Pass]
+        VAcc[Calc Accuracy]
+        
+        VSample --> VForward --> VAcc
+    end
+    
+    ValPhase --> Check[Is Best Accuracy?]
+    Check -- Yes --> Save[Save 'best_model.tar']
+    Check -- No --> EpochLoop
+```
+
+---
+
+## 5. Detailed Process Analysis
+
+### 5.1. Data Loading (`SetDataManager`)
+The `data/datamgr.py` handles the complex sampling logic.
+1.  **Class Sampling**: Randomly select $N=5$ classes from the 64 training classes.
+2.  **Image Sampling**: For each class, randomly select $K+Q$ images (e.g., $5+15=20$).
+3.  **Augmentation**: Apply transformations (Crop, Flip, Jitter) to these images.
+4.  **Batching**: Assemble into a tensor of shape $[N \times (K+Q), C, H, W]$.
+
+### 5.2. The Validation Loop
+Crucially, we validate on **Unseen Classes**.
+-   Training classes: Dog, Cat, Bird.
+-   Validation classes: Wolf, Lion, Eagle.
+-   This ensures we are measuring **Generalization**, not memorization.
+-   We use a fixed seed or a large number of episodes (600) to ensure the validation metric is stable (low variance).
+
+### 5.3. Model Checkpointing
+We save two types of checkpoints:
+1.  `best_model.tar`: The weights that achieved the highest accuracy on the Validation Set. This is used for final testing.
+2.  `{epoch}.tar`: Periodic saves (e.g., every 10 epochs) to analyze training dynamics or resume if crashed.
+
+---
+
+## 6. Thesis Justification
+
+### 6.1. Why Adam over SGD?
+While SGD is standard for ResNets, our model includes a **Transformer**. Transformers are known to be sensitive to learning rates and gradient scaling. Adam (with its adaptive per-parameter learning rates) generally converges faster and more stably for attention-based architectures.
+
+### 6.2. Why Episodic Training?
+We could train the backbone as a standard classifier (Batch Training) and then fine-tune.
+However, **Episodic Training** aligns the training objective with the test objective. The model learns *how to learn* from 5 examples, rather than learning to recognize specific classes. This "Learning to Learn" (Meta-Learning) is the core philosophy of this thesis.

@@ -1,0 +1,42 @@
+[JAWABAN 1]
+Pertanyaan: Jelaskan bahwa hasil test (yang tertera di Tabel 2) merupakan data dari hasil simulasi 5 kali.
+Lokasi: di dalam caption/keterangan Tabel 2
+Teks Asli: "Hasil yang dilaporkan merupakan rata-rata dari 5 kali simulasi independen untuk menjamin stabilitas statistik."
+
+[JAWABAN 2]
+Pertanyaan: Jelaskan berapa data di dataset, berapa utk testing, brp utk traing? Pada saat training, berapa data yang digunakan?
+Pembagian/Split: Train 64%, Val 16%, Test 20% dari total kelas
+- Tabel 3.1 (Baris 76-114): Rincian jumlah gambar per set.
+  - Untuk HAM10000: Train/Base (4 kelas, 8.061 gambar), Val (1 kelas, 1.113 gambar), Test/Novel (2 kelas, 841 gambar).
+  - Total Training Data yang tersedia untuk sampling episode: 8.061 gambar.
+-Durasi Training = 100 Epoch x 600 Episode = 60.000 Episode total (Setiap episode mengambil sampel acak dari 8.061 gambar tersebut).
+
+[JAWABAN 3]
+Pertanyaan: Jelaskan utk 1-shot, bagaimana menghitung variance, covariance dll nya?
+Lokasi: Sub-bab khusus: "Mekanisme Regularisasi pada 1-Shot"
+Penjelasan:
+- Variance: Dihitung antar-prototipe dari N kelas yang berbeda dalam satu episode.
+- Covariance: Dihitung menggunakan N prototipe tersebut sebagai satu "batch" untuk menghitung matriks kovarians antar dimensi fitur.
+- Invariance: Menggunakan metode Query-Support (augmentasi) karena tidak bisa intra-class variance.
+
+[JAWABAN 4]
+Pertanyaan: Fitur ada berapa? Apakah 1600 untuk Conv4 dan 512 untuk ResNet34?
+Lokasi: Sub-bab: "Analisis Dimensi Fitur: Conv4 vs ResNet"
+Teks Asli: 
+- Conv4: 1.600 Dimensi (64 channel x 5 x 5 spasial).
+- ResNet-34: 512 Dimensi (Global Average Pooling).
+- Tabel 3.4 (Baris 368-376) menyajikan perbandingan detailnya.
+
+[JAWABAN 5]
+Pertanyaan: Lalu bagaimana cara mentransformasi fitur agar tidak berkorelasi lagi?
+Lokasi: bab3 Poin 3: "Covariance Regularization Mendekorelasi Fitur"
+Penjelasan: Transformasi terjadi melalui proses pembelajaran (learning) yang dipaksa oleh **Covariance Loss ($L_{cov}$)**. Loss ini menghukum (memberi nilai error besar) jika ada korelasi antar dimensi (elemen non-diagonal pada matriks kovarians tidak nol), sehingga backpropagation memaksa bobot CNN untuk menghasilkan fitur yang independen (dekorelasi).
+
+[JAWABAN 6]
+Pertanyaan: Jelaskan mengapa tidak diambil benchmark 93.8% (DeepWiki)?
+Lokasi: bab1
+Bagian: 
+- Alasan menggunakan FSL (Keterbatasan data, adaptasi kelas baru dengan 1-5 gambar).
+- HAM10000 digunakan hanya sebagai "proxy" atau simulasi data terbatas, bukan tujuan akhir klasifikasi standar.
+- Bab 3: "Test Set: 20% dari total kelas... menjamin model dievaluasi pada kemampuan generalisasi ke kelas yang **belum pernah dilihat** (unseen classes)."
+Penjelasan Argumen: Benchmark 93.8% tersebut menggunakan **Supervised Learning Standar** (melatih dan menguji pada kelas yang sama dengan ribuan gambar). Penelitian ini menggunakan **Few-Shot Learning** (melatih pada kelas A,B,C, menguji pada kelas baru D,E hanya dengan 1-5 contoh). Kedua skenario ini tidak bisa dibandingkan secara langsung (apple-to-apple) karena tingkat kesulitannya jauh berbeda. Baseline yang valid untuk FSL adalah metode FSL lain (ProtoNet, RelationNet, dll), bukan classifier tradisional.

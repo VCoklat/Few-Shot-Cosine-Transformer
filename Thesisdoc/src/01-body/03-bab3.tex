@@ -1,0 +1,1218 @@
+%-----------------------------------------------------------------------------%
+\chapter{\babTiga}
+%-----------------------------------------------------------------------------%
+
+
+
+Bab ini menguraikan metodologi penelitian komprehensif yang dirancang secara sistematis untuk mengembangkan dan mengevaluasi algoritma \textit{Dynamic VIC Few-Shot Learning}. Metodologi penelitian mencakup empat komponen utama: desain penelitian eksperimental, pengembangan algoritma teoretis, implementasi teknis, dan evaluasi empiris yang \textit{rigorous}. Setiap komponen metodologi dirancang untuk menjawab pertanyaan penelitian spesifik tentang efektivitas pendekatan \textit{Dynamic VIC} dalam meningkatkan akurasi klasifikasi dan ketahanan terhadap variasi data. Analisis kuantitatif dan kualitatif diintegrasikan untuk menginterpretasi hasil eksperimen secara holistik dan memberikan \textit{insight} mendalam tentang mekanisme kerja algoritma yang diusulkan.
+
+
+%-----------------------------------------------------------------------------%
+\section{Desain Penelitian}
+%-----------------------------------------------------------------------------%
+
+%-----------------------------------------------------------------------------%
+\subsection{Paradigma Penelitian}
+%-----------------------------------------------------------------------------%
+
+Penelitian ini mengadopsi paradigma penelitian kuantitatif eksperimental dengan pendekatan \textit{computational science}. Fokus utama adalah pada pengembangan, implementasi, dan evaluasi sistematis algoritma pembelajaran mesin untuk klasifikasi citra medis. Paradigma ini dipilih karena sifat penelitian yang berorientasi pada validasi hipotesis melalui eksperimen terkontrol dan analisis statistik terhadap metrik performa kuantitatif.
+
+
+%-----------------------------------------------------------------------------%
+\subsection{Kerangka Kerja Eksperimental}
+%-----------------------------------------------------------------------------%
+
+Penelitian dirancang mengikuti kerangka kerja eksperimental yang terdiri dari beberapa tahapan, sebagaimana ditunjukkan pada Gambar \ref{fig:experimental_framework}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.5cm, auto]
+    \tikzstyle{block} = [rectangle, draw, fill=blue!10, text width=20em, text centered, rounded corners, minimum height=3em]
+    \tikzstyle{line} = [draw, -latex', thick]
+    
+    \node [block] (init) {1. Pengembangan Algoritma};
+    \node [block, below of=init] (verify) {2. Implementasi dan Verifikasi};
+    \node [block, below of=verify] (experiment) {3. Eksperimen Terkontrol};
+    \node [block, below of=experiment] (compare) {4. Analisis Komparatif};
+    \node [block, below of=compare] (ablation) {5. Ablation Studies};
+    \node [block, below of=ablation] (visual) {6. Visualisasi dan Interpretasi};
+    
+    \path [line] (init) -- (verify);
+    \path [line] (verify) -- (experiment);
+    \path [line] (experiment) -- (compare);
+    \path [line] (compare) -- (ablation);
+    \path [line] (ablation) -- (visual);
+\end{tikzpicture}
+\caption{Bagan Alir Kerangka Kerja Eksperimental}
+\label{fig:experimental_framework}
+\end{figure}
+
+
+%-----------------------------------------------------------------------------%
+\section{Metodologi Data}
+%-----------------------------------------------------------------------------%
+
+%-----------------------------------------------------------------------------%
+\subsection{Data Preparation}
+%-----------------------------------------------------------------------------%
+
+Dataset dibagi menjadi tiga partisi disjoint berdasarkan kelas:
+\begin{itemize}
+	\item \textbf{Training Set}: 64\% dari total kelas, digunakan untuk \textit{episodic meta-training}
+	\item \textbf{Validation Set}: 16\% dari total kelas, digunakan untuk \textit{hyperparameter tuning}
+	\item \textbf{Test Set}: 20\% dari total kelas, digunakan untuk evaluasi final
+\end{itemize}
+Pembagian berdasarkan kelas ini mengikuti protokol standar yang digunakan pada baseline \citep{nguyen2023cosine} untuk memastikan perbandingan yang adil (\textit{fair comparison}), serta menjamin model dievaluasi pada kemampuan generalisasi ke kelas yang belum pernah dilihat.
+
+%-----------------------------------------------------------------------------%
+\subsection{Dataset}
+%-----------------------------------------------------------------------------%
+
+%-----------------------------------------------------------------------------%
+\subsubsection{Tinjauan Dataset}
+Dataset yang digunakan dalam penelitian ini dikategorikan menjadi dua kelompok utama sesuai dengan tujuan evaluasi:
+
+\begin{table}[H]
+    \centering
+    \caption{Rangkuman Statistik Dataset (Split, Jumlah Gambar, dan Jumlah Kelas)}
+    \label{tab:dataset_summary}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|l|c|c|}
+        \hline
+        \textbf{Dataset} & \textbf{Split (Bagian)} & \textbf{Jumlah Gambar} & \textbf{Jumlah Kelas} \\
+        \hline
+        \multirow{3}{*}{DatasetIndo} & Train/Base & 3.152 & 12 \\
+         & Val & 273 & 4 \\
+         & Test/Novel & 144 & 4 \\
+        \hline
+        \multirow{3}{*}{\shortstack[l]{CUB\\(CUB-200-2011)}} & Train/Base & 5.885 & 100 \\
+         & Val & 2.950 & 50 \\
+         & Test/Novel & 2.953 & 50 \\
+        \hline
+        \multirow{3}{*}{\shortstack[l]{CIFAR\\(CIFAR-FS)}} & Train/Base & 38.400 & 64 \\
+         & Val & 9.600 & 16 \\
+         & Test/Novel & 12.000 & 20 \\
+        \hline
+        \multirow{3}{*}{miniImageNet} & Train/Base & 38.400 & 64 \\
+         & Val & 9.600 & 16 \\
+         & Test/Novel & 12.000 & 20 \\
+        \hline
+        \multirow{3}{*}{Omniglot} & Train/Base & 82.240 & 4.112 \\
+         & Val & 13.760 & 688 \\
+         & Test/Novel & 33.840 & 1.692 \\
+        \hline
+        \multirow{3}{*}{Yoga} & Train/Base & 1.255 & 25 \\
+         & Val & 649 & 13 \\
+         & Test/Novel & 576 & 12 \\
+        \hline
+        \multirow{3}{*}{HAM10000} & Train/Base & 8.061 & 4 \\
+         & Val & 1.113 & 1 \\
+         & Test/Novel & 841 & 2 \\
+        \hline
+    \end{tabular}%
+    }
+\end{table}
+
+\paragraph{1. Dataset Benchmark General (Validasi Algoritmik)}
+Digunakan untuk memvalidasi efektivitas algoritma \textit{Dynamic VIC} secara umum dan membandingkannya dengan metode \textit{state-of-the-art} (menjawab Pertanyaan Penelitian).
+\begin{itemize}
+    \item \textbf{miniImageNet}: "Standar Emas" untuk FSL, berisi 100 kelas dari ImageNet ($84 \times 84$ piksel).
+    \item \textbf{CUB-200-2011}: Dataset \textit{fine-grained} yang berisi 200 spesies burung.
+    \item \textbf{CIFAR-FS}: Subset resolusi rendah ($32 \times 32$) dari CIFAR-100.
+    \item \textbf{Omniglot}: Karakter tulisan tangan dari 50 alfabet.
+\end{itemize}
+
+\paragraph{2. Dataset Medis (Validasi Klinis)}
+Digunakan secara spesifik untuk menjawab RQ terkait kinerja pada domain dermatologi.
+\begin{itemize}
+    \item \textbf{HAM10000}: Dataset dermatologi publik utama, berisi 10.015 citra dermoskopik dari 7 kategori lesi kulit. Dataset ini menghadirkan tantangan ketidakseimbangan kelas yang tinggi.
+\end{itemize}
+
+\subsubsection{Distribusi Kelas HAM10000}
+
+Dataset \textbf{HAM10000} ("Human Against Machine with 10000 training images") \citep{tschandl2018ham10000} merupakan dataset dermoskopi publik yang paling komprehensif dan banyak digunakan sebagai standar emas dalam penelitian dermatologi digital saat ini. Dataset ini dikumpulkan dari Departemen Dermatologi di Medical University of Vienna, Austria, dan Cliff Rosendahl di Queensland, Australia, mencakup periode 20 tahun.
+
+\textbf{Karakteristik Detail:}
+\begin{itemize}
+    \item \textbf{Volume dan Resolusi}: Terdiri dari 10.015 citra dermoskopi dengan resolusi asli $600 \times 450$ piksel. Untuk keperluan pelatihan, citra diubah ukurannya (\textit{resized}) menjadi $84 \times 84$ piksel (untuk eksperimen dengan backbone Conv4) atau $224 \times 224$ piksel (untuk ResNet-34) guna menyeimbangkan detail visual dan efisiensi komputasi. Ukuran asli yang besar cukup untuk mempertahankan detail fitur dermoskopik penting seperti jaringan pigmen dan globul.
+    \item \textbf{Validasi Ground Truth}: Keunggulan utama HAM10000 adalah validitas labelnya. Lebih dari 50\% kasus dikonfirmasi melalui histopatologi (biopsi), sementara sisanya melalui \textit{follow-up} klinis jangka panjang atau konsensus ahli, menjadikannya sangat reliabel untuk pelatihan AI.
+    \item \textbf{Keterbatasan Demografis}: Meskipun sangat berharga, HAM10000 memiliki bias demografis yang kuat ke arah populasi kulit terang (Eropa/Australia), yang menjadi tantangan tersendiri untuk generalisasi ke populasi Indonesia dengan kulit Fitzpatrick IV-VI.
+\end{itemize}
+
+\textbf{Catatan Pemilihan Dataset:}
+Penelitian ini pada tahap desain awal menargetkan penggunaan dataset primer dari pasien dermatologi lokal Indonesia untuk mengatasi bias demografis tersebut. Namun, dikarenakan kendala teknis dalam proses standardisasi anotasi medis dan keterbatasan durasi penelitian untuk mengumpulkan jumlah sampel yang valid secara statistik, dataset HAM10000 dipilih sebagai \textit{proxy} tervalidasi. Penggunaan dataset standar internasional ini bertujuan untuk memverifikasi kehandalan algoritma secara objektif (\textit{proof-of-concept}) sebelum tahap implementasi pada data lokal yang lebih kompleks di masa depan.
+
+Dataset HAM10000 memiliki ketidakseimbangan kelas yang sangat ekstrem, di mana kelas \textit{nevus} (nv) mendominasi distribusi data. Tabel \ref{tab:ham10000_distribution} menunjukkan distribusi sampel per kelas pada dataset ini.
+
+\begin{table}[H]
+    \centering
+    \caption{Distribusi Kelas pada Dataset HAM10000}
+    \label{tab:ham10000_distribution}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|l|c|c|l|}
+        \hline
+        \textbf{Kode} & \textbf{Nama Lesi} & \textbf{Jumlah Sampel} & \textbf{Persentase} & \textbf{Kategori} \\
+        \hline
+        nv & Melanocytic Nevus & 6.705 & 67,0\% & Jinak (Mayoritas) \\
+        mel & Melanoma & 1.113 & 11,1\% & Ganas (Kritis) \\
+        bkl & Benign Keratosis-like Lesions & 1.099 & 11,0\% & Jinak \\
+        bcc & Basal Cell Carcinoma & 514 & 5,1\% & Ganas \\
+        akiec & Actinic Keratoses / Bowen's Disease & 327 & 3,3\% & Prakanker \\
+        vasc & Vascular Lesions & 142 & 1,4\% & Jinak (Minoritas) \\
+        df & Dermatofibroma & 115 & 1,1\% & Jinak (Minoritas) \\
+        \hline
+        \textbf{Total} & & \textbf{10.015} & \textbf{100\%} & \\
+        \hline
+    \end{tabular}%
+    }
+    \par\medskip
+    \footnotesize Sumber: HAM10000 Dataset \citep{tschandl2018ham10000}. Kelas minoritas (df, vasc) memiliki kurang dari 1,5\% sampel, sementara melanoma yang kritis secara klinis hanya mencakup 11,1\%.
+\end{table}
+
+Ketidakseimbangan ini memiliki implikasi penting dalam pemilihan metrik evaluasi. Dengan dominasi kelas \textit{nevus} sebesar 67\%, sebuah model trivial yang selalu memprediksi \textit{nevus} akan mencapai akurasi 67\% tanpa kemampuan diagnostik yang bermakna. Oleh karena itu, penggunaan metrik yang lebih sensitif terhadap performa pada kelas minoritas sangat penting untuk evaluasi yang representatif.
+
+\subsubsection{Dataset Benchmark FSL: miniImageNet}
+
+Selain dataset medis, penelitian ini juga menggunakan \textbf{miniImageNet} \citep{vinyals2016matching} sebagai \textit{gold standard benchmark} untuk memvalidasi algoritma \textit{Few-Shot Learning} secara umum sebelum diterapkan ke domain medis.
+
+\textbf{Karakteristik:}
+\begin{itemize}
+    \item \textbf{Asal}: Merupakan subset dari dataset raksasa ImageNet (ILSVRC-12).
+    \item \textbf{Struktur}: Terdiri dari 100 kelas yang dipilih secara acak, dengan masing-masing kelas memiliki 600 citra berwarna berukuran $84 \times 84$ piksel.
+    \item \textbf{Pembagian Split}: Standar pembagian yang digunakan dalam komunitas FSL adalah 64 kelas untuk pelatihan (\textit{meta-training}), 16 kelas untuk validasi (\textit{meta-validation}), dan 20 kelas untuk pengujian (\textit{meta-testing}).
+    \item \textbf{Peran dalam Penelitian}: Penggunaan miniImageNet memungkinkan perbandingan performa algoritma yang diusulkan (\textit{Dynamic VIC}) dengan metode SOTA lainnya (seperti Prototypical Networks, MAML) dalam lingkungan yang terkontrol dan terstandarisasi, memastikan bahwa peningkatan performa berasal dari inovasi metode, bukan sekadar artefak data.
+\end{itemize}
+
+%-----------------------------------------------------------------------------%
+
+%-----------------------------------------------------------------------------%
+\section{Arsitektur Usulan}
+%-----------------------------------------------------------------------------%
+
+Arsitektur yang diusulkan diberi nama resmi \textbf{Dynamic VIC Few-Shot Model} (dalam implementasi kode disebut sebagai kelas \texttt{OptimalFewShotModel}). Penamaan ini mencerminkan integrasi tiga komponen utama: regularisasi VIC, mekanisme dinamis, dan optimasi untuk \textit{few-shot learning}. Arsitektur ini dirancang untuk menangani tantangan data terbatas dan variasi tinggi pada citra medis.
+
+Arsitektur Dynamic VIC Few-Shot Learning terdiri dari empat komponen utama yang terintegrasi secara hierarkis untuk membentuk sistem klasifikasi adaptif yang mampu bekerja optimal pada kondisi data terbatas. Komponen pertama adalah backbone feature extractor yang bertanggung jawab mengekstraksi representasi fitur bermakna dari citra input menggunakan arsitektur deep neural network yang telah terbukti efektif. Komponen kedua berupa modul representasi prototipe adaptif yang menggantikan rata-rata sederhana dengan pembobotan yang dapat dipelajari secara dinamis berdasarkan kualitas representasi masing-masing sampel. Komponen ketiga adalah jaringan prediktor bobot dinamis yang menghasilkan pembobotan adaptif untuk tiga komponen VIC berdasarkan karakteristik statistik episode pelatihan. Komponen keempat merupakan modul attention multi-head berbasis VIC yang mengintegrasikan metrik variance, invariance, dan covariance untuk menghitung kesamaan yang lebih ekspresif dan kontekstual. Blok diagram arsitektur model yang diajukan dapat dilihat pada Gambar \ref{fig:complete_system_flow}, sedangkan alur pemrosesan data disajikan pada Tabel \ref{tab:pipeline_flow}.
+
+\begin{table}[H]
+    \centering
+    \caption{Alur Pemrosesan Data pada Arsitektur Usulan}
+    \label{tab:pipeline_flow}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|c|l|l|}
+        \hline
+        \textbf{Tahap} & \textbf{Komponen} & \textbf{Fungsi Utama} \\
+        \hline
+        1 & \textbf{Input Processing} & Normalisasi citra, augmentasi (saat training). \\
+        \hline
+        2 & \textbf{Backbone (ResNet/Conv4)} & Ekstraksi fitur visual dasar (tekstur, bentuk, warna). \\
+        \hline
+        3 & \textbf{Contextual Refinement} & \textit{Cosine Transformer} menyelaraskan fitur support \& query. \\
+        \hline
+        4 & \textbf{VIC Regularization} & Memastikan embedding tersebar, invarian, dan tidak redundan. \\
+        \hline
+        5 & \textbf{Dynamic Weighting} & Memprediksi bobot $\lambda$ adaptif berdasarkan statistik episode. \\
+        \hline
+        6 & \textbf{Classification} & Menghitung probabilitas kelas via \textit{Cosine Similarity}. \\
+        \hline
+    \end{tabular}%
+    }
+\end{table}
+
+%-----------------------------------------------------------------------------%
+\subsection{Arsitektur Backbone Feature Extractor}
+%-----------------------------------------------------------------------------%
+Penelitian ini mengimplementasikan dua jenis arsitektur \textit{backbone} yang berbeda, yaitu Conv4 dan ResNet-34. Strategi penggunaan dua \textit{backbone} ini bertujuan untuk menguji konsistensi performa metode Dynamic VIC usulan pada dua skenario komputasi yang berbeda: skenario sumber daya terbatas (diwakili oleh Conv4) dan skenario performa tinggi (diwakili oleh ResNet-34).
+
+\subsubsection{Arsitektur Conv4 (Optimized)}
+\textbf{SE-Enhanced Conv4 Backbone} adalah ekstraktor fitur khusus yang dirancang untuk berfungsi sebagai ekstraktor fitur utama untuk tugas \textit{Few-Shot Learning} (FSL). Meskipun model Conv4 standar umum digunakan dalam literatur FSL karena kesederhanaannya dan pencegahan \textit{overfitting} (Vinyals et al., 2016; Snell et al., 2017), model ini sering kali kurang memiliki kapasitas untuk memodelkan ketergantungan antar-saluran yang kompleks.
+
+Arsitektur yang diusulkan ini melengkapi Conv4 standar dengan mekanisme \textbf{Squeeze-and-Excitation (SE)} (Hu et al., 2018). Penambahan ini memungkinkan jaringan untuk melakukan \textit{kalibrasi ulang fitur channel-wise secara dinamis}, secara efektif mempelajari "fitur mana yang penting" untuk citra tertentu, dengan overhead komputasi minimal. Diagram arsitektur SE-Enhanced Conv4 Backbone dapat dilihat pada Gambar \ref{fig:se_conv4}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/pics/se_conv4_backbone.png}
+    \caption{Diagram Arsitektur SE-Enhanced Conv4 Backbone (Diadaptasi dari Hu et al., 2018). Modul Squeeze-and-Excitation (SE) melakukan kalibrasi fitur channel-wise secara dinamis, menekan noise latar belakang dan menonjolkan fitur diskriminatif.}
+    \label{fig:se_conv4}
+\end{figure}
+
+\paragraph{Formulasi Matematis}
+
+\textbf{1. Blok Konvolusi Standar}:
+Setiap blok dalam \textit{backbone} memproses tensor input $\mathbf{X} \in \mathbb{R}^{C_{in} \times H \times W}$. Ekstraksi fitur utama dilakukan melalui operasi konvolusi 2D:
+\begin{equation}
+\mathbf{U} = \mathbf{W} * \mathbf{X}
+\end{equation}
+Di mana $\mathbf{W}$ merepresentasikan bobot kernel yang dapat dipelajari ($3 \times 3$), $*$ menunjukkan operator konvolusi, dan $\mathbf{U} \in \mathbb{R}^{C_{out} \times H \times W}$ adalah peta fitur output.
+
+Untuk menstabilkan pelatihan, kami menerapkan Batch Normalization:
+\begin{equation}
+\hat{u}_{c,i,j} = \frac{u_{c,i,j} - \mu_c}{\sqrt{\sigma_c^2 + \epsilon}}
+\end{equation}
+\begin{equation}
+\tilde{u}_{c,i,j} = \gamma_c \hat{u}_{c,i,j} + \beta_c
+\end{equation}
+Di mana $\mu_c$ dan $\sigma_c^2$ adalah rata-rata dan varians dari saluran $c$, dan $\gamma_c, \beta_c$ adalah parameter affine yang dapat dipelajari.
+Selanjutnya, kami menerapkan Rectified Linear Unit (ReLU) untuk memperkenalkan non-linearitas:
+\begin{equation}
+\mathbf{V} = \max(0, \tilde{\mathbf{U}})
+\end{equation}
+
+\textbf{2. Blok Squeeze-and-Excitation (SE)}:
+Ini adalah penambahan novel. Blok ini mengambil peta fitur $\mathbf{V}$ dan mengkalibrasi ulangnya.
+\begin{itemize}
+    \item \textbf{Squeeze (Global Information Embedding)}: Kami mengagregasi informasi spasial menjadi deskriptor saluran $\mathbf{z} \in \mathbb{R}^{C}$ menggunakan Global Average Pooling:
+    \begin{equation}
+    z_c = \mathbf{F}_{sq}(\mathbf{V}_c) = \frac{1}{H \times W} \sum_{i=1}^{H} \sum_{j=1}^{W} v_{c}(i,j)
+    \end{equation}
+    \item \textbf{Excitation (Adaptive Recalibration)}: Kami menangkap ketergantungan saluran menggunakan mekanisme \textit{gating} dengan aktivasi sigmoid:
+    \begin{equation}
+    \mathbf{s} = \mathbf{F}_{ex}(\mathbf{z}, \mathbf{W}) = \sigma(\mathbf{W}_2 \delta(\mathbf{W}_1 \mathbf{z}))
+    \end{equation}
+    Di mana $\delta$ adalah ReLU, $\sigma$ adalah Sigmoid, $\mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}$ adalah lapisan reduksi dimensi (rasio $r=4$), dan $\mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}$ adalah lapisan ekspansi.
+    \item \textbf{Scale (Feature Reweighting)}: Output akhir $\tilde{\mathbf{X}}$ diperoleh dengan menskalakan ulang input $\mathbf{V}$ dengan aktivasi $\mathbf{s}$:
+    \begin{equation}
+    \tilde{\mathbf{X}}_c = s_c \cdot \mathbf{V}_c
+    \end{equation}
+\end{itemize}
+
+\paragraph{Spesifikasi Layer Detail}
+Arsitektur terdiri dari 4 blok sekuensial, dengan spesifikasi layer detail disajikan pada Tabel \ref{tab:se_conv4_spec}.
+\begin{table}[H]
+\centering
+\caption{Spesifikasi Layer Detail SE-Conv4 (Contoh Input $84 \times 84$)}
+\label{tab:se_conv4_spec}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Layer / Block} & \textbf{Dimensi Input} & \textbf{Kernel / Params} & \textbf{Dimensi Output} \\ \hline
+\textbf{Input} & $3 \times 84 \times 84$ & - & - \\ \hline
+\textbf{Block 1 (Conv+SE)} & $3 \times 84 \times 84$ & $3 \times 3, 64$ filters & $64 \times 42 \times 42$ \\ \hline
+\textbf{Block 2 (Conv+SE)} & $64 \times 42 \times 42$ & $3 \times 3, 64$ filters & $64 \times 21 \times 21$ \\ \hline
+\textbf{Block 3 (Conv+SE)} & $64 \times 21 \times 21$ & $3 \times 3, 64$ filters & $64 \times 10 \times 10$ \\ \hline
+\textbf{Block 4 (Conv+SE)} & $64 \times 10 \times 10$ & $3 \times 3, 64$ filters & $64 \times 5 \times 5$ \\ \hline
+\textbf{Flatten} & $64 \times 5 \times 5$ & - & $1600$ \\ \hline
+\end{tabular}%
+}
+\end{table}
+
+\subsubsection{Arsitektur ResNet-34}
+Untuk menangkap representasi lesi kulit yang lebih kompleks dan halus, penelitian ini mengadopsi ResNet-34 sebagai \textit{backbone} utama (He et al., 2016). Berbeda dengan Conv4 yang mengalami degradasi informasi spasial secara cepat, ResNet-34 mempertahankan resolusi spasial lebih baik pada tahap awal dan menggunakan mekanisme residual untuk memperdalam jaringan tanpa risiko \textit{vanishing gradient}.
+
+Arsitektur ini terdiri dari blok pembangun dasar (\textit{Basic Block}) yang didefinisikan sebagai:
+\begin{equation}
+y = \sigma(F(x, \{W_i\}) + x)
+\end{equation}
+Di mana $x$ adalah input dan $y$ adalah output vektor dari blok tersebut. Fungsi $F(x, \{W_i\})$ merepresentasikan pemetaan residual yang dipelajari, sementara $\sigma$ adalah fungsi aktivasi ReLU. ResNet-34 tersusun atas 34 lapisan berbobot yang dibagi menjadi lima tahapan utama (Conv1 hingga Conv5\_x).
+
+Input citra untuk ResNet-34 diatur pada resolusi standar $224 \times 224$ piksel untuk memaksimalkan ekstraksi detail tekstur lesi. Detail konfigurasi parameter dan dimensi \textit{tensor} pada setiap tahapan ResNet-34 dijabarkan secara rinci pada Tabel \ref{tab:resnet34_spec}.
+
+\begin{table}[h]
+\centering
+\caption{Spesifikasi Detail Arsitektur ResNet-34 (Input: $224 \times 224$)}
+\label{tab:resnet34_spec}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Nama Layer} & \textbf{Struktur Blok} & \textbf{Konfigurasi Filter \& Stride} & \textbf{Output Tensor $(C \times H \times W)$} \\ \hline
+\textbf{Input} & - & - & $3 \times 224 \times 224$ \\ \hline
+\textbf{Conv1} & Initial Convolution & $7 \times 7$, 64 filters, stride 2 & $64 \times 112 \times 112$ \\ 
+ & Max Pooling & $3 \times 3$, stride 2 & $64 \times 56 \times 56$ \\ \hline
+\textbf{Conv2\_x} & Residual Block $\times 3$ & $\begin{bmatrix} 3 \times 3, 64 \\ 3 \times 3, 64 \end{bmatrix} \times 3$ & $64 \times 56 \times 56$ \\ \hline
+\textbf{Conv3\_x} & Residual Block $\times 4$ & $\begin{bmatrix} 3 \times 3, 128 \\ 3 \times 3, 128 \end{bmatrix} \times 4$ & $128 \times 28 \times 28$ \\ \hline
+\textbf{Conv4\_x} & Residual Block $\times 6$ & $\begin{bmatrix} 3 \times 3, 256 \\ 3 \times 3, 256 \end{bmatrix} \times 6$ & $256 \times 14 \times 14$ \\ \hline
+\textbf{Conv5\_x} & Residual Block $\times 3$ & $\begin{bmatrix} 3 \times 3, 512 \\ 3 \times 3, 512 \end{bmatrix} \times 3$ & $512 \times 7 \times 7$ \\ \hline
+\textbf{Avg Pool} & Global Average Pooling & - & $512 \times 1 \times 1$ \\ \hline
+\textbf{Output} & Feature Vector & - & $512$ (dimensi) \\ \hline
+\end{tabular}%
+}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Struktur Residual Block pada ResNet-34}
+    \label{tab:residual_block_structure}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|l|}
+        \hline
+        \textbf{Komponen} & \textbf{Operasi Matematis} \\
+        \hline
+        Input & $x$ \\
+        \hline
+        Jalur Utama (F) & Conv3x3 $\rightarrow$ BN $\rightarrow$ ReLU $\rightarrow$ Conv3x3 $\rightarrow$ BN \\
+        \hline
+        Skip Connection & Identitas ($x$) atau Proyeksi 1x1 (jika dimensi berubah) \\
+        \hline
+        Output Blok & $\text{ReLU}(F(x) + x)$ \\
+        \hline
+    \end{tabular}%
+    }
+\end{table}
+
+Setelah tahap \textit{Global Average Pooling}, fitur berdimensi 512 ini diteruskan ke modul \textit{Multi-Head Cosine Transformer}. Penggunaan ResNet-34 diharapkan memberikan keseimbangan optimal antara kedalaman fitur dan efisiensi parameter dibandingkan varian yang lebih besar seperti ResNet-50 atau ResNet-101. Struktur residual block yang digunakan pada arsitektur ini disajikan pada Tabel \ref{tab:residual_block_structure}.
+
+
+
+\subsubsection{Analisis Dimensi Fitur: Conv4 vs ResNet}
+\label{sec:feature_dim_analysis}
+
+Perlu dicatat adanya perbedaan karakteristik dimensi output antara kedua \textit{backbone} yang digunakan, sebagaimana tercantum pada Tabel \ref{tab:se_conv4_spec} (Conv4: 1.600) dan Tabel \ref{tab:resnet34_spec} (ResNet-34: 512). Angka-angka ini merepresentasikan paradigma representasi yang berbeda:
+
+\begin{itemize}
+    \item \textbf{Conv4 (1.600 Dimensi)}: Merepresentasikan \textit{Flattened Spatiotemporal Features}. Angka 1.600 berasal dari perkalian $64 \text{ (channel)} \times 5 \times 5 \text{ (spasial)}$. Karena arsitektur Conv4 relatif dangkal, mempertahankan struktur spasial sangat penting untuk performa, sehingga seluruh tensor diratakan menjadi satu vektor panjang.
+    
+    \item \textbf{Catatan Khusus untuk CIFAR-FS}: Dataset CIFAR-FS memiliki resolusi input yang lebih rendah ($32 \times 32$ piksel, di-\textit{resize} menjadi $64 \times 64$ untuk eksperimen). Akibatnya, setelah empat operasi \textit{max pooling} $2 \times 2$, dimensi spasial akhir Conv4 adalah $4 \times 4$ (bukan $5 \times 5$), menghasilkan dimensi fitur $64 \times 4 \times 4 = \textbf{1.024}$ dimensi, bukan 1.600.
+    
+    \item \textbf{ResNet-34 (512 Dimensi)}: Merepresentasikan \textit{Semantic Channel-Depth Features}. Meskipun output tensor spasialnya besar ($512 \times 7 \times 7 = 25.088$), representasi ini dipadatkan menjadi 512 dimensi (sesuai jumlah channel) untuk menghindari \textit{curse of dimensionality}. Fitur ini lebih "padat" secara semantik dan abstrak dibandingkan fitur Conv4, meskipun jumlah dimensinya lebih kecil.
+\end{itemize}
+
+\begin{table}[H]
+    \centering
+    \caption{Komparasi Karakteristik Dimensi Fitur Berdasarkan Dataset dan Backbone}
+    \label{tab:backbone_dim_compare}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|l|c|c|l|}
+        \hline
+        \textbf{Backbone} & \textbf{Dataset} & \textbf{Tensor Mentah} & \textbf{Output Final} & \textbf{Jenis Representasi} \\
+        \hline
+        Conv4 & Standar ($84 \times 84$) & $64 \times 5 \times 5$ & \textbf{1.600} & Spasial + Kanal (Flattened) \\
+        Conv4 & CIFAR-FS ($64 \times 64$) & $64 \times 4 \times 4$ & \textbf{1.024} & Spasial + Kanal (Flattened) \\
+        ResNet-34 & Semua ($224 \times 224$) & $512 \times 7 \times 7$ & \textbf{512} & Kedalaman Semantik (Channel) \\
+        \hline
+    \end{tabular}%
+    }
+    \par\medskip
+    \footnotesize Catatan: Perbedaan dimensi output Conv4 disebabkan oleh perbedaan resolusi input dataset. Dataset standar (miniImageNet, CUB, HAM10000, Yoga, Omniglot) menggunakan resolusi $84 \times 84$, sedangkan CIFAR-FS menggunakan resolusi yang lebih rendah ($64 \times 64$).
+\end{table}
+
+\subsubsection{Komparasi Kompleksitas dan Rasional Pemilihan}
+\label{sec:backbone_rationale}
+
+Pemilihan dua arsitektur backbone yang kontras ini (Conv4 vs ResNet-34) didasarkan pada strategi eksperimental untuk menguji batas kemampuan metode \textit{Dynamic VIC} dalam dua spektrum komputasi yang ekstrem.
+
+\begin{enumerate}
+    \item \textbf{Kompleksitas Parameter}:
+    \begin{itemize}
+        \item \textbf{Conv4 (Lightweight)}: Memiliki hanya $\approx$ 0,25 Juta parameter. Ukuran yang sangat ringkas ini menjadikannya kandidat ideal untuk implementasi pada perangkat \textit{low-resource} (seperti smartphone di daerah terpencil) dan sangat tahan terhadap \textit{overfitting} pada skenario data yang sangat sedikit (1-shot).
+        \item \textbf{ResNet-34 (Deep/Heavy)}: Memiliki $\approx$ 21 Juta parameter (hampir 100$\times$ lebih besar dari Conv4). Kedalaman jaringan ini diperlukan untuk menangkap fitur semantik kulit yang sangat halus dan kompleks yang mungkin terlewat oleh jaringan dangkal, namun dengan risiko \textit{overfitting} yang lebih tinggi jika regularisasi tidak efektif.
+    \end{itemize}
+
+    \item \textbf{Rasional Desain}:
+    Penggunaan kedua backbone ini bertujuan untuk membuktikan bahwa mekanisme regularisasi \textit{Dynamic VIC} bersifat \textit{agnostik terhadap backbone}; artinya, ia mampu meningkatkan performa baik pada model sederhana yang "kurang kapasitas" (under-parameterized) maupun model besar yang "banyak kapasitas" (over-parameterized). Jika Dynamic VIC berhasil pada keduanya, ini memvalidasi kekokohan metode yang diusulkan.
+\end{enumerate}
+
+%-----------------------------------------------------------------------------%
+\subsection{Contextual Refinement via Lightweight Cosine Transformer}
+Merupakan varian Transformer yang disederhanakan dan efisien, dirancang khusus untuk FSL. Implementasi ini menggunakan versi \textbf{Lightweight} dengan kedalaman 1 layer dan 4 \textit{attention heads} (dibandingkan standar 8-12 heads), untuk meminimalkan \textit{overfitting} pada data terbatas dan mengurangi beban memori. Ini menggantikan Dot-Product Attention standar dengan \textbf{Cosine Attention}. Arsitektur Contextual Refinement Transformer ditunjukkan pada Gambar \ref{fig:contextual_refinement}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/pics/contextual_refinement.png}
+    \caption{Contextual Refinement Transformer. Mekanisme cross-attention menyelaraskan distribusi fitur antara Support Set dan Query Set, mengurangi pergeseran distribusi.}
+    \label{fig:contextual_refinement}
+\end{figure}
+
+Transformer standar menggunakan Scaled Dot-Product Attention yang rentan terhadap variasi magnitudo fitur. Kami menggunakan \textbf{Cosine Attention}:
+\begin{equation}
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{\text{CosineSim}(Q, K)}{\tau}\right) V
+\end{equation}
+\begin{equation}
+\text{CosineSim}(Q, K) = \frac{Q K^T}{\|Q\|_2 \|K\|_2}
+\end{equation}
+
+Keuntungan utama:
+\begin{enumerate}
+    \item \textbf{Terbatas (Bounded)}: Input ke softmax secara ketat berada dalam $[-1/\tau, 1/\tau]$. Tidak ada ledakan gradien.
+    \item \textbf{Invarian Skala}: Magnitudo vektor fitur secara eksplisit dihapus melalui normalisasi. Hanya \textit{arah semantik} yang menentukan atensi.
+    \item \textbf{Temperatur yang Dapat Dipelajari ($\tau$)}: Memungkinkan model menyesuaikan ketajaman distribusi atensi secara dinamis.
+\end{enumerate}
+
+\subsection{Dynamic VIC Regularization}
+
+\textbf{VIC berfungsi sebagai komponen regularisasi dalam fungsi loss yang bertujuan untuk mengoptimalkan struktur embedding space.} Untuk mengatasi \textit{Dimensional Collapse} dan memastikan ruang fitur yang beragam, kami mengadaptasi prinsip-prinsip dari kerangka kerja VICReg \citep{bardes2022vicreg} dan ProFONet \citep{nguyen2023profonet}. Perlu dicatat bahwa formulasi di sini disesuaikan khusus untuk \textit{prototipe} dalam skenario \textit{few-shot}, bukan mereplikasi persis formula asli yang dirancang untuk \textit{batch embedding} dalam \textit{self-supervised learning}.
+
+\textbf{Meskipun disebut VIC (Variance-Invariance-Covariance), dalam implementasi ini hanya komponen V dan C yang diformulasikan sebagai loss terms eksplisit, sedangkan Invariance ditangani secara implisit melalui Cross-Entropy Loss utama.} Konsep dasar regularisasi VIC diilustrasikan pada Gambar \ref{fig:vic_reg}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/pics/vic_regularization.png}
+    \caption{Konsep Regularisasi VIC. Variance mendorong separabilitas (kiri), sementara Covariance mendorong dekorrelasi antar dimensi fitur (kanan).}
+    \label{fig:vic_reg}
+\end{figure}
+
+\subsubsection{Variance Loss ($L_{var}$) -- Memaksimalkan Separabilitas}
+
+Formula untuk Variance Loss menghitung rata-rata \textit{Cosine Similarity} antara semua pasangan prototype yang berbeda:
+
+\begin{equation}
+L_{var} = \frac{1}{N(N-1)/2} \sum_{i < j} \mathbf{S}_{ij}
+\end{equation}
+
+Dimana:
+\begin{itemize}
+    \item $\mathbf{P} \in \mathbb{R}^{N \times D}$ adalah matriks prototype (L2-normalized)
+    \item $\mathbf{S} = \mathbf{P} \mathbf{P}^T$ adalah similarity matrix
+    \item $\mathbf{S}_{ij}$ adalah cosine similarity antara prototype $i$ dan $j$
+\end{itemize}
+
+\textbf{Implementasi kode:}
+\begin{verbatim}
+proto_norm = F.normalize(prototypes, p=2, dim=1)
+sim_matrix = torch.mm(proto_norm, proto_norm.t())
+mask = torch.triu(torch.ones_like(sim_matrix), diagonal=1).bool()
+similarities = sim_matrix[mask]
+var_loss = similarities.mean()
+\end{verbatim}
+
+\textbf{Tujuan:} Meminimalkan nilai ini akan mendorong prototype agar \textbf{berjauhan} (orthogonal atau berlawanan arah) di hypersphere.
+
+\subsubsection{Invariance Loss -- Ditangani Secara Implisit}
+
+Dalam implementasi ini, \textbf{Invariance tidak memiliki formula eksplisit} sebagai loss term terpisah. Invariance ditangani secara implisit melalui \textbf{Cross-Entropy Loss} utama.
+
+\textbf{Mekanisme Implisit:}
+\begin{itemize}
+    \item Cross-Entropy Loss memastikan support samples dari kelas yang sama mengelompok di sekitar prototype-nya
+    \item Ini secara otomatis menarik fitur query mendekati prototype kelas yang benar
+\end{itemize}
+
+\subsubsection{Covariance Loss ($L_{cov}$) -- Dekorelasi Dimensi}
+
+Formula untuk Covariance Loss menghitung jumlah kuadrat dari elemen off-diagonal pada covariance matrix:
+
+\textbf{Langkah 1:} Hitung mean vector dan center data
+\begin{equation}
+\bar{\mathbf{p}} = \frac{1}{N} \sum_{i=1}^N \mathbf{p}_i
+\end{equation}
+\begin{equation}
+\mathbf{Z} = \mathbf{P} - \bar{\mathbf{p}}
+\end{equation}
+
+\textbf{Langkah 2:} Hitung Covariance Matrix
+\begin{equation}
+\mathbf{C} = \frac{1}{N-1} \mathbf{Z}^T \mathbf{Z}
+\end{equation}
+
+\textbf{Langkah 3:} Loss Function
+\begin{equation}
+L_{cov} = \frac{1}{D} \sum_{i \neq j} \mathbf{C}_{ij}^2
+\end{equation}
+
+Atau dalam notasi Frobenius norm:
+\begin{equation}
+L_{cov} = \frac{1}{D} \left( \|\mathbf{C}\|_F^2 - \|\text{diag}(\mathbf{C})\|_2^2 \right)
+\end{equation}
+
+\textbf{Implementasi kode:}
+\begin{verbatim}
+centered = prototypes - prototypes.mean(dim=0, keepdim=True)
+cov = (centered.T @ centered) / max(N - 1, 1)
+off_diag = cov - torch.diag(torch.diag(cov))
+cov_loss = (off_diag ** 2).sum() / D
+\end{verbatim}
+
+\textbf{Tujuan:} Meminimalkan nilai ini memaksa korelasi off-diagonal menjadi nol, sehingga setiap dimensi fitur \textbf{encode informasi yang unik/independen}.
+
+\textbf{Keunggulan: Soft Regularization vs Hard Transformation}
+
+Penting untuk dicatat bahwa pendekatan ini berbeda secara fundamental dari metode reduksi dimensi klasik seperti \textit{Principal Component Analysis} (PCA) atau \textit{Whitening}.
+\begin{itemize}
+    \item \textbf{PCA (Hard Transformation)}: Melakukan transformasi matematis eksplisit (rotasi aksis) \textit{setelah} fitur diekstraksi untuk menghilangkan korelasi. Kelemahannya adalah beban komputasi tambahan saat inferensi dan potensi hilangnya informasi non-linear.
+    \item \textbf{Dynamic VIC (Soft Regularization)}: Memaksa jaringan saraf untuk \textit{belajar} secara internal bagaimana menghasilkan fitur yang sudah terdekorelasi sejak awal. Proses dekorelasi terjadi secara implisit dalam bobot \textit{backbone} selama pelatihan. Saat fase pengujian (\textit{inference}), tidak diperlukan operasi matriks tambahan, sehingga model tetap efisien dan cepat.
+\end{itemize}
+
+\subsubsection{Total VIC Loss}
+
+Sebagai komponen regularisasi, formula gabungan VIC loss adalah:
+\begin{equation}
+L_{VIC} = \lambda_{var} \cdot L_{var} + \lambda_{cov} \cdot L_{cov}
+\end{equation}
+
+\textbf{Total Loss untuk training:}
+\begin{equation}
+L_{total} = L_{CE} + \lambda_{var} \cdot L_{var} + \lambda_{cov} \cdot L_{cov}
+\end{equation}
+
+Dimana $\lambda_{var}$ dan $\lambda_{cov}$ adalah hyperparameter yang mengontrol kekuatan regularisasi (bisa ditetapkan atau diprediksi secara adaptif oleh Episode-Adaptive Lambda network). Perhatikan bahwa komponen Invariance tidak muncul secara eksplisit dalam formula ini karena ditangani secara implisit melalui Cross-Entropy Loss ($L_{CE}$) yang memastikan konsistensi representasi dalam kelas yang sama.
+
+Untuk melihat implementasi lengkap, kode sumber tersedia di repositori: \url{https://github.com/VCoklat/Few-Shot-Cosine-Transformer/tree/T2}
+
+\subsubsection{Mekanisme Perhitungan VIC pada Skenario 1-Shot ($K=1$)}
+Dalam skenario \textit{1-shot few-shot learning}, di mana hanya tersedia satu citra per kelas sebagai \textit{support set}, timbul pertanyaan mengenai validitas perhitungan statistik Variance dan Covariance. Berikut adalah mekanisme perhitungan yang memastikan validitas regularisasi VIC, bahkan dengan satu sampel per kelas:
+
+\begin{enumerate}
+    \item \textbf{Variance Loss ($L_{var}$) sebagai Pemisah Antar-Kelas}:
+    Pada kasus 1-shot, prototipe kelas $P_i$ merupakan vektor fitur dari satu-satunya citra \textit{support} tersebut. Variance Loss tidak dihitung "di dalam" kelas (intra-kelas), melainkan dihitung **antar-kelas** ($N$ kelas dalam episode).
+    
+    Mekanisme:
+    \begin{itemize}
+        \item Ambil fitur dari $N$ citra support (misal, 5 citra untuk 5-way). Ini membentuk himpunan 5 prototipe $\{P_1, P_2, ..., P_5\}$.
+        \item Hitung matriks \textit{Cosine Similarity} antar ke-5 prototipe tersebut.
+        \item $L_{var}$ dihitung sebagai rata-rata dari elemen \textit{off-diagonal} matriks tersebut.
+    \end{itemize}
+    \begin{equation}
+    L_{var} = \frac{1}{N(N-1)} \sum_{i \neq j} \text{CosineSim}(P_i, P_j)
+    \end{equation}
+    Logika: Meminimalkan $L_{var}$ memaksa prototipe kelas yang berbeda untuk saling ortogonal (berjauhan), terlepas dari jumlah sampel per kelas.
+
+    \item \textbf{Covariance Loss ($L_{cov}$) untuk Keunikan Fitur}:
+    Tujuannya adalah memastikan setiap dimensi fitur (misal 64 dimensi) mempelajari informasi yang berbeda (\textit{decorrelation}). Pada 1-shot, kita memperlakukan kumpulan $N$ prototipe dari $N$ kelas yang berbeda sebagai satu "batch" untuk menghitung statistik dimensi.
+    
+    Mekanisme:
+    \begin{itemize}
+        \item Susun $N$ prototipe menjadi matriks berukuran $N \times D$ (misal $5 \times 64$).
+        \item Hitung rata-rata setiap kolom (dimensi) dan lakukan pemusatan data (centering).
+        \item Hitung matriks kovarians ($D \times D$) dari data yang telah dipusatkan.
+        \item $L_{cov}$ adalah jumlah kuadrat dari elemen \textit{off-diagonal} matriks kovarians tersebut.
+    \end{itemize}
+    Logika: Jika dimensi ke-1 dan ke-2 memiliki korelasi tinggi di seluruh kelas yang ada dalam episode, maka dimensi tersebut redundan. Loss ini memaksa setiap dimensi fitur independen.
+
+    \item \textbf{Invariance (Implicit) sebagai Ketahanan Augmentasi}:
+    Berbeda dengan perhitungan statistik yang memerlukan >1 sampel, Invariance dicapai melalui interaksi antara \textit{Support Set} dan \textit{Query Set}.
+    
+    Mekanisme:
+    \begin{itemize}
+        \item \textit{Support} ($S$): 1 citra asli.
+        \item \textit{Query} ($Q$): Citra yang sama dengan $S$ (atau berbeda tapi kelas sama) yang mengalami augmentasi (misal, rotasi).
+        \item Proses pelatihan dengan \textit{Cross-Entropy Loss} memaksa model memprediksi $Q$ sebagai kelas dari $S$, yang secara matematis memaksimalkan \textit{dot product} antara fitur $Q$ (teraugmentasi) dan $P_S$ (asli).
+    \end{itemize}
+\end{enumerate}
+
+Tabel \ref{tab:vic_1shot} merangkum metode perhitungan pada skenario 1-shot.
+
+\begin{table}[H]
+    \centering
+    \caption{Ringkasan Perhitungan VIC pada Skenario 1-Shot}
+    \label{tab:vic_1shot}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Komponen} & \textbf{Basis Data} & \textbf{Mekanisme Perhitungan 1-Shot} \\
+        \hline
+        \textbf{Variance} & $N$ Prototipe (Antar-Kelas) & Minimalkan kemiripan (\textit{cosine sim}) antara Prototipe A, B, C, dst. \\
+        \hline
+        \textbf{Covariance} & $N \times D$ Matriks (Antar-Dimensi) & Hitung korelasi antar dimensi fitur menggunakan statistik dari $N$ kelas. \\
+        \hline
+        \textbf{Invariance} & Query vs Prototipe & Memaksa fitur Query (augmented) mendekat ke fitur Prototipe melalui klasifikasi. \\
+        \hline
+    \end{tabular}%
+    }
+\end{table}
+
+\subsubsection{Mekanisme Robustness terhadap Outlier}
+\label{sec:robustness_outlier_mechanism}
+
+Dalam konteks \textit{few-shot learning}, \textbf{outlier} didefinisikan sebagai sampel support yang memiliki representasi fitur sangat jauh dari klaster kelas aslinya. Outlier dapat terjadi karena berbagai faktor: noise pada citra (pencahayaan buruk, blur), variasi intra-kelas yang ekstrem, atau kesalahan anotasi. Pada pendekatan Prototypical Networks standar, prototipe kelas dihitung sebagai rata-rata sederhana (\textit{mean}) dari semua fitur support dalam kelas tersebut:
+
+\begin{equation}
+\mathbf{p}_c = \frac{1}{K} \sum_{i=1}^{K} f(x_i^c)
+\end{equation}
+
+Dengan pendekatan ini, satu sampel outlier dapat menggeser prototipe secara signifikan, menyebabkan banyak query salah diklasifikasi.
+
+\textbf{Dynamic VIC mencapai robustness terhadap outlier melalui empat mekanisme:}
+
+\paragraph{1. Variance Regularization Mengurangi Sensitivitas Prototipe}
+Loss variance memaksa prototipe antar-kelas untuk tetap terpisah dengan jarak sudut yang besar. Ketika ada outlier yang menarik prototipe ke arah kelas lain, loss variance akan memberikan penalti yang tinggi. Selama pelatihan, model belajar untuk membentuk representasi fitur yang lebih robust sehingga prototipe tidak mudah tergeser oleh noise.
+
+\paragraph{2. Invariance Regularization Memastikan Konsistensi Representasi}
+Loss invariance memastikan bahwa representasi fitur tetap konsisten meskipun terdapat variasi non-semantik seperti augmentasi, pencahayaan berbeda, atau rotasi. Dengan memaksa model menghasilkan embedding yang mirip untuk variasi dari sampel yang sama, outlier yang disebabkan oleh kondisi akuisisi citra yang buruk (pencahayaan ekstrem, blur) akan memiliki dampak yang lebih terbatas karena model telah belajar untuk mengabaikan variasi tersebut.
+
+\paragraph{3. Covariance Regularization Mendekorelasi Fitur}
+Outlier seringkali memiliki korelasi anomali antar dimensi fitur. Misalnya, noise pencahayaan dapat menyebabkan beberapa dimensi fitur berkorelasi tinggi secara artifisial. Loss covariance memaksa dimensi-dimensi fitur untuk independen satu sama lain:
+\begin{equation}
+L_{cov} = \frac{1}{D} \sum_{i \neq j} \mathbf{C}_{ij}^2 \rightarrow 0
+\end{equation}
+Dengan dekorelasi ini, noise pada satu dimensi tidak menyebar ke dimensi lain, sehingga dampak outlier menjadi terlokalisasi.
+
+\paragraph{4. Dynamic Weighting Adaptif terhadap Episode Sulit}
+Pada episode dengan outlier tinggi (ditandai dengan varians intra-kelas yang tinggi), Episode-Adaptive Lambda Predictor akan meningkatkan bobot $\lambda_{cov}$ secara otomatis. Ini memperkuat regularisasi covariance untuk melawan dampak outlier. Sebaliknya, pada episode ``mudah'' dengan sampel yang homogen, regularisasi dikurangi agar tidak menghambat pembelajaran fitur spesifik. Tabel \ref{tab:lambda_behavior} mengilustrasikan perilaku lambda predictor pada berbagai karakteristik episode.
+
+\begin{table}[H]
+\centering
+\caption{Ilustrasi Perilaku Lambda Predictor pada Episode Berbeda}
+\label{tab:lambda_behavior}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|c|c|l|}
+\hline
+\textbf{Karakteristik Episode} & $\lambda_{var}$ & $\lambda_{cov}$ & \textbf{Interpretasi} \\
+\hline
+Separabilitas tinggi, varians rendah & 0.3 & 0.2 & Episode mudah, regularisasi minimal \\
+Separabilitas rendah, varians tinggi & 0.5 & 0.4 & Episode sulit/noisy, regularisasi ditingkatkan \\
+Ada outlier ekstrem (varians sangat tinggi) & 0.4 & 0.5 & Fokus pada dekorelasi untuk isolasi outlier \\
+\hline
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Episode-Adaptive Lambda Predictor}
+Kekuatan regularisasi biasanya merupakan hyperparameter tetap. Namun dalam Meta-Learning, setiap "batch" adalah tugas yang berbeda. Kami memperkenalkan \textbf{Episode-Adaptive Lambda Predictor}, sebuah sub-jaringan MLP yang mengamati statistik episode saat ini dan memprediksi $\lambda_{var}$ dan $\lambda_{cov}$ optimal secara \textit{on-the-fly}.
+
+Input ke jaringan adalah vektor statistik 5-dimensi $\mathbf{s}$ (termasuk Varians Intra-Kelas, Pemisahan Antar-Kelas) dan embedding dataset $\mathbf{e}$ (dimensi 8).
+\begin{equation}
+\mathbf{x} = [\mathbf{s}, \mathbf{e}] \quad (\text{Total dimensi input: } 5 + 8 = 13)
+\end{equation}
+Arsitektur MLP terdiri dari dua lapisan tersembunyi (\textit{hidden layers}):
+\begin{itemize}
+    \item \textbf{Hidden Layer 1}: 32 neuron dengan aktivasi ReLU.
+    \item \textbf{Hidden Layer 2}: 16 neuron dengan aktivasi ReLU.
+    \item \textbf{Output Layer}: 2 neuron (untuk $\lambda_{var}$ dan $\lambda_{cov}$) dengan aktivasi Sigmoid.
+\end{itemize}
+\begin{equation}
+(\lambda_{var}, \lambda_{cov}) = \text{Sigmoid}(\text{MLP}_{13 \to 32 \to 16 \to 2}(\mathbf{x})) \times 0.5
+\end{equation}
+Skala 0.5 digunakan untuk membatasi dampak regularisasi agar tidak mendominasi \textit{loss} klasifikasi utama. Untuk stabilitas, kami menerapkan \textit{Exponential Moving Average} (EMA) dengan $\alpha=0.9$ pada prediksi lambda antar-episode, di mana $\lambda_{t} = 0.9 \lambda_{t-1} + 0.1 \hat{\lambda}_{t}$.
+
+%-----------------------------------------------------------------------------%
+\subsection{FFN}
+%-----------------------------------------------------------------------------%
+Output dari \textit{multi-head attention} diproses melalui \textit{Feed-Forward Network} (FFN) yang terdiri dari lapisan linear, aktivasi non-linear (ReLU/GELU), dan normalisasi, untuk mentransformasi fitur ke ruang representasi akhir yang lebih diskriminatif.
+
+%-----------------------------------------------------------------------------%
+\subsection{Lapisan Klasifikasi Akhir}
+%-----------------------------------------------------------------------------%
+\subsection{Klasifikasi melalui Cosine Similarity}
+Setelah proses ekstraksi fitur, proyeksi, penyempurnaan, dan pembentukan prototipe, langkah terakhir adalah \textbf{Klasifikasi}. Dalam arsitektur ini, kami secara ketat menggunakan \textbf{Cosine Similarity} sebagai metrik jarak. Penting untuk ditekankan bahwa perhitungan ini dilakukan menggunakan \textbf{fitur query yang telah disempurnakan} ($\mathbf{z}_q$, hasil keluaran dari modul \textit{Contextual Refinement}), bukan fitur mentah dari backbone ($f_q$). Hal ini memastikan keputusan klasifikasi didasarkan pada representasi yang paling optimal dan kontekstual. Visualisasi klasifikasi cosine pada hypersphere ditunjukkan pada Gambar \ref{fig:cosine_class}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{assets/pics/fig_complete_system_flow.jpg}
+    \caption{Alur Lengkap Sistem Dynamic VIC Few-Shot Learning: Dari input citra, ekstraksi fitur backbone, penyempurnaan atensi, regularisasi VIC adaptif, hingga klasifikasi final.}
+    \label{fig:complete_system_flow}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/pics/cosine_classification.png}
+    \caption{Klasifikasi Cosine pada Hypersphere. Prediksi didasarkan pada sudut terdekat ($\theta$) antara vektor query dan prototipe kelas.}
+    \label{fig:cosine_class}
+\end{figure}
+
+Diberikan vektor query yang telah disempurnakan $\mathbf{z}_q$ dan prototipe kelas $\mathbf{p}_c$:
+\begin{equation}
+\text{sim}(\mathbf{q}, \mathbf{p}_c) = \frac{\mathbf{q} \cdot \mathbf{p}_c}{\|\mathbf{q}\|_2 \|\mathbf{p}_c\|_2}
+\end{equation}
+Karena normalisasi L2 diterapkan sebelumnya, ini menyederhanakan menjadi dot product.
+
+Untuk mengubah skor kemiripan mentah ini menjadi probabilitas, kami menerapkan fungsi Softmax dengan temperatur yang dapat dipelajari $\alpha$:
+\begin{equation}
+P(y=c | \mathbf{q}) = \frac{\exp(\alpha \cdot \text{sim}(\mathbf{q}, \mathbf{p}_c))}{\sum_{k=1}^N \exp(\alpha \cdot \text{sim}(\mathbf{q}, \mathbf{p}_k))}
+\end{equation}
+Parameter $\alpha$ (inverse temperature) memungkinkan model untuk menskalakan distribusi probabilitas, mencegah distribusi yang terlalu datar ("under-confident").
+
+
+%-----------------------------------------------------------------------------%
+\subsection{Ringkasan Alur Algoritma}
+\label{sec:algorithm_summary}
+%-----------------------------------------------------------------------------%
+
+Untuk memudahkan pemahaman bagi pembaca yang bukan spesialis \textit{Few-Shot Learning}, berikut disajikan ringkasan alur algoritma \textit{Dynamic VIC Few-Shot Learning} dalam 8 langkah numerik:
+
+\begin{enumerate}
+    \item \textbf{Sampling Episode}: Untuk setiap iterasi pelatihan, sampel tugas $N$-way $K$-shot dari distribusi kelas. Misalnya, pada 2-way 5-shot, pilih 2 kelas acak dengan masing-masing 5 citra sebagai \textit{support set} dan 15 citra sebagai \textit{query set}.
+    
+    \item \textbf{Ekstraksi Fitur}: Lewatkan semua citra (\textit{support} dan \textit{query}) melalui \textit{backbone} (SE-Conv4 atau ResNet-34) untuk menghasilkan vektor fitur berdimensi tinggi (512-1600 dimensi).
+    
+    \item \textbf{Pembentukan Prototipe}: Hitung prototipe setiap kelas sebagai rata-rata terbobot dari fitur \textit{support set} menggunakan mekanisme \textit{learnable weighted mean}.
+    
+    \item \textbf{Prediksi Bobot Dinamis}: \textit{Episode-Adaptive Lambda Predictor} menganalisis statistik episode (varians intra-kelas, jarak antar-kelas) dan memprediksi bobot optimal $(\lambda_{var}, \lambda_{cov})$ untuk episode tersebut.
+    
+    \item \textbf{Regularisasi VIC (Variance-Invariance-Covariance)}: Hitung komponen regularisasi VIC untuk meningkatkan kualitas ruang embedding: (a) \textit{Variance Loss} ($\mathcal{L}_{var}$) untuk memaksimalkan separabilitas antar-kelas, (b) \textit{Invariance Loss} ($\mathcal{L}_{inv}$) untuk memastikan konsistensi representasi terhadap variasi non-semantik, dan (c) \textit{Covariance Loss} ($\mathcal{L}_{cov}$) untuk mendekorelasi dimensi fitur dan mencegah \textit{feature collapse}.
+    
+    \item \textbf{Contextual Refinement}: Terapkan \textit{Multi-Head Cosine Attention} untuk menyelaraskan fitur \textit{query} dengan konteks \textit{support set}, mengurangi \textit{distribution mismatch}.
+    
+    \item \textbf{Klasifikasi}: Hitung \textit{cosine similarity} antara setiap \textit{query} dan semua prototipe kelas. Terapkan \textit{softmax} dengan temperatur untuk menghasilkan distribusi probabilitas.
+    
+    \item \textbf{Optimisasi}: Hitung total \textit{loss} = $\mathcal{L}_{CE} + \lambda_{var}\mathcal{L}_{var} + \lambda_{cov}\mathcal{L}_{cov}$, lalu perbarui parameter model melalui \textit{backpropagation}.
+\end{enumerate}
+
+\textbf{Catatan Penting}: Pada fase inferensi (pengujian), hanya langkah 1--7 yang dijalankan, tanpa pembaruan parameter. Model langsung mengklasifikasikan \textit{query} baru berdasarkan prototipe yang dibentuk dari \textit{support set} yang diberikan.
+
+
+%-----------------------------------------------------------------------------%
+\section{Prosedur Pelatihan dan Strategi Optimisasi}
+\label{sec:training_procedure}
+
+\subsection{Paradigma Pelatihan Episodik}
+Berbeda dengan supervised learning konvensional yang memproses batch data statis, Few-Shot Learning menggunakan \textbf{Pelatihan Episodik} (\textit{Episodic Training}). 
+
+\textbf{Definisi Episode:}
+Dalam penelitian ini, satu \textbf{episode} didefinisikan sebagai satu unit tugas pembelajaran mandiri (\textit{self-contained learning task}) yang mensimulasikan skenario pengujian N-way K-shot selama proses pelatihan. Dalam durasi satu episode inilah mekanisme \textit{Dynamic VIC} bekerja secara utuh: mulai dari memprediksi bobot regulasi adaptif berdasarkan statistik sampel saat ini, menghitung loss Variance-Invariance-Covariance pada \textit{support set}, hingga memperbarui parameter model agar lebih robust untuk episode-episode berikutnya.
+
+Setiap "iterasi" pelatihan bukanlah batch gambar acak, melainkan sebuah tugas klasifikasi mini yang independen. Tujuannya adalah meminimalkan kerugian yang diharapkan atas distribusi tugas $\mathcal{T}$:
+\begin{equation}
+\theta^* = \arg\min_\theta \mathbb{E}_{\mathcal{T} \sim P(\mathcal{T})} [\mathcal{L}(\mathcal{T}; \theta)]
+\end{equation}
+
+Untuk setiap episode, alur proses adalah sebagai berikut:
+\begin{enumerate}
+    \item Sampel Tugas $\mathcal{T}_i = (\mathcal{S}, \mathcal{Q})$.
+    \item Hitung Forward Pass: $\hat{y} = f_\theta(\mathcal{S}, \mathcal{Q})$.
+    \item Hitung Loss Total: $\mathcal{L}_{total} = \mathcal{L}_{CE} + \lambda_{var} \mathcal{L}_{var} + \lambda_{cov} \mathcal{L}_{cov}$.
+    \item Perbarui Bobot: $\theta \leftarrow \theta - \eta \nabla_\theta \mathcal{L}_{total}$.
+\end{enumerate}
+
+\subsection{Konfigurasi Pelatihan}
+Berdasarkan protokol pelatihan kami:
+\begin{itemize}
+    \item \textbf{Optimizer}: Adam (Adaptive Moment Estimation), dipilih karena stabilitasnya dengan Transformer.
+    \item \textbf{Learning Rate}: $10^{-3}$ atau $5 \times 10^{-4}$, bergantung pada kompleksitas dataset.
+    \item \textbf{Weight Decay}: $10^{-4}$ untuk regularisasi L2.
+    \item \textbf{Epochs}: 100 "Epochs", dengan setiap epoch terdiri dari 600 episode yang disample secara acak (Total 60.000 episode training).
+    \item \textbf{Scheduler}: Cosine Annealing Learning Rate Scheduler dengan $T_{max}=100$ (sesuai jumlah epoch) dan $\eta_{min}=10^{-5}$.
+\end{itemize}
+Validasi dilakukan setiap epoch pada sekumpulan episode validasi yang terdiri dari kelas-kelas yang tidak terlihat (\textit{unseen classes}) untuk memastikan generalisasi.
+
+%-----------------------------------------------------------------------------%
+\section{Studi Kasus Perhitungan Manual (Walkthrough)}
+%-----------------------------------------------------------------------------%
+Untuk memberikan pemahaman konkret mengenai mekanisme kerja algoritma \textit{Dynamic VIC}, bagian ini menyajikan simulasi perhitungan manual (\textit{mathematical walkthrough}) pada satu episode pelatihan sederhana. Simulasi ini mencakup alur maju (\textit{forward pass}) mulai dari ekstraksi fitur, mekanisme atensi, prediksi bobot dinamis, hingga perhitungan \textit{loss} dan klasifikasi.
+
+\subsection{Skenario Episode (2-Way 1-Shot)}
+Kita asumsikan sebuah episode pelatihan minimalis:
+\begin{itemize}
+    \item \textbf{Tugas}: Klasifikasi 2 kelas (Melanoma vs Nevus).
+    \item \textbf{Support Set ($S$)}: 1 citra Melanoma ($x_{S1}$), 1 citra Nevus ($x_{S2}$).
+    \item \textbf{Query Set ($Q$)}: 1 citra Melanoma ($x_{Q}$) yang akan diklasifikasikan.
+\end{itemize}
+
+\subsection{Langkah 1: Ekstraksi Fitur (Backbone)}
+Asumsikan \textit{backbone} (misal ResNet-34) telah memproses citra input $224 \times 224$ menjadi vektor fitur. Untuk penyederhanaan ilustrasi, kita gunakan vektor berdimensi $d=4$ (pada implementasi nyata $d=512$).
+
+$$
+\mathbf{f}_{S1} = [0.8, 0.1, 0.5, 0.2] \quad (\text{Melanoma})
+$$
+$$
+\mathbf{f}_{S2} = [0.1, 0.9, 0.2, 0.1] \quad (\text{Nevus})
+$$
+$$
+\mathbf{f}_{Q} = [0.7, 0.2, 0.4, 0.3] \quad (\text{Query - Ground Truth: Melanoma})
+$$
+
+\textbf{Normalisasi L2}:
+Sebelum masuk ke tahap berikutnya, semua vektor dinormalisasi agar berada pada \textit{hypersphere} satuan ($\|\mathbf{x}\|_2 = 1$).
+$$ \|\mathbf{f}_{S1}\| = \sqrt{0.64+0.01+0.25+0.04} = \sqrt{0.94} \approx 0.97 $$
+$$ \hat{\mathbf{f}}_{S1} \approx [0.82, 0.10, 0.52, 0.21] $$
+
+$$ \|\mathbf{f}_{S2}\| = \sqrt{0.01+0.81+0.04+0.01} = \sqrt{0.87} \approx 0.93 $$
+$$ \hat{\mathbf{f}}_{S2} \approx [0.11, 0.97, 0.21, 0.11] $$
+
+$$ \|\mathbf{f}_{Q}\| = \sqrt{0.49+0.04+0.16+0.09} = \sqrt{0.78} \approx 0.88 $$
+$$ \hat{\mathbf{f}}_{Q} \approx [0.80, 0.23, 0.45, 0.34] $$
+
+\subsection{Langkah 2: Contextual Refinement (Cosine Attention)}
+Mekanisme ini memperkaya fitur Query dengan informasi dari Support Set yang relevan.
+Hitung \textit{Cosine Similarity} (karena vektor sudah ternormalisasi, ini sama dengan \textit{dot product}) antara Query dan setiap Support:
+
+$$ \text{Attn}_{Q, S1} = \hat{\mathbf{f}}_Q \cdot \hat{\mathbf{f}}_{S1} = (0.80)(0.82) + (0.23)(0.10) + (0.45)(0.52) + (0.34)(0.21) $$
+$$ \text{Attn}_{Q, S1} \approx 0.656 + 0.023 + 0.234 + 0.071 = \mathbf{0.984} $$
+
+$$ \text{Attn}_{Q, S2} = \hat{\mathbf{f}}_Q \cdot \hat{\mathbf{f}}_{S2} = (0.80)(0.11) + (0.23)(0.97) + (0.45)(0.21) + (0.34)(0.11) $$
+$$ \text{Attn}_{Q, S2} \approx 0.088 + 0.223 + 0.095 + 0.037 = \mathbf{0.443} $$
+
+Terapkan Softmax (misal temperatur $\tau=1$):
+$$ \text{Score} = [e^{0.984}, e^{0.443}] \approx [2.675, 1.557] $$
+$$ \text{Weight}_{S1} = \frac{2.675}{4.232} \approx 0.63, \quad \text{Weight}_{S2} = \frac{1.557}{4.232} \approx 0.37 $$
+
+Fitur Query yang diperbarui ($\mathbf{z}_Q$) adalah kombinasi linier dari Support (Value):
+$$ \mathbf{z}_Q = 0.63 \hat{\mathbf{f}}_{S1} + 0.37 \hat{\mathbf{f}}_{S2} + \hat{\mathbf{f}}_Q \quad (\text{Residual connection}) $$
+Hasil ini membuat fitur Query "bergeser" mendekati fitur Support yang paling mirip (Melanoma), meningkatkan stabilitas.
+
+\subsection{Langkah 3: Dynamic VIC Regularization (Training Phase)}
+Pada fase pelatihan, kita menghitung komponen \textit{loss} tambahan.
+
+\textbf{A. Prediksi Bobot Adaptif ($\lambda$)}
+
+Sebelum membahas mekanisme adaptif, penting untuk memahami mekanisme \textbf{Static VIC Regularization} yang menjadi dasar pengembangan. Pada pendekatan statis, regulasi dilakukan melalui proses \textit{backpropagation} standar dengan memperbarui bobot \textit{encoder} berdasarkan total loss gabungan:
+\begin{equation}
+\mathcal{L}_{Total} = \lambda_{var}\mathcal{L}_{var} + \lambda_{inv}\mathcal{L}_{inv} + \lambda_{cov}\mathcal{L}_{cov}
+\end{equation}
+Dimana $\mathcal{L}_{inv}$ (Invariance) dihitung sebagai jarak query ke \textit{center prototype} (sering diaproksimasi dengan MSE atau secara implisit via CE), sedangkan $\mathcal{L}_{var}$ (Variance) dan $\mathcal{L}_{cov}$ (Covariance) diperoleh dari statistik matriks embedding \textit{support set}.
+
+Berdasarkan penelitian baseline sebelumnya, yaitu \textit{ProFONet: Prototypical Feature Space Optimized Network for Few Shot Classification} \citep{nguyen2023profonet}, nilai awal optimal untuk koefisien pembobot ini ditentukan secara empiris sebagai:
+Jaringan Meta-Leaner menerima input vektor statistik $\mathbf{s}$ yang merangkum kondisi distribusi fitur seluruh episode.
+Jika $N=5$, statistik `Inter-Dist` dihitung dari rata-rata $\frac{N(N-1)}{2} = 10$ pasangan jarak antar kelas.
+$$ \mathbf{s} = [\text{Mean Inter-Class Sim}, \text{Mean Intra-Class Var}, \text{Domain Shift}, ...] $$
+
+Prediksi $\lambda$ bersifat dinamis antar-episode.
+\begin{enumerate}
+    \item \textbf{Episode Awal (Epoch 1)}: Cluster masih berantakan. $\lambda_{var}$ diprediksi tinggi (0.5) untuk memaksa pemisahan, $\lambda_{cov}$ sedang (0.1).
+    \item \textbf{Episode Tengah}: Cluster mulai terbentuk. Jika Meta-Learner mendeteksi `Intra-Var` tinggi (cluster tidak padat), ia menaikkan $\lambda_{cov}$ (menjadi 0.2) untuk mendekorelasi fitur yang menyebabkan noise.
+    \item \textbf{Episode Akhir}: Cluster sudah padat dan terpisah. $\lambda_{var}$ dan $\lambda_{cov}$ perlahan turun (stabil di 0.1) agar tidak mengganggu loss klasifikasi utama ($L_{CE}$).
+\end{enumerate}
+
+\textbf{B. Perhitungan Variance Loss ($L_{var}$) untuk N-Way}
+Untuk $N=3$ kelas dengan Prototipe $P_1, P_2, P_3$:
+$$ L_{var} = \frac{1}{3} \sum_{i<j} \text{Sim}(P_i, P_j) $$
+$$ L_{var} = \frac{1}{3} [\underbrace{\text{Sim}(P_1, P_2)}_{0.1} + \underbrace{\text{Sim}(P_1, P_3)}_{0.05} + \underbrace{\text{Sim}(P_2, P_3)}_{0.1}] = 0.083 $$
+Semakin kecil nilai ini (mendekati 0 atau negatif), semakin ortogonal (tegak lurus) posisi antar kelas dalam hypersphere.
+
+\textbf{C. Perhitungan Covariance Loss ($L_{cov}$) - Dekorelasi Fitur}
+Berbeda dengan $L_{var}$ yang bekerja antar-kelas, $L_{cov}$ bekerja antar-dimensi fitur. Tujuannya memastikan dimensi ke-1 tidak "sama saja" dengan dimensi ke-2.
+Asumsi fitur dimensi $d=4$ dari 3 kelas (matriks $3 \times 4$):
+$$
+\mathbf{Z} = \begin{bmatrix}
+0.9 & 0.1 & \mathbf{0.5} & 0.1 \\
+0.1 & 0.8 & \mathbf{0.5} & 0.1 \\
+0.5 & 0.5 & \mathbf{0.5} & 0.1
+\end{bmatrix}
+$$
+Terlihat: Kolom 3 (0.5, 0.5, 0.5) variansinya 0 (fitur mati). Kolom 4 (0.1, 0.1, 0.1) juga mati.
+
+1. \textbf{Centering}: Kurangi setiap kolom dengan rata-ratanya.
+2. \textbf{Covariance Matrix ($4 \times 4$)}: $\mathbf{C} = \frac{1}{N-1}\mathbf{Z}^T\mathbf{Z}$.
+3. \textbf{Loss}: Jumlah kuadrat elemen non-diagonal.
+$$ L_{cov} \propto \sum_{i \neq j} C_{ij}^2 $$
+Jika Kolom 1 dan Kolom 2 sering naik bersamaan, $C_{1,2}$ akan besar $\rightarrow$ Loss besar $\rightarrow$ Backprop memaksa bobot CNN berubah.
+
+\textbf{D. Dinamika Ruang Fitur (Feature Space Dynamics)}
+Apakah posisi fitur berubah? \textbf{Ya, secara absolut berubah, tapi secara relatif menjadi lebih terstruktur.}
+\begin{itemize}
+    \item \textbf{Sebelum Regularisasi}: Titik data tersebar acak. Prototipe $P_A$ dan $P_B$ mungkin berimpit (sudut $10^\circ$).
+    \item \textbf{Setelah Proses VIC}:
+    \begin{itemize}
+        \item \textbf{Intra-Class}: Titik data $A_1, A_2, A_3$ memadat ke pusat $P_A$.
+        \item \textbf{Inter-Class}: $P_A$ dan $P_B$ saling tolak menolak hingga sudut maksimal (misal $90^\circ$ atau $180^\circ$).
+    \end{itemize}
+\end{itemize}
+Jadi, meskipun koordinat absolutnya berubah-ubah tiap epoch karena update bobot, \textbf{struktur topologis}-nya berevolusi menuju konfigurasi "Optimal Packing" (seperti titik-titik elektron yang saling tolak menolak di permukaan bola).
+
+\subsection{Langkah 5: Skenario Lanjutan (2-Way 2-Shot)}
+Untuk memberikan gambaran yang lebih komprehensif mengenai mekanisme pembentukan prototipe dan penanganan \textit{multiple shots}, berikut disajikan simulasi perhitungan untuk skenario **2-Way 2-Shot**. Perbedaan utama dari skenario 1-shot adalah adanya langkah agregasi fitur sebelum perhitungan atensi dan klasifikasi.
+
+\textbf{Skenario Sederhana:}
+\begin{itemize}
+    \item \textbf{Support Set - Kelas A (Misal: Melanoma)}:
+    \begin{itemize}
+        \item $S_{A1}$: Citra ke-1 Melanoma.
+        \item $S_{A2}$: Citra ke-2 Melanoma.
+    \end{itemize}
+    \item \textbf{Support Set - Kelas B (Misal: Nevus)}:
+    \begin{itemize}
+        \item $S_{B1}$: Citra ke-1 Nevus.
+        \item $S_{B2}$: Citra ke-2 Nevus.
+    \end{itemize}
+    \item \textbf{Query ($Q$)}: Citra uji (Ground Truth: Melanoma).
+\end{itemize}
+
+\textbf{1. Ekstraksi dan Normalisasi Fitur (Asumsi Dimensi $d=4$)}:
+$$ \mathbf{f}_{S_{A1}} = [0.8, 0.2, 0.0, 0.0] \rightarrow \|\cdot\| \approx 0.82 \rightarrow \hat{\mathbf{u}}_{A1} = [0.97, 0.24, 0.0, 0.0] $$
+$$ \mathbf{f}_{S_{A2}} = [0.7, 0.3, 0.1, 0.0] \rightarrow \|\cdot\| \approx 0.77 \rightarrow \hat{\mathbf{u}}_{A2} = [0.91, 0.39, 0.13, 0.0] $$
+(Catatan: $\hat{\mathbf{u}}$ melambangkan vektor satuan setelah normalisasi L2).
+
+Analog untuk Kelas B:
+$$ \hat{\mathbf{u}}_{B1} = [0.1, 0.9, 0.2, 0.1] $$
+$$ \hat{\mathbf{u}}_{B2} = [0.0, 0.8, 0.3, 0.2] $$
+
+\textbf{2. Pembentukan Prototipe Kelas}:
+Tidak seperti skenario 1-shot dimana fitur support langsung menjadi prototipe, pada 2-shot kita menghitung **Mean Prototype**. 
+
+Prototipe Awal (Mean Sederhana):
+$$ \mathbf{p}_{A}^{raw} = \frac{\hat{\mathbf{u}}_{A1} + \hat{\mathbf{u}}_{A2}}{2} = \left[ \frac{0.97+0.91}{2}, \frac{0.24+0.39}{2}, \frac{0.0+0.13}{2}, 0.0 \right] $$
+$$ \mathbf{p}_{A}^{raw} = [0.94, 0.315, 0.065, 0.0] $$
+
+\textbf{Penting:} Prototipe hasil rata-rata ini \textbf{harus dinormalisasi kembali} agar berada di permukaan hypersphere, karena rata-rata dari dua vektor satuan umumnya memiliki magnitudo < 1.
+$$ \|\mathbf{p}_{A}^{raw}\| = \sqrt{0.94^2 + 0.315^2 + ...} \approx 0.99 $$
+$$ \mathbf{p}_{A} = \text{Normalize}(\mathbf{p}_{A}^{raw}) $$
+
+\textbf{3. Contextual Refinement (Transformer)}:
+Pada tahap ini, fitur Query ($Q$) berinteraksi dengan \textbf{seluruh} individu di Support Set ($S_{A1}, S_{A2}, S_{B1}, S_{B2}$), bukan hanya dengan prototipe rata-rata. Ini memungkinkan model menangkap nuansa spesifik dari setiap sampel.
+
+Misalkan fitur Query $\hat{\mathbf{u}}_Q = [0.95, 0.1, 0.0, 0.0]$ (Sangat mirip $S_{A1}$).
+Transformer akan menghitung atensi:
+$$ \alpha_{A1} = \text{Softmax}(\hat{\mathbf{u}}_Q \cdot \hat{\mathbf{u}}_{A1}) \approx \text{Tinggi} $$
+$$ \alpha_{A2} = \text{Softmax}(\hat{\mathbf{u}}_Q \cdot \hat{\mathbf{u}}_{A2}) \approx \text{Sedang} $$
+$$ \alpha_{B1} = \text{Softmax}(\hat{\mathbf{u}}_Q \cdot \hat{\mathbf{u}}_{B1}) \approx \text{Rendah} $$
+
+Hasilnya adalah fitur Query yang "diperkaya" ($\mathbf{z}_Q$) yang secara selektif menyerap informasi relevan dari $S_{A1}$ dan $S_{A2}$.
+
+\textbf{4. Klasifikasi Akhir}:
+Perhatian khusus perlu diberikan pada tahap ini karena sering terjadi kesalahpahaman. Klasifikasi \textbf{TIDAK} dilakukan menggunakan fitur query awal ($f_Q$) atau fitur support mentah ($f_S$). 
+Sebaliknya, klasifikasi dilakukan dengan mengukur Cosine Similarity antara:
+\begin{enumerate}
+    \item \textbf{Fitur Query Ter-refinasi ($\mathbf{z}_Q$)}: Hasil dari tahap Contextual Refinement (Langkah 3), yang telah "menyerap" informasi relevan dari support set via attention mechanism.
+    \item \textbf{Prototipe Kelas Final ($\mathbf{p}_A$ dan $\mathbf{p}_B$)}: Representasi pusat kelas yang telah ternormalisasi dan stabil.
+\end{enumerate}
+
+$$ \text{Score}_A = \text{CosineSim}(\mathbf{z}_Q, \mathbf{p}_A) $$
+$$ \text{Score}_B = \text{CosineSim}(\mathbf{z}_Q, \mathbf{p}_B) $$
+
+Karena $\mathbf{z}_Q$ sudah ditarik mendekati sampel-sampel Kelas A oleh Transformer, dan $\mathbf{p}_A$ adalah representasi pusat Kelas A, maka $\text{Score}_A$ akan dominan, menghasilkan prediksi yang benar.
+
+\subsection{Langkah 6: Interpretasi Probabilitas dan Confidence}
+Hitung probabilitas kelas untuk Query menggunakan fitur yang telah disempurnakan ($\mathbf{z}_Q$).
+Misalkan setelah refinement, jarak ke prototipe adalah:
+$$ \text{Sim}(\mathbf{z}_Q, \mathbf{p}_{Melanoma}) = 0.95 $$
+$$ \text{Sim}(\mathbf{z}_Q, \mathbf{p}_{Nevus}) = 0.30 $$
+
+Probabilitas (Softmax dengan scaling $\alpha=10$):
+$$ P(\text{Melanoma}) = \frac{e^{9.5}}{e^{9.5} + e^{3.0}} \approx \frac{13359}{13359 + 20} \approx \mathbf{0.998} $$
+$$ P(\text{Nevus}) \approx \mathbf{0.002} $$
+
+\textbf{Hasil}: Model memprediksi citra Query sebagai \textbf{Melanoma} dengan tingkat kepercayaan (\textit{confidence}) 99.8\%.
+Menekankan kembali, nilai kepercayaan ini adalah probabilitas prediksi untuk satu episode tertentu. Hal ini berbeda dengan Interval Kepercayaan (Confidence Interval) 95\% yang akan dibahas pada bagian Protokol Evaluasi berikutnya, yang mengukur stabilitas akurasi model di seluruh episode uji.
+
+%-----------------------------------------------------------------------------%
+
+
+%-----------------------------------------------------------------------------%
+\subsection{Protokol Evaluasi}
+%-----------------------------------------------------------------------------%
+Evaluasi dilakukan menggunakan metrik standar industri untuk memastikan komparabilitas dengan literatur terdahulu:
+\begin{enumerate}
+	\item \textbf{Classification Accuracy}: Rata-rata persentase prediksi yang benar pada \textit{query set} di seluruh episode uji.
+	
+	\item \textbf{95\% Confidence Interval (CI)}: Estimasi rentang ketidakpastian statistik dari performa model, dihitung dari episode uji. Formula: $1.96 \times \frac{\sigma}{\sqrt{N}}$, di mana $\sigma$ adalah standar deviasi akurasi antar-episode dan $N$ adalah jumlah episode.
+	
+	\item \textbf{Uji Signifikansi Statistik (McNemar's Test)}: 
+    Untuk memastikan bahwa peningkatan performa yang dihasilkan oleh model usulan bukan kebetulan statistik, dilakukan Uji McNemar (McNemar's Test). Uji ini dipilih karena eksperimen melibatkan perbandingan dua model (Proposed vs Baseline) pada set sampel uji yang sama (\textit{paired samples}).
+    
+    \textbf{Penting:} Uji McNemar dilakukan untuk membandingkan performa klasifikasi keseluruhan antara model usulan (Dynamic VIC) dan baseline (Cosine Transformer) pada level prediksi biner ``benar/salah'' untuk setiap query, bukan sekadar uji fitur individual. Dengan kata lain, uji ini mengevaluasi apakah perbedaan proporsi prediksi benar antara kedua model signifikan secara statistik.
+    
+    \textbf{Asumsi Uji McNemar:}
+    \begin{itemize}
+        \item \textbf{Sampel Berpasangan (\textit{Paired Samples})}: Kedua model diuji pada sampel query yang identik, memastikan perbandingan yang adil.
+        \item \textbf{Variabel Dikotomis}: Hasil prediksi setiap model dikodekan sebagai ``benar'' atau ``salah'' untuk setiap query.
+        \item \textbf{Independensi Observasi}: Setiap prediksi query dianggap independen dari prediksi query lainnya.
+        \item \textbf{Ukuran Sampel Memadai}: Jumlah kasus diskordans ($n_{10} + n_{01}$) direkomendasikan $\geq 25$ untuk validitas asimptotik distribusi $\chi^2$; dengan 600 episode dan 75 query per episode (45.000 prediksi total), asumsi ini terpenuhi.
+    \end{itemize}
+    
+    \textbf{Kesesuaian untuk FSL Episode-Based}: Uji McNemar cocok untuk evaluasi FSL karena (1) kedua model diuji pada episode yang identik dengan query yang sama, memenuhi syarat \textit{paired samples}, dan (2) keputusan klasifikasi bersifat biner per query (benar/salah), sesuai dengan asumsi variabel dikotomis.
+    
+    Uji McNemar mengevaluasi tabel kontingensi $2 \times 2$ sebagaimana ditunjukkan pada Tabel \ref{tab:mcnemar_contingency}.
+    \begin{table}[H]
+        \centering
+        \caption{Tabel Kontingensi untuk Uji McNemar}
+        \label{tab:mcnemar_contingency}
+        \begin{tabular}{|c|c|c|}
+            \hline
+             & \textbf{Baseline Salah} & \textbf{Baseline Benar} \\
+            \hline
+            \textbf{Proposed Benar} & $n_{10}$ (Proposed menang) & $n_{11}$ (Keduanya benar) \\
+            \hline
+            \textbf{Proposed Salah} & $n_{00}$ (Keduanya salah) & $n_{01}$ (Baseline menang) \\
+            \hline
+        \end{tabular}
+    \end{table}
+    
+    \textbf{Hipotesis yang diuji:}
+    \begin{itemize}
+        \item $H_0$: Tidak ada perbedaan proporsi prediksi benar antara model usulan dan baseline (probabilitas $n_{10}$ sama dengan $n_{01}$).
+        \item $H_1$: Terdapat perbedaan signifikan dalam proporsi prediksi benar antara kedua model.
+    \end{itemize}
+    
+    Statistik uji $\chi^2$ dihitung dengan rumus (dengan koreksi kontinuitas Yates):
+    \begin{equation}
+        \chi^2 = \frac{(|n_{10} - n_{01}| - 1)^2}{n_{10} + n_{01}}
+    \end{equation}
+    
+    Jika nilai $\chi^2$ yang dihitung lebih besar dari nilai kritis $\chi^2_{critical}$ pada derajat kebebasan 1 dan $\alpha=0.05$ (yaitu 3.841), maka $H_0$ ditolak, yang berarti perbedaan performa model signifikan secara statistik.
+	
+	\item \textbf{Macro-F1 Score}: Rata-rata harmonik dari \textit{precision} dan \textit{recall}, dihitung secara terpisah untuk setiap kelas lalu dirata-ratakan tanpa pembobotan (unweighted mean). Metrik ini krusial untuk dataset tidak seimbang karena memberikan bobot setara pada performa kelas minoritas (penyakit langka).
+	\begin{equation}
+	\text{Macro-F1} = \frac{1}{C} \sum_{i=1}^{C} 2 \times \frac{\text{Precision}_i \times \text{Recall}_i}{\text{Precision}_i + \text{Recall}_i}
+	\end{equation}
+
+    \item \textbf{Model Size (Ukuran Model)}: Jumlah parameter yang dapat dipelajari dalam model, diukur dalam juta (M) parameter. Metrik ini penting untuk mengevaluasi efisiensi model dan kelayakan implementasi pada perangkat dengan sumber daya terbatas.
+\end{enumerate}
+
+\subsubsection{Mengapa Akurasi Kurang Relevan pada Dataset Imbalanced}
+\label{sec:accuracy_imbalanced}
+
+Pada dataset dengan ketidakseimbangan kelas yang ekstrem seperti HAM10000, penggunaan akurasi sebagai metrik utama dapat menyesatkan (\textit{misleading}). Hal ini dikarenakan beberapa alasan fundamental:
+
+\paragraph{1. Bias terhadap Kelas Mayoritas}
+Pada HAM10000, kelas \textit{nevus} (nv) mendominasi 67\% dari seluruh sampel. Sebuah model trivial yang selalu memprediksi \textit{nevus} untuk setiap input akan mencapai akurasi 67\% tanpa melakukan pembelajaran apapun. Model seperti ini tidak memiliki nilai diagnostik karena tidak mampu mendeteksi kelas minoritas yang justru kritis secara klinis, seperti melanoma (11,1\%) atau \textit{basal cell carcinoma} (5,1\%).
+
+\paragraph{2. Relevansi Klinis Kelas Minoritas}
+Dalam konteks dermatologi, kegagalan mendeteksi lesi ganas seperti melanoma memiliki konsekuensi yang jauh lebih serius dibandingkan salah mengklasifikasi \textit{nevus} jinak. Melanoma yang tidak terdeteksi (\textit{false negative}) dapat berakibat fatal jika tidak ditangani pada tahap awal. Oleh karena itu, metrik evaluasi harus memberikan bobot yang adil pada kemampuan model mendeteksi kelas-kelas minoritas yang kritis ini.
+
+\textbf{Contoh Konkret Implikasi Salah Klasifikasi pada HAM10000:}
+\begin{itemize}
+    \item \textbf{Melanoma $\rightarrow$ Nevus (False Negative)}: Kesalahan paling berbahaya. Pasien dengan kanker kulit ganas dianggap sehat, menunda diagnosis dan pengobatan. Melanoma yang tidak terdeteksi pada tahap awal memiliki tingkat kelangsungan hidup 5 tahun $<$30\% pada stadium lanjut vs $>$95\% pada stadium awal \citep{esteva2017dermatologist}.
+    \item \textbf{Nevus $\rightarrow$ Melanoma (False Positive)}: Menyebabkan kecemasan pasien dan biopsi yang tidak perlu, namun lebih baik dari perspektif keselamatan pasien dibanding \textit{false negative}.
+    \item \textbf{BCC/Akiec $\rightarrow$ Nevus}: Lesi prakanker atau kanker non-melanoma terlewat, berpotensi berkembang menjadi kondisi lebih serius jika tidak ditangani.
+\end{itemize}
+
+\paragraph{3. Superioritas Macro-F1 Score}
+Metrik Macro-F1 dipilih sebagai metrik utama dalam penelitian ini karena memberikan bobot setara pada setiap kelas terlepas dari ukuran populasinya. Formula Macro-F1 menghitung F1-score secara terpisah untuk setiap kelas lalu merata-ratakannya tanpa pembobotan:
+
+\begin{equation}
+\text{Macro-F1} = \frac{1}{C} \sum_{i=1}^{C} F1_i = \frac{1}{C} \sum_{i=1}^{C} \frac{2 \times \text{Precision}_i \times \text{Recall}_i}{\text{Precision}_i + \text{Recall}_i}
+\end{equation}
+
+Dengan pendekatan ini, model yang hanya mampu mengklasifikasi kelas mayoritas akan mendapatkan skor Macro-F1 yang rendah karena gagal pada kelas-kelas minoritas. Sebaliknya, model yang mampu menyeimbangkan performa di semua kelas akan mendapatkan skor yang lebih tinggi.
+
+\paragraph{4. Implikasi untuk Interpretasi Hasil}
+Dalam pembahasan hasil eksperimen (Bab 4), peningkatan performa dilaporkan dalam dua metrik: akurasi (untuk komparabilitas dengan literatur) dan Macro-F1 (sebagai indikator utama kemampuan model pada dataset \textit{imbalanced}). Peningkatan Macro-F1 yang signifikan menunjukkan bahwa model usulan tidak hanya meningkatkan akurasi keseluruhan, tetapi juga mampu mengenali kelas minoritas dengan lebih baik---aspek yang krusial untuk aplikasi klinis. Ringkasan metrik evaluasi yang digunakan disajikan pada Tabel \ref{tab:metrics_summary}.
+
+\begin{table}[H]
+    \centering
+    \caption{Ringkasan Metrik Evaluasi yang Digunakan dalam Penelitian}
+    \label{tab:metrics_summary}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Metrik} & \textbf{Rentang Nilai} & \textbf{Interpretasi} \\
+        \hline
+        Accuracy & 0--100\% & Persentase prediksi benar; semakin tinggi semakin baik \\
+        \hline
+        Macro-F1 & 0--1 & Keseimbangan precision-recall; $>0.7$ dianggap baik \\
+        \hline
+        95\% CI & - & Rentang ketidakpastian; semakin kecil semakin stabil \\
+        \hline
+        Model Size & 0--$\infty$ M & Jumlah parameter; semakin kecil semakin efisien \\
+        \hline
+    \end{tabular}%
+    }
+\end{table}
+
+%-----------------------------------------------------------------------------%
+\section{Rancangan Eksperimen}
+%-----------------------------------------------------------------------------%
+
+%-----------------------------------------------------------------------------%
+\subsection{Eksperimen Utama: Perbandingan dengan Metode Pembanding}
+%-----------------------------------------------------------------------------%
+Eksperimen utama bertujuan untuk mengevaluasi efektivitas arsitektur \textit{Dynamic VIC} dibandingkan dengan \textit{baseline} (Cosine Transformer) dan metode SOTA lainnya. Evaluasi dilakukan menggunakan protokol standar \textit{Few-Shot Learning} dengan konfigurasi sebagai berikut:
+
+\begin{enumerate}
+    \item \textbf{Skenario N-Way K-Shot}:
+    \begin{itemize}
+        \item \textbf{5-Way 1-Shot}: Model diberikan 5 kelas acak, masing-masing dengan hanya 1 contoh gambar sebagai \textit{support set}. Ini mensimulasikan kondisi ekstrem ketersediaan data.
+        \item \textbf{5-Way 5-Shot}: Model diberikan 5 kelas acak, masing-masing dengan 5 contoh gambar. Ini mensimulasikan kondisi data terbatas namun lebih stabil.
+    \end{itemize}
+    
+    \item \textbf{Konfigurasi Episode Uji}:
+    \begin{itemize}
+        \item Jumlah Episode: 600 episode pengujian yang dipilih secara acak dari \textit{test set} (kelas yang tidak pernah dilihat selama pelatihan).
+        \item Jumlah Query: 15 gambar per kelas (total 75 gambar query per episode) untuk memastikan estimasi akurasi yang robust dalam setiap episode.
+    \end{itemize}
+    
+    \item \textbf{Dataset Evaluasi}: Eksperimen dilakukan pada dataset HAM10000 (medis) untuk validasi domain, serta miniImageNet, CUB, dan CIFAR-FS (benchmark umum) untuk validasi algoritmik.
+\end{enumerate}
+
+\subsubsection{Justifikasi Skenario 2-Way pada HAM10000}
+\label{sec:2way_justification}
+
+Berbeda dengan dataset benchmark yang menggunakan konfigurasi standar 5-way, eksperimen pada HAM10000 dilakukan dengan skenario \textbf{2-way} karena beberapa alasan metodologis:
+
+\begin{enumerate}
+    \item \textbf{Ketimpangan Kelas Ekstrem}: HAM10000 memiliki distribusi kelas yang sangat tidak seimbang---kelas \textit{nevus} (nv) mendominasi 67\% data, sementara kelas minoritas seperti \textit{dermatofibroma} (df) hanya 1,1\%. Pada skenario 5-way atau 7-way, episode yang melibatkan kelas minoritas akan memiliki \textit{support set} yang sangat terbatas dan tidak representatif.
+    
+    \item \textbf{Relevansi Klinis}: Dalam praktik dermatologi, keputusan diagnostik sering bersifat biner---membedakan lesi jinak vs ganas, atau menentukan apakah suatu lesi memerlukan biopsi atau tidak. Skenario 2-way lebih mencerminkan keputusan klinis nyata.
+    
+    \item \textbf{Preseden Literatur}: Beberapa studi FSL pada dataset medis dengan ketimpangan tinggi \citep{mahajan2020meta} juga mengadopsi skenario $N < 5$ untuk memastikan setiap kelas memiliki representasi yang memadai dalam setiap episode.
+    
+    \item \textbf{Validitas Statistik}: Dengan 7 kelas asli dan kebutuhan pembagian \textit{train/val/test} yang disjoint berdasarkan kelas, skenario 7-way tidak memungkinkan karena tidak menyisakan kelas untuk validasi dan pengujian.
+\end{enumerate}
+
+%-----------------------------------------------------------------------------%
+\subsection{Analisis Pengaruh Kedalaman Backbone}
+%-----------------------------------------------------------------------------%
+Selain membandingkan metode usulan dengan \textit{state-of-the-art}, penelitian ini juga merancang skenario eksperimen khusus untuk menganalisis pengaruh kedalaman \textit{backbone} terhadap efektivitas modul Dynamic VIC. Eksperimen ini bertujuan untuk menjawab apakah regularisasi statistik (Variance, Invariance, Covariance) memberikan dampak yang lebih signifikan pada jaringan dangkal (Conv4) yang rentan \textit{underfitting} representasi, atau pada jaringan dalam (ResNet-34) yang rentan \textit{overfitting} pada skenario \textit{few-shot}.
+
+Skenario ini akan membandingkan metrik performa (Akurasi dan F1-Score) antara:
+\begin{enumerate}
+    \item \textbf{Dynamic VIC + Conv4}: Merepresentasikan model ringan dan cepat.
+    \item \textbf{Dynamic VIC + ResNet-34}: Merepresentasikan model dengan kapasitas representasi tinggi.
+\end{enumerate}
+
+Hasil dari perbandingan ini akan memberikan wawasan krusial mengenai skalabilitas metode yang diusulkan dan memberikan panduan bagi praktisi dalam memilih arsitektur dasar sesuai dengan ketersediaan sumber daya komputasi di lapangan.
+
+%-----------------------------------------------------------------------------%
+\subsection{Ablation Study}
+%-----------------------------------------------------------------------------%
+Untuk memvalidasi efektivitas mekanisme adaptif dan kontribusi setiap komponen, eksperimen ini mencakup analisis mendalam:
+
+\begin{enumerate}
+    \item \textbf{Analisis Kontribusi Komponen VIC}: Evaluasi performa model dengan berbagai kombinasi komponen VIC (Variance, Invariance, Covariance) dan pembobotan dinamis untuk menentukan kontribusi relatif setiap komponen.
+    
+    \item \textbf{Analisis Embedding Space}: Teknik t-SNE digunakan untuk memvisualisasikan distribusi fitur \textit{support} dan \textit{query set} sebelum dan sesudah melalui modul VIC, mendemonstrasikan peningkatan separabilitas kelas.
+\end{enumerate}
+
+\subsubsection{Skenario Eksperimen Ablasi}
+
+Tabel \ref{tab:ablation_scenarios} menyajikan delapan skenario eksperimen ablasi yang dirancang untuk mengidentifikasi kontribusi setiap komponen VIC dan mekanisme pembobotan dinamis terhadap performa keseluruhan model.
+
+\begin{table}[H]
+    \centering
+    \caption{Skenario Eksperimen Ablasi untuk Komponen Dynamic VIC}
+    \label{tab:ablation_scenarios}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|c|c|c|c|p{6cm}|}
+        \hline
+        \textbf{Eksperimen} & \textbf{Invariance} & \textbf{Covariance} & \textbf{Variance} & \textbf{Dynamic Weight} & \textbf{Deskripsi} \\
+        \hline
+        E1 (Full) & \checkmark & \checkmark & \checkmark & \checkmark & Model lengkap Dynamic VIC \\
+        \hline
+        E2 & \checkmark & $\times$ & $\times$ & \checkmark & Hanya invariance + dynamic weight \\
+        \hline
+        E3 & \checkmark & \checkmark & $\times$ & \checkmark & Invariance + covariance + dynamic \\
+        \hline
+        E4 & \checkmark & $\times$ & \checkmark & \checkmark & Invariance + variance + dynamic \\
+        \hline
+        E5 & \checkmark & \checkmark & \checkmark & $\times$ & VIC lengkap tanpa dynamic weight \\
+        \hline
+        E6 & $\times$ & $\times$ & $\times$ & $\times$ & Metode pembanding cosine similarity \\
+        \hline
+        E7 & $\times$ & \checkmark & $\times$ & \checkmark & Hanya covariance + dynamic \\
+        \hline
+        E8 & $\times$ & $\times$ & \checkmark & \checkmark & Hanya variance + dynamic \\
+        \hline
+    \end{tabular}%
+    }
+    \par\medskip
+    \footnotesize Keterangan: \checkmark = komponen aktif, $\times$ = komponen tidak aktif. E6 merupakan baseline tanpa regularisasi VIC. \textbf{Catatan}: Invariance ditangani secara implisit melalui Cross-Entropy Loss, bukan sebagai loss term eksplisit terpisah.
+\end{table}
+
+\textbf{Interpretasi Skenario:}
+\begin{itemize}
+    \item \textbf{E1 vs E5}: Mengukur kontribusi mekanisme \textit{dynamic weighting} dengan membandingkan model lengkap terhadap model dengan bobot VIC tetap.
+    \item \textbf{E1 vs E6}: Mengukur kontribusi total regularisasi VIC dibandingkan baseline tanpa regularisasi.
+    \item \textbf{E2, E3, E4}: Mengidentifikasi kombinasi komponen VIC yang paling efektif ketika sumber daya komputasi terbatas.
+    \item \textbf{E7, E8}: Mengevaluasi efektivitas komponen Covariance dan Variance secara individual tanpa Invariance eksplisit.
+\end{itemize}
+
+%-----------------------------------------------------------------------------%
+\section{Implementasi Teknis}
+%-----------------------------------------------------------------------------%
+
+%-----------------------------------------------------------------------------%
+\subsection{Framework dan Library}
+%-----------------------------------------------------------------------------%
+
+Implementasi menggunakan:
+
+\begin{itemize}
+	\item \textbf{PyTorch 2.0.1}: \textit{Framework deep learning} utama dengan \texttt{torch.utils.checkpoint} untuk \textit{gradient checkpointing}
+	\item \textbf{NumPy dan SciPy}: Komputasi numerik dan statistik
+	\item \textbf{Matplotlib dan Seaborn}: Visualisasi
+	\item \textbf{scikit-learn}: Metrik evaluasi tambahan
+	\item \textbf{Weights \& Biases}: \textit{Experiment tracking} dan visualisasi
+\end{itemize}
+
+Rangkaian tes (\textit{test suite}) digunakan untuk memvalidasi ketepatan implementasi.
+
+
+%-----------------------------------------------------------------------------%
+\subsection{Hardware dan Computational Resources}
+%-----------------------------------------------------------------------------%
+
+Eksperimen dilakukan pada platform Kaggle dengan spesifikasi:
+
+\begin{itemize}
+	\item GPU: NVIDIA Tesla P100 (16GB VRAM)
+	\item CPU: 2-core Intel Xeon processor @ 2,3GHz
+	\item RAM: 13GB
+	\item \textit{Storage}: 73GB
+\end{itemize}
+
+\textbf{Optimasi Memori:} Implementasi dioptimalkan untuk efisiensi komputasi melalui:
+\begin{itemize}
+	\item \textit{Mixed Precision} (FP16): Mengurangi penggunaan memori secara signifikan tanpa mengorbankan akurasi (Micikevicius et al., 2018).
+	\item \textit{Gradient Checkpointing}: Menghemat memori GPU dengan menukar komputasi ulang untuk penyimpanan aktivasi.
+	\item \textit{Bias-Free Convolutions}: Penghapusan bias pada lapisan konvolusi yang diikuti oleh Batch Normalization untuk efisiensi parameter.
+	\item Episode-wise training dengan batch\_size=1: Strategi pelatihan yang memproses satu episode per langkah untuk meminimalkan jejak memori puncak.
+\end{itemize}
+
+Total waktu training untuk satu konfigurasi bervariasi bergantung pada kompleksitas dataset dan jumlah episode training.
