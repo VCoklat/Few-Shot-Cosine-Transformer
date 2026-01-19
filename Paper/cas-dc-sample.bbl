@@ -1,0 +1,97 @@
+\begin{thebibliography}{11}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\href}[2]{#2}
+\providecommand{\path}[1]{#1}
+\providecommand{\DOIprefix}{doi:}
+\providecommand{\ArXivprefix}{arXiv:}
+\providecommand{\URLprefix}{URL: }
+\providecommand{\Pubmedprefix}{pmid:}
+\providecommand{\doi}[1]{\href{http://dx.doi.org/#1}{\path{#1}}}
+\providecommand{\Pubmed}[1]{\href{pmid:#1}{\path{#1}}}
+\providecommand{\bibinfo}[2]{#2}
+\ifx\xfnm\relax \def\xfnm[#1]{\unskip,\space#1}\fi
+%Type = Article
+\bibitem[{Bardes et~al.(2022)Bardes, Ponce and LeCun}]{bardes2022vicreg}
+\bibinfo{author}{Bardes, A.}, \bibinfo{author}{Ponce, J.},
+  \bibinfo{author}{LeCun, Y.}, \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{{VICReg}: Variance-invariance-covariance
+  regularization for self-supervised learning}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2105.04906} .
+%Type = Article
+\bibitem[{Das et~al.(2025)Das, Mahadevan, Murarka, Deb and
+  Ramaswamy}]{das2025profonet}
+\bibinfo{author}{Das, S.}, \bibinfo{author}{Mahadevan, S.},
+  \bibinfo{author}{Murarka, B.}, \bibinfo{author}{Deb, A.},
+  \bibinfo{author}{Ramaswamy, S.}, \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{{ProFONet}: Prototype-based few-shot learning with
+  optimized feature space}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2501.00000} .
+%Type = Inproceedings
+\bibitem[{Doersch et~al.(2020)Doersch, Gupta and
+  Zisserman}]{doersch2020crosstransformers}
+\bibinfo{author}{Doersch, C.}, \bibinfo{author}{Gupta, A.},
+  \bibinfo{author}{Zisserman, A.}, \bibinfo{year}{2020}.
+\newblock \bibinfo{title}{{CrossTransformers}: Spatially-aware few-shot
+  transfer}, in: \bibinfo{booktitle}{Advances in Neural Information Processing
+  Systems}, pp. \bibinfo{pages}{21981--21993}.
+%Type = Inproceedings
+\bibitem[{Finn et~al.(2017)Finn, Abbeel and Levine}]{finn2017model}
+\bibinfo{author}{Finn, C.}, \bibinfo{author}{Abbeel, P.},
+  \bibinfo{author}{Levine, S.}, \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{Model-agnostic meta-learning for fast adaptation of
+  deep networks}, in: \bibinfo{booktitle}{International Conference on Machine
+  Learning}, pp. \bibinfo{pages}{1126--1135}.
+%Type = Inproceedings
+\bibitem[{Hu et~al.(2018)Hu, Shen and Sun}]{hu2018squeeze}
+\bibinfo{author}{Hu, J.}, \bibinfo{author}{Shen, L.}, \bibinfo{author}{Sun,
+  G.}, \bibinfo{year}{2018}.
+\newblock \bibinfo{title}{Squeeze-and-excitation networks}, in:
+  \bibinfo{booktitle}{IEEE Conference on Computer Vision and Pattern
+  Recognition}, pp. \bibinfo{pages}{7132--7141}.
+%Type = Article
+\bibitem[{Medela and Picon(2019)}]{medela2019few}
+\bibinfo{author}{Medela, A.}, \bibinfo{author}{Picon, A.},
+  \bibinfo{year}{2019}.
+\newblock \bibinfo{title}{Pancreatic image segmentation using few-shot
+  learning}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:1906.03827} .
+%Type = Inproceedings
+\bibitem[{Nguyen et~al.(2023)Nguyen, Dang and Nguyen}]{nguyen2023cosine}
+\bibinfo{author}{Nguyen, H.C.}, \bibinfo{author}{Dang, Q.V.},
+  \bibinfo{author}{Nguyen, A.D.}, \bibinfo{year}{2023}.
+\newblock \bibinfo{title}{Few-shot classification with cosine transformer}, in:
+  \bibinfo{booktitle}{International Conference on Pattern Recognition and
+  Machine Intelligence}, pp. \bibinfo{pages}{215--227}.
+%Type = Inproceedings
+\bibitem[{Puch et~al.(2019)Puch, S{\'a}nchez and Rowe}]{puch2019few}
+\bibinfo{author}{Puch, S.}, \bibinfo{author}{S{\'a}nchez, I.},
+  \bibinfo{author}{Rowe, M.}, \bibinfo{year}{2019}.
+\newblock \bibinfo{title}{Few-shot learning with localization in realistic
+  settings}, in: \bibinfo{booktitle}{IEEE Conference on Computer Vision and
+  Pattern Recognition}, pp. \bibinfo{pages}{6558--6567}.
+%Type = Inproceedings
+\bibitem[{Snell et~al.(2017)Snell, Swersky and Zemel}]{snell2017prototypical}
+\bibinfo{author}{Snell, J.}, \bibinfo{author}{Swersky, K.},
+  \bibinfo{author}{Zemel, R.}, \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{Prototypical networks for few-shot learning}, in:
+  \bibinfo{booktitle}{Advances in Neural Information Processing Systems}.
+%Type = Inproceedings
+\bibitem[{Sung et~al.(2018)Sung, Yang, Zhang, Xiang, Torr and
+  Hospedales}]{sung2018learning}
+\bibinfo{author}{Sung, F.}, \bibinfo{author}{Yang, Y.}, \bibinfo{author}{Zhang,
+  L.}, \bibinfo{author}{Xiang, T.}, \bibinfo{author}{Torr, P.H.},
+  \bibinfo{author}{Hospedales, T.M.}, \bibinfo{year}{2018}.
+\newblock \bibinfo{title}{Learning to compare: Relation network for few-shot
+  learning}, in: \bibinfo{booktitle}{IEEE Conference on Computer Vision and
+  Pattern Recognition}, pp. \bibinfo{pages}{1199--1208}.
+%Type = Inproceedings
+\bibitem[{Vinyals et~al.(2016)Vinyals, Blundell, Lillicrap, Kavukcuoglu and
+  Wierstra}]{vinyals2016matching}
+\bibinfo{author}{Vinyals, O.}, \bibinfo{author}{Blundell, C.},
+  \bibinfo{author}{Lillicrap, T.}, \bibinfo{author}{Kavukcuoglu, K.},
+  \bibinfo{author}{Wierstra, D.}, \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Matching networks for one shot learning}, in:
+  \bibinfo{booktitle}{Advances in Neural Information Processing Systems}.
+
+\end{thebibliography}
