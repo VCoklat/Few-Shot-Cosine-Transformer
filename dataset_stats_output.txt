@@ -1,0 +1,34 @@
+Dataset         | Split      | Images   | Classes  | Status
+-----------------------------------------------------------------
+DatasetIndo     | Train/Base | 3152     | 12       | OK
+DatasetIndo     | Val        | 273      | 4        | OK
+DatasetIndo     | Test/Novel | 144      | 4        | OK
+-----------------------------------------------------------------
+CUB             | Train/Base | 5885     | 100      | OK
+CUB             | Val        | 2950     | 50       | OK
+CUB             | Test/Novel | 2953     | 50       | OK
+-----------------------------------------------------------------
+CIFAR           | Train/Base | 38400    | 64       | OK
+CIFAR           | Val        | 9600     | 16       | OK
+CIFAR           | Test/Novel | 12000    | 20       | OK
+-----------------------------------------------------------------
+miniImagenet    | Train/Base | 38400    | 64       | OK (CSV)
+miniImagenet    | Val        | 9600     | 16       | OK (CSV)
+miniImagenet    | Test/Novel | 12000    | 20       | OK (CSV)
+-----------------------------------------------------------------
+Omniglot        | Train/Base | 82240    | 4112     | OK
+Omniglot        | Val        | 13760    | 688      | OK
+Omniglot        | Test/Novel | 33840    | 1692     | OK
+-----------------------------------------------------------------
+emnist          | Train/Base | 0        | 0        | File Not Found
+emnist          | Val        | 0        | 0        | File Not Found
+emnist          | Test/Novel | 0        | 0        | File Not Found
+-----------------------------------------------------------------
+Yoga            | Train/Base | 1255     | 25       | OK
+Yoga            | Val        | 649      | 13       | OK
+Yoga            | Test/Novel | 576      | 12       | OK
+-----------------------------------------------------------------
+HAM10000        | Train/Base | 8061     | 4        | OK
+HAM10000        | Val        | 1113     | 1        | OK
+HAM10000        | Test/Novel | 841      | 2        | OK
+-----------------------------------------------------------------

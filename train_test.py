@@ -40,7 +40,9 @@ from io_utils import (get_assigned_file, get_best_file,
                      model_dict, parse_args)
 from methods.CTX import CTX
 from methods.transformer import FewShotTransformer
+from methods.transformer import FewShotTransformer
 from methods.optimal_few_shot import OptimalFewShotModel, DATASET_CONFIGS
+from methods.baselines import ProtoNet, MatchingNet, RelationNet, MetaBaseline
 import eval_utils
 
 global device
@@ -414,7 +416,8 @@ if __name__ == '__main__':
 
     optimization = params.optimization
 
-    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'OptimalFewShot']:
+    if params.method in ['FSCT_softmax', 'FSCT_cosine', 'CTX_softmax', 'CTX_cosine', 'OptimalFewShot',
+                         'ProtoNet', 'MatchingNet', 'RelationNet', 'MetaBaseline']:
         few_shot_params = dict(
             n_way=params.n_way, k_shot=params.k_shot, n_query = params.n_query)
         
@@ -478,6 +481,19 @@ if __name__ == '__main__':
                 use_focal_loss=use_focal_loss,
                 label_smoothing=0.1
             )
+
+        elif params.method in ['ProtoNet', 'MatchingNet', 'RelationNet', 'MetaBaseline']:
+            feature_model = lambda: model_dict[params.backbone](params.dataset, flatten=True)
+            
+            if params.method == 'ProtoNet':
+                model = ProtoNet(feature_model, n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
+            elif params.method == 'MatchingNet':
+                model = MatchingNet(feature_model, n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
+            elif params.method == 'RelationNet':
+                 # RelationNet might expect unflattened features, but let's try with flattened first as our baseline imp supports it
+                model = RelationNet(feature_model, n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
+            elif params.method == 'MetaBaseline':
+                model = MetaBaseline(feature_model, n_way=params.n_way, k_shot=params.k_shot, n_query=params.n_query)
 
         else:
             raise ValueError('Unknown method')

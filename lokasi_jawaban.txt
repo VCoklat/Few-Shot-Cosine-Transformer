@@ -1,0 +1,46 @@
+Berikut adalah lokasi dan jawaban untuk pertanyaan Anda berdasarkan file tesis yang saya temukan:
+
+1. **Pengertian Episode**
+   - **Lokasi**: `src/01-body/03-bab3.tex` (Baris 739-741)
+   - **Kutipan**: "Dalam penelitian ini, satu episode didefinisikan sebagai satu unit tugas pembelajaran mandiri (self-contained learning task) yang mensimulasikan skenario pengujian N-way K-shot selama proses pelatihan. Dalam durasi satu episode inilah mekanisme Dynamic VIC bekerja secara utuh..."
+   - **Jawaban**: Ya, pengertian tersebut sesuai dengan definisi yang tertulis di tesis.
+
+2. **Static VIC dan Nilai Lambda (0.5, 9, 0.5)**
+   - **Lokasi**: `src/01-body/03-bab3.tex` (Baris 826-841)
+   - **Keterangan**: Bagian ini menjelaskan "Static VIC Regularization" dan referensi ke baseline ProFONet. Teks menyebutkan nilai awal optimal ditentukan secara empiris.
+   - **Mengenai Nilai 9**: Saya tidak menemukan angka "9" secara spesifik untuk lambda dalam teks yang saya baca (yang ditemukan adalah contoh nilai dinamis seperti 0.5, 0.1, 0.2 di Baris 639 dan 838). Namun, penjelasan mengenai mengapa nilai-nilai ini optimal (berdasarkan ProFONet dan eksperimen empiris) terdapat di paragraf ini.
+
+3. **Ekstraksi Fitur 2-way 2-shot (Walkthrough)**
+   - **Lokasi**: `src/01-body/03-bab3.tex` (Baris 880-953)
+   - **Judul Bagian**: "Langkah 5: Skenario Lanjutan (2-Way 2-Shot)"
+   - **Jawaban**:
+     - **Mean Prototype**: Ya, untuk 2-shot, prototipe dihitung sebagai rata-rata vektor fitur support yang dinormalisasi (Baris 910: `Mean Prototype`).
+     - **Kelengkapan Contoh**: Teks *sudah* menyertakan contoh lengkap sampai perhitungan probabilitas akhir (Baris 948).
+     - **Vektor Ciri Akhir**: Klasifikasi menggunakan `z_Q` (fitur query yang telah di-refine via transformer) dan `p_A` (prototipe mean), bukan fitur mentah (Baris 929-933).
+
+4. **Dynamic Weighting (Meta Learner) & Lcov**
+   - **Lokasi**:
+     - **Input/Output & Lambda**: `src/01-body/03-bab3.tex` (Baris 647-664, "Episode-Adaptive Lambda Predictor").
+     - **Lcov**: `src/01-body/03-bab3.tex` (Baris 478-503, "Covariance Loss"). Rumus: `1/D * sum(off_diag^2)`.
+     - **Similarity > 2 Kelas**: Ya, dihitung tiap pasangan (Baris 447: "sum_{i<j} S_ij").
+     - **Perubahan Ruang Fitur**: `src/01-body/03-bab3.tex` (Baris 867-877, "Dinamika Ruang Fitur"). Penjelasan bahwa fitur berubah secara absolut karena update bobot backbone, dan secara relatif menjadi lebih terstruktur ("Optimal Packing").
+
+5. **Klasifikasi Akhir & ZQ**
+   - **Lokasi**: `src/01-body/03-bab3.tex` (Baris 673-674 dan Baris 929-930)
+   - **Kutipan**: "...perhitungan ini dilakukan menggunakan fitur query yang telah disempurnakan (z_q... bukan fitur mentah dari backbone (f_q)."
+   - **Penjelasan**: Sudah dijelaskan dengan baik bahwa klasifikasi menggunakan fitur hasil output transformer (z_q) yang telah "menyerap" konteks support set.
+
+6. **Penempatan PMelonamo & Confidence Interval**
+   - **Lokasi**: `src/01-body/03-bab3.tex` (Baris 941-953 untuk perhitungan, Baris 964 untuk definisi CI).
+   - **Keterangan**: Pada baris 952 sudah disebutkan perbedaan antara "tingkat kepercayaan (confidence) prediksi" dengan "95% Confidence Interval". Bagian Protokol Evaluasi (termasuk CI) berada tepat setelahnya (mulai Baris 958).
+
+7. **Ablasi Covariance & Rekomendasi**
+   - **Lokasi**:
+     - **Hasil Ablasi**: `src/01-body/04-bab4.tex` (Baris 392-414, Tabel 4.12 untuk HAM10000).
+     - **Analisis Dominasi Covariance**: `src/01-body/04-bab4.tex` (Baris 748-753).
+     - **Rekomendasi**: `src/01-body/04-bab4.tex` (Baris 765: "konfigurasi Conv4 + 5-shot + Covariance Regularization direkomendasikan...").
+   - **Jawaban**: Benar, hasil menunjukkan Covariance sangat berpengaruh (+16.18% di HAM10000) dan direkomendasikan.
+
+8. **Penggunaan Software (Penyakit Kulit)**
+   - **Lokasi**: `src/01-body/04-bab4.tex` (Baris 260 dan 763).
+   - **Penjelasan**: Teks menyebutkan bahwa karena efisiensi parameter (reduksi 90% pada Conv4), model ini layak diimplementasikan pada perangkat dengan sumber daya terbatas (seperti sistem diagnosis portabel di Puskesmas) untuk membantu diagnosis dini, terutama mengingat bias kelas pada dokter umum (dijelaskan di `03-bab3.tex` Baris 1021-1034 tentang risiko salah prediksi Melanoma).

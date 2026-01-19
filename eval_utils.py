@@ -20,6 +20,7 @@ from sklearn.metrics import (
     cohen_kappa_score,
     matthews_corrcoef,
     top_k_accuracy_score,
+    classification_report
 )
 
 try:
@@ -84,7 +85,40 @@ def evaluate(loader, model, n_way, class_names=None,
     episode_accuracies = []
     all_features = [] if extract_features else None
 
-    for x, _ in loader:                     # dataset's y is ignored
+    all_clinical_true, all_clinical_pred = [], []
+
+    for x, y_global in loader:                     
+        # y_global are global class IDs (from SetDataset). 
+        # But x shape is [batch_size, ...], where batch_size = n_way * (k_shot + n_query)
+        # y_global shape is [n_way]. Or [n_way, batch_size]?
+        # Based on SetDataset logic:
+        #   dataset[i] -> (images, global_class_id)
+        #   loader collates n_way of these.
+        #   So x is [n_way, k_shot+n_query, ...] (stacked)
+        #   y_global is [n_way] (the class IDs for each way) OR [n_way, k_shot+n_query] if SubDataset return targets.
+        #   SubDataset returns (img, target). target is scalar class ID.
+        #   So batch is (img_batch, target_batch) where target_batch is vector of global IDs.
+        #   Collate stacks these. So y_global is [n_way, k_shot+n_query].
+        
+        # We need to reshape x to [N*(K+Q), C, H, W] for the model.
+        # Loader likely already does this if SetDataManager uses a custom collate?
+        # Let's assume standard behavior:
+        # x: [n_way, k+q, C, H, W] -> flatten to [n_way * (k+q), C, H, W]
+        
+        # Check x shape
+        if x.dim() == 5:
+            # [n_way, n_samples, C, H, W]
+            bs, n_samples, c, h, w = x.size()
+            x = x.view(bs * n_samples, c, h, w)
+            y_global = y_global.view(-1) # Flatten to align with x
+        
+        # We only care about QUERY set for evaluation.
+        # The model usually splits x into support and query internally based on n_way/k_shot.
+        # k_shot samples are Support. n_query samples are Query.
+        # We need to extract the global labels corresponding to the QUERY samples.
+        # Structure: Way 0 (K support, Q query), Way 1 (K support, Q query)...
+        # Unless SetDataset randomizes inside? Usually it's ordered.
+        
         t0 = time.time()
 
         # forward pass in safe chunks
@@ -141,9 +175,52 @@ def evaluate(loader, model, n_way, class_names=None,
         all_pred.append(preds)
         all_scores.append(scores.numpy())
 
-        n_query = len(preds) // n_way
-        y_episode = np.repeat(np.arange(n_way), n_query)
+        n_query_per_way = len(preds) // n_way # Should be equal to n_query
+        y_episode = np.repeat(np.arange(n_way), n_query_per_way)
         all_true.append(y_episode)
+        
+        # Clinical Metrics: Global Class Mapping
+        # We need to map the relative predictions (0..N-1) back to Global Class IDs.
+        # y_global contains global IDs for ALL samples (Support + Query).
+        # We assume standard order: Way 0 (Support..Query), Way 1 (Support..Query)...
+        # Support is first k_shot, Query is next n_query.
+        # so for each way w:
+        #   query_global_ids = y_global[w, k_shot:]
+        
+        # But wait, y_global is already flattened if we did view(-1).
+        # Let's reconstruct structure.
+        # Total samples per way = k_shot + n_query.
+        # total_samples = n_way * (k_shot + n_query).
+        if hasattr(model, 'k_shot') and hasattr(model, 'n_query'):
+             k = model.k_shot
+             q = model.n_query
+        elif hasattr(loader.dataset, 'k_shot'):
+             # Fallback
+             k = 5 # default assumption if not accessible
+             q = 15
+        else:
+             # Infer from sizes
+             total_per_way = x.size(0) // n_way
+             # We can't know K vs Q split easily without params.
+             # Assuming standard structure from 'preds'. preds length is n_way * n_query.
+             q = len(preds) // n_way
+             k = total_per_way - q
+
+        # Reshape y_global (which is all samples) to [n_way, k+q]
+        y_global_reshaped = y_global.view(n_way, -1)
+        
+        # Extract query targets (global IDs)
+        # Shape [n_way, n_query] -> flatten -> [n_way * n_query]
+        query_global_targets = y_global_reshaped[:, k:].flatten().numpy()
+        
+        # Map predictions (relative 0..n_way-1) to Global IDs
+        # If pred is 'relative_class_idx', then global ID is y_global_reshaped[relative_class_idx, 0]
+        # (Since all samples in way 'i' have same global ID)
+        way_global_ids = y_global_reshaped[:, 0].numpy() # [n_way]
+        pred_global_ids = way_global_ids[preds]
+        
+        all_clinical_true.append(query_global_targets)
+        all_clinical_pred.append(pred_global_ids)
         
         # Compute episode accuracy
         episode_acc = np.mean(preds == y_episode)
@@ -211,6 +288,38 @@ def evaluate(loader, model, n_way, class_names=None,
         # Class names fall back to the confusion matrix size
         class_names       = class_names or (list(range(len(res["conf_mat"]))) if "conf_mat" in res else []),
     )
+    
+    # Compute Clinical Metrics (Global Classification Report)
+    clinical_true = np.concatenate(all_clinical_true)
+    clinical_pred = np.concatenate(all_clinical_pred)
+    
+    # Get all unique classes encountered
+    unique_classes = np.unique(np.concatenate([clinical_true, clinical_pred]))
+    
+    # Classification Report
+    # Note: labels arg ensures we report even if some classes missing in preds
+    clf_report = classification_report(clinical_true, clinical_pred, labels=unique_classes, output_dict=True)
+    
+    res['clinical_report'] = clf_report
+    res['clinical_metrics'] = {
+        'macro_f1': clf_report['macro avg']['f1-score'],
+        'weighted_f1': clf_report['weighted avg']['f1-score'],
+    }
+    
+    # Calculate Specificity for each class (One-vs-Rest)
+    # Specificity = TN / (TN + FP)
+    specificities = {}
+    for cls in unique_classes:
+        # Treat 'cls' as positive, others as negative
+        tp = np.sum((clinical_pred == cls) & (clinical_true == cls))
+        tn = np.sum((clinical_pred != cls) & (clinical_true != cls))
+        fp = np.sum((clinical_pred == cls) & (clinical_true != cls))
+        fn = np.sum((clinical_pred != cls) & (clinical_true == cls))
+        
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        specificities[str(cls)] = specificity
+        
+    res['specificities'] = specificities
 
     # Add features if extracted
     if extract_features and all_features:
@@ -274,6 +383,27 @@ def pretty_print(res: dict, show_feature_analysis: bool = False) -> None:
           f"mem {res['gpu_mem_used_MB']:.0f}/{res['gpu_mem_total_MB']:.0f} MB")
     print(f"CPU util: {res['cpu_util']:.1f}% | "
           f"mem {res['cpu_mem_used_MB']:.0f}/{res['cpu_mem_total_MB']:.0f} MB")
+          
+    # Clinical Metrics Printout
+    if 'clinical_report' in res:
+        print("\n" + "="*80)
+        print("CLINICAL METRICS (Per-Class performance aggregated over episodes)")
+        print("="*80)
+        print(f"{'Class ID':<10} {'Sensitivity (Recall)':<20} {'Specificity':<15} {'F1-Score':<10} {'Support':<10}")
+        print("-" * 70)
+        
+        report = res['clinical_report']
+        specs = res.get('specificities', {})
+        
+        # Iterate over classes (keys that are digit strings)
+        for key, metrics in report.items():
+            if key.isdigit():
+                spec = specs.get(key, 0.0)
+                print(f"{key:<10} {metrics['recall']:<20.4f} {spec:<15.4f} {metrics['f1-score']:<10.4f} {metrics['support']:<10}")
+        
+        print("-" * 70)
+        print(f"Macro F1: {res['clinical_metrics']['macro_f1']:.4f}")
+        print(f"Weighted F1: {res['clinical_metrics']['weighted_f1']:.4f}")
     
     # Feature analysis (if available)
     # Make sure the feature_analysis entry is present and not None

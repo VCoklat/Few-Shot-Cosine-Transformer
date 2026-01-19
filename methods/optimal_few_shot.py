@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 from methods.meta_template import MetaTemplate
+import torchvision.transforms as transforms
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -168,10 +169,21 @@ class LightweightCosineTransformer(nn.Module):
 
 class DynamicVICRegularizer(nn.Module):
     """Dynamic VIC (Variance-Invariance-Covariance) Regularizer"""
-    def __init__(self, feature_dim=64):
+    def __init__(self, feature_dim=64, n_way=5, use_projector=True):
         super().__init__()
         self.feature_dim = feature_dim
+        self.use_projector = use_projector
         self.register_buffer('eye', torch.eye(feature_dim))
+        
+        # Projector for Covariance Stabilization: Project D -> N (or small dimension)
+        if self.use_projector:
+            # We project to n_way (number of prototypes) or at least a manageable size
+            self.proj_dim = max(n_way, 5) 
+            self.projector = nn.Sequential(
+                nn.Linear(feature_dim, feature_dim // 2),
+                nn.ReLU(inplace=True),
+                nn.Linear(feature_dim // 2, self.proj_dim)
+            )
     
     def forward(self, prototypes, support_features=None, lambda_var=0.1, lambda_cov=0.01):
         N, D = prototypes.shape
@@ -187,10 +199,21 @@ class DynamicVICRegularizer(nn.Module):
             var_loss = torch.tensor(0.0, device=prototypes.device)
         
         # Covariance loss: decorrelate dimensions
-        centered = prototypes - prototypes.mean(dim=0, keepdim=True)
-        cov = (centered.T @ centered) / max(N - 1, 1)
-        off_diag = cov - torch.diag(torch.diag(cov))
-        cov_loss = (off_diag ** 2).sum() / D
+        if self.use_projector:
+            # Project features for covariance calculation to avoid instability
+            # when D >> N
+            feats_for_cov = self.projector(prototypes)
+            N_proj, D_proj = feats_for_cov.shape
+            centered = feats_for_cov - feats_for_cov.mean(dim=0, keepdim=True)
+            cov = (centered.T @ centered) / max(N_proj - 1, 1)
+            off_diag = cov - torch.diag(torch.diag(cov))
+            cov_loss = (off_diag ** 2).sum() / D_proj
+        else:
+            # Original calculation
+            centered = prototypes - prototypes.mean(dim=0, keepdim=True)
+            cov = (centered.T @ centered) / max(N - 1, 1)
+            off_diag = cov - torch.diag(torch.diag(cov))
+            cov_loss = (off_diag ** 2).sum() / D
         
         vic_loss = lambda_var * var_loss + lambda_cov * cov_loss
         
@@ -313,11 +336,19 @@ class OptimalFewShotModel(MetaTemplate):
         self.transformer = LightweightCosineTransformer(
             d_model=feature_dim, n_heads=n_heads, dropout=dropout
         )
-        self.vic = DynamicVICRegularizer(feature_dim=feature_dim)
+        self.vic = DynamicVICRegularizer(feature_dim=feature_dim, n_way=n_way, use_projector=True)
         self.lambda_predictor = EpisodeAdaptiveLambda(
             feature_dim=feature_dim, num_datasets=num_datasets
         )
         self.temperature = nn.Parameter(torch.tensor(10.0))
+
+        # Explicit Invariance
+        self.explicit_invariance = False # Default off/implicit
+        self.augmenter = transforms.Compose([
+            transforms.RandomResizedCrop(84, scale=(0.8, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4)
+        ])
         
         # Loss configuration
         self.use_focal_loss = use_focal_loss
@@ -423,7 +454,7 @@ class OptimalFewShotModel(MetaTemplate):
         top1_correct = (topk_ind[:,0] == y_query).sum().item()
         return float(top1_correct), len(y_query)
     
-    def set_forward_loss(self, x):
+    def set_forward_loss(self, x, return_stats=False):
         """Forward pass with loss computation"""
         target = torch.from_numpy(np.repeat(range(self.n_way), self.n_query))
         target = Variable(target.to(device))
@@ -432,6 +463,11 @@ class OptimalFewShotModel(MetaTemplate):
         
         # Get dataset ID
         dataset_id = self.dataset_id_map.get(self.current_dataset, 0)
+        
+        # Compute stats for lambda predictor (needed for logging)
+        episode_stats = self.lambda_predictor.compute_episode_stats(
+            prototypes, support_features, query_features
+        )
         
         # Adaptive lambda
         lambda_var, lambda_cov = self.lambda_predictor(
@@ -450,11 +486,38 @@ class OptimalFewShotModel(MetaTemplate):
             ce_loss = self.loss_fn(logits, target)
         
         total_loss = ce_loss + vic_loss
+
+        # Explicit Invariance Loss logic (redacted for brevity, same as previous)
+        if getattr(self, 'explicit_invariance', False):
+             if x.dim() == 4 and x.size(2) > 1:
+                n_support = self.n_way * self.k_shot
+                x_query = x[n_support:]
+                x_aug = x_query.clone()
+                if torch.rand(1) < 0.5:
+                    x_aug = torch.flip(x_aug, [3]) 
+                _, _, _, z_query_aug = self._set_forward_full(
+                    torch.cat([x[:n_support], x_aug], dim=0) 
+                )
+                inv_loss = F.mse_loss(query_features, z_query_aug)
+                total_loss += 1.0 * inv_loss 
         
         # Calculate accuracy
         predict = torch.argmax(logits, dim=1)
         acc = (predict == target).sum().item() / target.size(0)
         
+        if return_stats:
+            return acc, total_loss, {
+                'lambda_var': lambda_var.item(),
+                'lambda_cov': lambda_cov.item(),
+                'intra_var': episode_stats[0].item(),
+                'inter_sep': episode_stats[1].item(),
+                'domain_shift': episode_stats[2].item(),
+                'support_div': episode_stats[3].item(),
+                'query_div': episode_stats[4].item(),
+                'ce_loss': ce_loss.item(),
+                'vic_loss': vic_loss.item()
+            }
+            
         return acc, total_loss
 
 # ============================================================================
